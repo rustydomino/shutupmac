@@ -200,4 +200,4 @@ releases, and packaging for distribution).
 
 ## License
 
-MIT (recommended)
+GPL2.0
