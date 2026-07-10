@@ -1,4 +1,4 @@
-# macOS Notification Center Clear (Swift Accessibility)
+# ShutUpMac
 
 ## Overview
 
