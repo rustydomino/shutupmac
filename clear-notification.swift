@@ -35,6 +35,15 @@ let defaultPollingInterval: TimeInterval = 0.02
 let defaultAXTreeSearchMaxDepth = 20
 let menuExtraSearchMaxDepth = 8
 
+// MARK: - Debug Logging
+
+let DEBUG_LOGGING = true
+
+func debugLog(_ message: @autoclosure () -> String) {
+    guard DEBUG_LOGGING else { return }
+    print(message())
+}
+
 // MARK: - Generic AX Helpers
 
 func attr(_ e: AXUIElement, _ name: String) -> AnyObject? {
@@ -92,7 +101,7 @@ func waitUntil(
 
 func press(_ e: AXUIElement) -> Bool {
     let err = AXUIElementPerformAction(e, kAXPressAction as CFString)
-    print("AXPress result: \(err.rawValue) \(err)")
+    debugLog("AXPress result: \(err.rawValue) \(err)")
     return err == .success
 }
 
@@ -225,10 +234,10 @@ func pressClockMenuExtra(label: String) -> Bool {
         return false
     }
 
-    print("FOUND CLOCK:", describe(clock))
+    debugLog("FOUND CLOCK: \(describe(clock))")
 
     let err = AXUIElementPerformAction(clock, kAXPressAction as CFString)
-    print("\(label) Clock AXPress result: \(err.rawValue) \(err)")
+    debugLog("\(label) Clock AXPress result: \(err.rawValue) \(err)")
     return err == .success
 }
 
@@ -270,7 +279,7 @@ func waitForClearAll(in window: AXUIElement) -> AXUIElement? {
 // MARK: - Diagnostics
 
 func dumpLikelySystemWindows() {
-    print("DEBUG: AX windows from Notification Center candidate apps:")
+    debugLog("DEBUG: AX windows from Notification Center candidate apps:")
 
     for app in notificationCenterApplications() {
         let windows = axWindows(for: app)
@@ -287,10 +296,10 @@ func dumpLikelySystemWindows() {
 
 // MARK: - Main
 
-print("AX trusted: \(AXIsProcessTrusted())")
+debugLog("AX trusted: \(AXIsProcessTrusted())")
 
 let wasInitiallyOpen = isNotificationCenterOpen()
-print("Notification Center initially open: \(wasInitiallyOpen)")
+debugLog("Notification Center initially open: \(wasInitiallyOpen)")
 
 if !wasInitiallyOpen {
     guard openNotificationCenterViaAX() else {
@@ -305,7 +314,7 @@ guard let window = waitForNotificationCenterWindow() else {
     exit(1)
 }
 
-print("WINDOW:", describe(window))
+debugLog("WINDOW: \(describe(window))")
 
 guard let xmark = findXmark(window) else {
     print("Nothing to clear: xmark button not found")
@@ -314,10 +323,10 @@ guard let xmark = findXmark(window) else {
     exit(0)
 }
 
-print("FOUND XMARK:", describe(xmark))
+debugLog("FOUND XMARK: \(describe(xmark))")
 
 let showErr = AXUIElementPerformAction(xmark, kAXShowMenuAction as CFString)
-print("AXShowMenu result: \(showErr.rawValue) \(showErr)")
+debugLog("AXShowMenu result: \(showErr.rawValue) \(showErr)")
 
 guard let clearItem = waitForClearAll(in: window) else {
     print("Nothing to clear: Clear All Notifications menu item not found")
@@ -326,7 +335,7 @@ guard let clearItem = waitForClearAll(in: window) else {
     exit(0)
 }
 
-print("FOUND CLEAR ITEM:", describe(clearItem))
+debugLog("FOUND CLEAR ITEM: \(describe(clearItem))")
 
 if press(clearItem) {
     closeNotificationCenterIfNeeded(wasInitiallyOpen: wasInitiallyOpen)
