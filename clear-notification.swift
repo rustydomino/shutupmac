@@ -14,6 +14,27 @@ import ApplicationServices
 import CoreGraphics
 import AppKit
 
+// MARK: - Configuration
+
+let controlCenterBundleID = "com.apple.controlcenter"
+
+let notificationCenterBundleIDs = [
+    "com.apple.notificationcenterui",
+    "com.apple.UserNotificationCenter",
+    "com.apple.notificationcenter"
+]
+
+let notificationCenterWindowTitle = "Notification Center"
+let clockMenuExtraIdentifier = "com.apple.menuextra.clock"
+let clearButtonIdentifier = "xmark"
+let clearAllMenuItemTitle = "Clear All Notifications"
+
+let defaultPollingTimeout: TimeInterval = 1.0
+let defaultPollingInterval: TimeInterval = 0.02
+
+let defaultAXTreeSearchMaxDepth = 20
+let menuExtraSearchMaxDepth = 8
+
 // MARK: - Generic AX Helpers
 
 func attr(_ e: AXUIElement, _ name: String) -> AnyObject? {
@@ -52,8 +73,8 @@ func describe(_ e: AXUIElement) -> String {
 }
 
 func waitUntil(
-    timeout: TimeInterval = 1.0,
-    interval: TimeInterval = 0.02,
+    timeout: TimeInterval = defaultPollingTimeout,
+    interval: TimeInterval = defaultPollingInterval,
     condition: () -> Bool
 ) -> Bool {
     let deadline = Date().addingTimeInterval(timeout)
@@ -80,7 +101,7 @@ func press(_ e: AXUIElement) -> Bool {
 func findElement(
     _ e: AXUIElement,
     depth: Int = 0,
-    maxDepth: Int = 20,
+    maxDepth: Int = defaultAXTreeSearchMaxDepth,
     matches: (AXUIElement) -> Bool
 ) -> AXUIElement? {
     if depth > maxDepth { return nil }
@@ -100,37 +121,31 @@ func findElement(
     return nil
 }
 
-func findMenuExtra(_ e: AXUIElement, id targetID: String, depth: Int = 0, maxDepth: Int = 8) -> AXUIElement? {
+func findMenuExtra(_ e: AXUIElement, id targetID: String, depth: Int = 0, maxDepth: Int = menuExtraSearchMaxDepth) -> AXUIElement? {
     findElement(e, depth: depth, maxDepth: maxDepth) { node in
         strAttr(node, kAXIdentifierAttribute) == targetID
     }
 }
 
-func findXmark(_ e: AXUIElement, depth: Int = 0, maxDepth: Int = 20) -> AXUIElement? {
+func findXmark(_ e: AXUIElement, depth: Int = 0, maxDepth: Int = defaultAXTreeSearchMaxDepth) -> AXUIElement? {
     findElement(e, depth: depth, maxDepth: maxDepth) { node in
         strAttr(node, kAXRoleAttribute) == kAXMenuButtonRole as String &&
-        strAttr(node, kAXIdentifierAttribute) == "xmark"
+        strAttr(node, kAXIdentifierAttribute) == clearButtonIdentifier
     }
 }
 
-func findClearAll(_ e: AXUIElement, depth: Int = 0, maxDepth: Int = 20) -> AXUIElement? {
+func findClearAll(_ e: AXUIElement, depth: Int = 0, maxDepth: Int = defaultAXTreeSearchMaxDepth) -> AXUIElement? {
     findElement(e, depth: depth, maxDepth: maxDepth) { node in
         strAttr(node, kAXRoleAttribute) == kAXMenuItemRole as String &&
-        strAttr(node, kAXTitleAttribute) == "Clear All Notifications"
+        strAttr(node, kAXTitleAttribute) == clearAllMenuItemTitle
     }
 }
 
 // MARK: - Notification Center Detection
 
-let notificationCenterBundleIDs = [
-    "com.apple.notificationcenterui",
-    "com.apple.UserNotificationCenter",
-    "com.apple.notificationcenter"
-]
-
 func isNotificationCenterWindow(_ e: AXUIElement) -> Bool {
     strAttr(e, kAXRoleAttribute) == kAXWindowRole as String &&
-    strAttr(e, kAXTitleAttribute) == "Notification Center"
+    strAttr(e, kAXTitleAttribute) == notificationCenterWindowTitle
 }
 
 // Notification Center may expose an AXWindow even when it is not visibly
@@ -181,7 +196,7 @@ func isNotificationCenterOpen() -> Bool {
 func waitForNotificationCenterWindow() -> AXUIElement? {
     var window: AXUIElement?
 
-    let found = waitUntil(timeout: 1.0, interval: 0.02) {
+    let found = waitUntil(timeout: defaultPollingTimeout, interval: defaultPollingInterval) {
         window = focusedNotificationCenterWindow(logFound: false)
         return window != nil
     }
@@ -197,7 +212,7 @@ func waitForNotificationCenterWindow() -> AXUIElement? {
 
 func pressClockMenuExtra(label: String) -> Bool {
     guard let app = NSRunningApplication
-        .runningApplications(withBundleIdentifier: "com.apple.controlcenter")
+        .runningApplications(withBundleIdentifier: controlCenterBundleID)
         .first else {
         print("ControlCenter not found")
         return false
@@ -205,7 +220,7 @@ func pressClockMenuExtra(label: String) -> Bool {
 
     let axApp = AXUIElementCreateApplication(app.processIdentifier)
 
-    guard let clock = findMenuExtra(axApp, id: "com.apple.menuextra.clock") else {
+    guard let clock = findMenuExtra(axApp, id: clockMenuExtraIdentifier) else {
         print("Clock menu extra not found")
         return false
     }
@@ -244,7 +259,7 @@ func closeNotificationCenterIfNeeded(wasInitiallyOpen: Bool) {
 func waitForClearAll(in window: AXUIElement) -> AXUIElement? {
     var item: AXUIElement?
 
-    let found = waitUntil(timeout: 1.0, interval: 0.02) {
+    let found = waitUntil(timeout: defaultPollingTimeout, interval: defaultPollingInterval) {
         item = findClearAll(window)
         return item != nil
     }
