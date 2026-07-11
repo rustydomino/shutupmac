@@ -1,3 +1,14 @@
+/*
+ High-level execution flow:
+
+ 1. Determine whether Notification Center is already open.
+ 2. Open Notification Center if necessary using the Clock menu extra.
+ 3. Locate the Notification Center Accessibility window.
+ 4. Locate the Clear (×) button.
+ 5. Invoke "Clear All Notifications."
+ 6. Restore the original Notification Center state.
+*/
+
 import Foundation
 import ApplicationServices
 import CoreGraphics
