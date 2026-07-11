@@ -37,8 +37,12 @@ let menuExtraSearchMaxDepth = 8
 
 // MARK: - Debug Logging
 
-let DEBUG_LOGGING = true
+let DEBUG_LOGGING = false
 
+/// Emits developer-facing diagnostic output when debug logging is enabled.
+///
+/// The message is autoclosured so expensive string interpolation, including
+/// Accessibility tree descriptions, is skipped when debug logging is disabled.
 func debugLog(_ message: @autoclosure () -> String) {
     guard DEBUG_LOGGING else { return }
     print(message())
@@ -107,6 +111,10 @@ func press(_ e: AXUIElement) -> Bool {
 
 // MARK: - AX Tree Search
 
+/// Performs a depth-limited search through an Accessibility tree.
+///
+/// The search checks common child collections used by macOS Accessibility APIs,
+/// including visible children and navigation-order children.
 func findElement(
     _ e: AXUIElement,
     depth: Int = 0,
@@ -170,12 +178,22 @@ func axWindows(for app: NSRunningApplication) -> [AXUIElement] {
     return children(axApp, kAXWindowsAttribute)
 }
 
+/// Returns running applications that may host Notification Center UI.
+///
+/// macOS has used multiple bundle identifiers for Notification Center across
+/// releases, so callers should search all known candidates rather than relying
+/// on a single bundle identifier.
 func notificationCenterApplications() -> [NSRunningApplication] {
     notificationCenterBundleIDs.flatMap { bundleID in
         NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
     }
 }
 
+/// Returns all Accessibility windows that appear to be Notification Center windows.
+///
+/// This is the shared discovery point for Notification Center window lookup.
+/// More specific helpers should filter this result rather than duplicating
+/// bundle/application/window traversal.
 func notificationCenterWindows(logFound: Bool = true) -> [AXUIElement] {
     var windows: [AXUIElement] = []
 
@@ -183,7 +201,7 @@ func notificationCenterWindows(logFound: Bool = true) -> [AXUIElement] {
         let matchingWindows = axWindows(for: app).filter(isNotificationCenterWindow)
 
         if logFound && !matchingWindows.isEmpty {
-            print("FOUND NOTIFICATION CENTER APP: bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier)")
+            debugLog("FOUND NOTIFICATION CENTER APP: bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier)")
         }
 
         windows.append(contentsOf: matchingWindows)
@@ -192,16 +210,25 @@ func notificationCenterWindows(logFound: Bool = true) -> [AXUIElement] {
     return windows
 }
 
+/// Returns the Notification Center window that is currently presented to the user.
+///
+/// This intentionally filters the general Notification Center window list by
+/// focus state instead of treating window existence alone as visibility.
 func focusedNotificationCenterWindow(logFound: Bool = true) -> AXUIElement? {
     notificationCenterWindows(logFound: logFound).first { window in
         boolAttr(window, kAXFocusedAttribute) == true
     }
 }
 
+/// Returns true when Notification Center appears to be visibly open.
 func isNotificationCenterOpen() -> Bool {
     focusedNotificationCenterWindow(logFound: false) != nil
 }
 
+/// Waits briefly for the focused Notification Center window to appear.
+///
+/// Opening Notification Center through the menu extra is asynchronous, so the
+/// AX window may not be available immediately after pressing the Clock item.
 func waitForNotificationCenterWindow() -> AXUIElement? {
     var window: AXUIElement?
 
@@ -219,6 +246,10 @@ func waitForNotificationCenterWindow() -> AXUIElement? {
 
 // MARK: - Notification Center Actions
 
+/// Presses the Clock menu extra, which toggles Notification Center.
+///
+/// Notification Center does not expose a simple public API for opening and
+/// closing, so this uses the Accessibility representation of the menu bar Clock.
 func pressClockMenuExtra(label: String) -> Bool {
     guard let app = NSRunningApplication
         .runningApplications(withBundleIdentifier: controlCenterBundleID)
@@ -249,6 +280,10 @@ func closeNotificationCenterViaAX() -> Bool {
     pressClockMenuExtra(label: "Close")
 }
 
+/// Restores Notification Center to its original open/closed state.
+///
+/// If Notification Center was already open when the program started, it is left
+/// open. Otherwise, it is closed after clearing is complete.
 func closeNotificationCenterIfNeeded(wasInitiallyOpen: Bool) {
     if wasInitiallyOpen {
         print("Leaving Notification Center open because it was already open")
@@ -265,6 +300,10 @@ func closeNotificationCenterIfNeeded(wasInitiallyOpen: Bool) {
 
 // MARK: - Notification Clearing
 
+/// Waits briefly for the Clear All Notifications menu item to appear.
+///
+/// The item is created only after the Clear button menu is shown, so lookup must
+/// poll for a short period instead of assuming it is immediately available.
 func waitForClearAll(in window: AXUIElement) -> AXUIElement? {
     var item: AXUIElement?
 
@@ -278,6 +317,10 @@ func waitForClearAll(in window: AXUIElement) -> AXUIElement? {
 
 // MARK: - Diagnostics
 
+/// Dumps candidate Notification Center Accessibility windows for troubleshooting.
+///
+/// This is only useful when window discovery fails, especially after macOS UI or
+/// Accessibility behavior changes.
 func dumpLikelySystemWindows() {
     debugLog("DEBUG: AX windows from Notification Center candidate apps:")
 
@@ -285,10 +328,10 @@ func dumpLikelySystemWindows() {
         let windows = axWindows(for: app)
 
         if windows.isEmpty {
-            print("  app bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier) windows=[]")
+            debugLog("  app bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier) windows=[]")
         } else {
             for window in windows {
-                print("  app bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier) window=\(describe(window))")
+                debugLog("  app bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier) window=\(describe(window))")
             }
         }
     }
