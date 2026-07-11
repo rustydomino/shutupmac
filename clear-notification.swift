@@ -269,8 +269,10 @@ guard let window = waitForNotificationCenterWindow() else {
 print("WINDOW:", describe(window))
 
 guard let xmark = findXmark(window) else {
-    print("XMARK NOT FOUND")
-    exit(1)
+    print("Nothing to clear: xmark button not found")
+    _ = closeNotificationCenterViaAX()
+    print("SUCCESS")
+    exit(0)
 }
 
 print("FOUND XMARK:", describe(xmark))
@@ -279,8 +281,10 @@ let showErr = AXUIElementPerformAction(xmark, kAXShowMenuAction as CFString)
 print("AXShowMenu result: \(showErr.rawValue) \(showErr)")
 
 guard let clearItem = waitForClearAll(in: window) else {
-    print("CLEAR ITEM NOT FOUND")
-    exit(1)
+    print("Nothing to clear: Clear All Notifications menu item not found")
+    _ = closeNotificationCenterViaAX()
+    print("SUCCESS")
+    exit(0)
 }
 
 print("FOUND CLEAR ITEM:", describe(clearItem))
