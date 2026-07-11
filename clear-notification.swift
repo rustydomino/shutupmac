@@ -13,6 +13,10 @@ func strAttr(_ e: AXUIElement, _ name: String) -> String? {
     attr(e, name) as? String
 }
 
+func boolAttr(_ e: AXUIElement, _ name: String) -> Bool? {
+    attr(e, name) as? Bool
+}
+
 func children(_ e: AXUIElement, _ name: String) -> [AXUIElement] {
     attr(e, name) as? [AXUIElement] ?? []
 }
@@ -30,7 +34,8 @@ func describe(_ e: AXUIElement) -> String {
     let desc = strAttr(e, kAXDescriptionAttribute) ?? "nil"
     let id = strAttr(e, kAXIdentifierAttribute) ?? "nil"
     let acts = actions(e).joined(separator: ",")
-    return "role=\(role) title=\(title) desc=\(desc) id=\(id) actions=[\(acts)]"
+    let focused = boolAttr(e, kAXFocusedAttribute).map { String($0) } ?? "nil"
+    return "role=\(role) title=\(title) desc=\(desc) id=\(id) focused=\(focused) actions=[\(acts)]"
 }
 
 func waitUntil(
@@ -135,83 +140,70 @@ func isNotificationCenterWindow(_ e: AXUIElement) -> Bool {
     strAttr(e, kAXTitleAttribute) == "Notification Center"
 }
 
-func axWindows(for app: NSRunningApplication) -> [AXUIElement] {
-    let axApp = AXUIElementCreateApplication(app.processIdentifier)
-
-    var windows = children(axApp, kAXWindowsAttribute)
-
-    // Some system UI processes do not expose everything through AXWindows.
-    // Search the app subtree as a fallback, but still avoid screen-coordinate hit tests.
-    if let found = findElement(axApp, maxDepth: 10, matches: isNotificationCenterWindow),
-       !windows.contains(where: { CFEqual($0, found) }) {
-        windows.append(found)
-    }
-
-    return windows
+func isFocusedNotificationCenterWindow(_ e: AXUIElement) -> Bool {
+    isNotificationCenterWindow(e) &&
+    boolAttr(e, kAXFocusedAttribute) == true
 }
 
-func findNotificationCenterWindowInApp(_ app: NSRunningApplication) -> AXUIElement? {
-    for window in axWindows(for: app) {
-        if isNotificationCenterWindow(window) {
-            return window
-        }
+let notificationCenterBundleIDs = [
+    "com.apple.notificationcenterui",
+    "com.apple.UserNotificationCenter",
+    "com.apple.notificationcenter"
+]
 
-        if let found = findElement(window, maxDepth: 10, matches: isNotificationCenterWindow) {
-            return found
-        }
-    }
-
-    return nil
+func axWindows(for app: NSRunningApplication) -> [AXUIElement] {
+    let axApp = AXUIElementCreateApplication(app.processIdentifier)
+    return children(axApp, kAXWindowsAttribute)
 }
 
 func findNotificationCenterWindow(logFound: Bool = true) -> AXUIElement? {
-    let workspace = NSWorkspace.shared
-
-    // Try the most likely owning processes first. The exact process name/bundle
-    // has varied across macOS releases, so keep this as a ranked list.
-    let preferredBundleIDs = [
-        "com.apple.notificationcenterui",
-        "com.apple.UserNotificationCenter",
-        "com.apple.notificationcenter",
-        "com.apple.controlcenter"
-    ]
-
-    for bundleID in preferredBundleIDs {
+    for bundleID in notificationCenterBundleIDs {
         for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) {
-            if let found = findNotificationCenterWindowInApp(app) {
-                if logFound {
-                    print("FOUND NOTIFICATION CENTER APP: bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier)")
+            for window in axWindows(for: app) {
+                if isNotificationCenterWindow(window) {
+                    if logFound {
+                        print("FOUND NOTIFICATION CENTER APP: bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier)")
+                    }
+                    return window
                 }
-                return found
             }
-        }
-    }
-
-    // Last resort: scan all running applications by AX window title.
-    // This is still AX-only and removes the hard-coded coordinate dependency.
-    for app in workspace.runningApplications {
-        if let found = findNotificationCenterWindowInApp(app) {
-            if logFound {
-                print("FOUND NOTIFICATION CENTER APP BY SCAN: bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier)")
-            }
-            return found
         }
     }
 
     return nil
+}
+
+func findFocusedNotificationCenterWindow(logFound: Bool = true) -> AXUIElement? {
+    for bundleID in notificationCenterBundleIDs {
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) {
+            for window in axWindows(for: app) {
+                if isFocusedNotificationCenterWindow(window) {
+                    if logFound {
+                        print("FOUND FOCUSED NOTIFICATION CENTER APP: bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier)")
+                    }
+                    return window
+                }
+            }
+        }
+    }
+
+    return nil
+}
+
+func isNotificationCenterOpen() -> Bool {
+    findFocusedNotificationCenterWindow(logFound: false) != nil
 }
 
 func waitForNotificationCenterWindow() -> AXUIElement? {
     var window: AXUIElement?
 
     let found = waitUntil(timeout: 1.0, interval: 0.02) {
-        window = findNotificationCenterWindow(logFound: false)
+        window = findFocusedNotificationCenterWindow(logFound: false)
         return window != nil
     }
 
     if found {
-        // Re-run with logging enabled so successful console output remains useful.
-        return findNotificationCenterWindow(logFound: true) ?? window
+        return findFocusedNotificationCenterWindow(logFound: true) ?? window
     }
 
     return nil
@@ -228,26 +220,33 @@ func waitForClearAll(in window: AXUIElement) -> AXUIElement? {
     return found ? item : nil
 }
 
+func closeNotificationCenterIfNeeded(wasInitiallyOpen: Bool) {
+    if wasInitiallyOpen {
+        print("Leaving Notification Center open because it was already open")
+        return
+    }
+
+    if !isNotificationCenterOpen() {
+        print("Notification Center already closed")
+        return
+    }
+
+    _ = closeNotificationCenterViaAX()
+}
+
 func dumpLikelySystemWindows() {
-    print("DEBUG: visible AX windows with titles from likely system UI apps:")
+    print("DEBUG: AX windows from Notification Center candidate apps:")
 
-    for app in NSWorkspace.shared.runningApplications {
-        let name = app.localizedName ?? ""
-        let bundle = app.bundleIdentifier ?? ""
+    for bundleID in notificationCenterBundleIDs {
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) {
+            let windows = axWindows(for: app)
 
-        if !(name.localizedCaseInsensitiveContains("Notification") ||
-             name.localizedCaseInsensitiveContains("Control") ||
-             bundle.localizedCaseInsensitiveContains("notification") ||
-             bundle.localizedCaseInsensitiveContains("controlcenter")) {
-            continue
-        }
-
-        let windows = axWindows(for: app)
-        if windows.isEmpty {
-            print("  app bundle=\(bundle) name=\(name) pid=\(app.processIdentifier) windows=[]")
-        } else {
-            for window in windows {
-                print("  app bundle=\(bundle) name=\(name) pid=\(app.processIdentifier) window=\(describe(window))")
+            if windows.isEmpty {
+                print("  app bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier) windows=[]")
+            } else {
+                for window in windows {
+                    print("  app bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier) window=\(describe(window))")
+                }
             }
         }
     }
@@ -255,13 +254,18 @@ func dumpLikelySystemWindows() {
 
 print("AX trusted: \(AXIsProcessTrusted())")
 
-guard openNotificationCenterViaAX() else {
-    print("Could not open Notification Center")
-    exit(1)
+let wasInitiallyOpen = isNotificationCenterOpen()
+print("Notification Center initially open: \(wasInitiallyOpen)")
+
+if !wasInitiallyOpen {
+    guard openNotificationCenterViaAX() else {
+        print("Could not open Notification Center")
+        exit(1)
+    }
 }
 
 guard let window = waitForNotificationCenterWindow() else {
-    print("Notification Center window not found")
+    print("Notification Center window not found or not focused")
     dumpLikelySystemWindows()
     exit(1)
 }
@@ -270,7 +274,7 @@ print("WINDOW:", describe(window))
 
 guard let xmark = findXmark(window) else {
     print("Nothing to clear: xmark button not found")
-    _ = closeNotificationCenterViaAX()
+    closeNotificationCenterIfNeeded(wasInitiallyOpen: wasInitiallyOpen)
     print("SUCCESS")
     exit(0)
 }
@@ -282,7 +286,7 @@ print("AXShowMenu result: \(showErr.rawValue) \(showErr)")
 
 guard let clearItem = waitForClearAll(in: window) else {
     print("Nothing to clear: Clear All Notifications menu item not found")
-    _ = closeNotificationCenterViaAX()
+    closeNotificationCenterIfNeeded(wasInitiallyOpen: wasInitiallyOpen)
     print("SUCCESS")
     exit(0)
 }
@@ -290,7 +294,7 @@ guard let clearItem = waitForClearAll(in: window) else {
 print("FOUND CLEAR ITEM:", describe(clearItem))
 
 if press(clearItem) {
-    _ = closeNotificationCenterViaAX()
+    closeNotificationCenterIfNeeded(wasInitiallyOpen: wasInitiallyOpen)
     print("SUCCESS")
     exit(0)
 }
