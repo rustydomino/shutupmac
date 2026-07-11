@@ -4,9 +4,13 @@
  1. Determine whether Notification Center is already open.
  2. Open Notification Center if necessary using the Clock menu extra.
  3. Locate the Notification Center Accessibility window.
- 4. Locate the Clear (×) button.
+ 4. Locate the Clear (x) button.
  5. Invoke "Clear All Notifications."
  6. Restore the original Notification Center state.
+
+ This version is refactored so the core behavior is callable from either:
+ - the command-line executable, or
+ - a future macOS menu bar app.
 */
 
 import Foundation
@@ -16,36 +20,72 @@ import AppKit
 
 // MARK: - Configuration
 
-let controlCenterBundleID = "com.apple.controlcenter"
+enum Config {
+    static let controlCenterBundleID = "com.apple.controlcenter"
 
-let notificationCenterBundleIDs = [
-    "com.apple.notificationcenterui",
-    "com.apple.UserNotificationCenter",
-    "com.apple.notificationcenter"
-]
+    static let notificationCenterBundleIDs = [
+        "com.apple.notificationcenterui",
+        "com.apple.UserNotificationCenter",
+        "com.apple.notificationcenter"
+    ]
 
-let notificationCenterWindowTitle = "Notification Center"
-let clockMenuExtraIdentifier = "com.apple.menuextra.clock"
-let clearButtonIdentifier = "xmark"
-let clearAllMenuItemTitle = "Clear All Notifications"
+    static let notificationCenterWindowTitle = "Notification Center"
+    static let clockMenuExtraIdentifier = "com.apple.menuextra.clock"
+    static let clearButtonIdentifier = "xmark"
+    static let clearAllMenuItemTitle = "Clear All Notifications"
 
-let defaultPollingTimeout: TimeInterval = 1.0
-let defaultPollingInterval: TimeInterval = 0.02
+    static let defaultPollingTimeout: TimeInterval = 1.0
+    static let defaultPollingInterval: TimeInterval = 0.02
 
-let defaultAXTreeSearchMaxDepth = 20
-let menuExtraSearchMaxDepth = 8
+    static let defaultAXTreeSearchMaxDepth = 20
+    static let menuExtraSearchMaxDepth = 8
+}
 
 // MARK: - Debug Logging
 
-let DEBUG_LOGGING = true
+enum Debug {
+    static let isEnabled = true
+}
 
 /// Emits developer-facing diagnostic output when debug logging is enabled.
 ///
 /// The message is autoclosured so expensive string interpolation, including
 /// Accessibility tree descriptions, is skipped when debug logging is disabled.
 func debugLog(_ message: @autoclosure () -> String) {
-    guard DEBUG_LOGGING else { return }
+    guard Debug.isEnabled else { return }
     print(message())
+}
+
+// MARK: - Result Model
+
+/// The result of one attempt to clear Notification Center.
+///
+/// The CLI uses this to decide which message to print and which exit code to
+/// return. A future GUI app can use the same result to update menu text, show a
+/// status message, or display an error without duplicating the clearing logic.
+struct ClearNotificationsResult {
+    let succeeded: Bool
+    let didClear: Bool
+    let message: String
+    let exitCode: Int32
+
+    static func success(_ message: String, didClear: Bool) -> ClearNotificationsResult {
+        ClearNotificationsResult(
+            succeeded: true,
+            didClear: didClear,
+            message: message,
+            exitCode: 0
+        )
+    }
+
+    static func failure(_ message: String) -> ClearNotificationsResult {
+        ClearNotificationsResult(
+            succeeded: false,
+            didClear: false,
+            message: message,
+            exitCode: 1
+        )
+    }
 }
 
 // MARK: - Generic AX Helpers
@@ -86,8 +126,8 @@ func describe(_ e: AXUIElement) -> String {
 }
 
 func waitUntil(
-    timeout: TimeInterval = defaultPollingTimeout,
-    interval: TimeInterval = defaultPollingInterval,
+    timeout: TimeInterval = Config.defaultPollingTimeout,
+    interval: TimeInterval = Config.defaultPollingInterval,
     condition: () -> Bool
 ) -> Bool {
     let deadline = Date().addingTimeInterval(timeout)
@@ -118,7 +158,7 @@ func press(_ e: AXUIElement) -> Bool {
 func findElement(
     _ e: AXUIElement,
     depth: Int = 0,
-    maxDepth: Int = defaultAXTreeSearchMaxDepth,
+    maxDepth: Int = Config.defaultAXTreeSearchMaxDepth,
     matches: (AXUIElement) -> Bool
 ) -> AXUIElement? {
     if depth > maxDepth { return nil }
@@ -138,23 +178,36 @@ func findElement(
     return nil
 }
 
-func findMenuExtra(_ e: AXUIElement, id targetID: String, depth: Int = 0, maxDepth: Int = menuExtraSearchMaxDepth) -> AXUIElement? {
+func findMenuExtra(
+    _ e: AXUIElement,
+    id targetID: String,
+    depth: Int = 0,
+    maxDepth: Int = Config.menuExtraSearchMaxDepth
+) -> AXUIElement? {
     findElement(e, depth: depth, maxDepth: maxDepth) { node in
         strAttr(node, kAXIdentifierAttribute) == targetID
     }
 }
 
-func findXmark(_ e: AXUIElement, depth: Int = 0, maxDepth: Int = defaultAXTreeSearchMaxDepth) -> AXUIElement? {
+func findXmark(
+    _ e: AXUIElement,
+    depth: Int = 0,
+    maxDepth: Int = Config.defaultAXTreeSearchMaxDepth
+) -> AXUIElement? {
     findElement(e, depth: depth, maxDepth: maxDepth) { node in
         strAttr(node, kAXRoleAttribute) == kAXMenuButtonRole as String &&
-        strAttr(node, kAXIdentifierAttribute) == clearButtonIdentifier
+        strAttr(node, kAXIdentifierAttribute) == Config.clearButtonIdentifier
     }
 }
 
-func findClearAll(_ e: AXUIElement, depth: Int = 0, maxDepth: Int = defaultAXTreeSearchMaxDepth) -> AXUIElement? {
+func findClearAll(
+    _ e: AXUIElement,
+    depth: Int = 0,
+    maxDepth: Int = Config.defaultAXTreeSearchMaxDepth
+) -> AXUIElement? {
     findElement(e, depth: depth, maxDepth: maxDepth) { node in
         strAttr(node, kAXRoleAttribute) == kAXMenuItemRole as String &&
-        strAttr(node, kAXTitleAttribute) == clearAllMenuItemTitle
+        strAttr(node, kAXTitleAttribute) == Config.clearAllMenuItemTitle
     }
 }
 
@@ -162,7 +215,7 @@ func findClearAll(_ e: AXUIElement, depth: Int = 0, maxDepth: Int = defaultAXTre
 
 func isNotificationCenterWindow(_ e: AXUIElement) -> Bool {
     strAttr(e, kAXRoleAttribute) == kAXWindowRole as String &&
-    strAttr(e, kAXTitleAttribute) == notificationCenterWindowTitle
+    strAttr(e, kAXTitleAttribute) == Config.notificationCenterWindowTitle
 }
 
 // Notification Center may expose an AXWindow even when it is not visibly
@@ -184,7 +237,7 @@ func axWindows(for app: NSRunningApplication) -> [AXUIElement] {
 /// releases, so callers should search all known candidates rather than relying
 /// on a single bundle identifier.
 func notificationCenterApplications() -> [NSRunningApplication] {
-    notificationCenterBundleIDs.flatMap { bundleID in
+    Config.notificationCenterBundleIDs.flatMap { bundleID in
         NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
     }
 }
@@ -232,7 +285,7 @@ func isNotificationCenterOpen() -> Bool {
 func waitForNotificationCenterWindow() -> AXUIElement? {
     var window: AXUIElement?
 
-    let found = waitUntil(timeout: defaultPollingTimeout, interval: defaultPollingInterval) {
+    let found = waitUntil(timeout: Config.defaultPollingTimeout, interval: Config.defaultPollingInterval) {
         window = focusedNotificationCenterWindow(logFound: false)
         return window != nil
     }
@@ -252,7 +305,7 @@ func waitForNotificationCenterWindow() -> AXUIElement? {
 /// closing, so this uses the Accessibility representation of the menu bar Clock.
 func pressClockMenuExtra(label: String) -> Bool {
     guard let app = NSRunningApplication
-        .runningApplications(withBundleIdentifier: controlCenterBundleID)
+        .runningApplications(withBundleIdentifier: Config.controlCenterBundleID)
         .first else {
         print("ControlCenter not found")
         return false
@@ -260,7 +313,7 @@ func pressClockMenuExtra(label: String) -> Bool {
 
     let axApp = AXUIElementCreateApplication(app.processIdentifier)
 
-    guard let clock = findMenuExtra(axApp, id: clockMenuExtraIdentifier) else {
+    guard let clock = findMenuExtra(axApp, id: Config.clockMenuExtraIdentifier) else {
         print("Clock menu extra not found")
         return false
     }
@@ -307,7 +360,7 @@ func closeNotificationCenterIfNeeded(wasInitiallyOpen: Bool) {
 func waitForClearAll(in window: AXUIElement) -> AXUIElement? {
     var item: AXUIElement?
 
-    let found = waitUntil(timeout: defaultPollingTimeout, interval: defaultPollingInterval) {
+    let found = waitUntil(timeout: Config.defaultPollingTimeout, interval: Config.defaultPollingInterval) {
         item = findClearAll(window)
         return item != nil
     }
@@ -337,54 +390,70 @@ func dumpLikelySystemWindows() {
     }
 }
 
-// MARK: - Main
+// MARK: - Callable Engine
 
-debugLog("AX trusted: \(AXIsProcessTrusted())")
+/// Public-facing clearing engine.
+///
+/// This is the important refactor: the full notification-clearing workflow now
+/// lives inside one callable function. The CLI can call this function, and a
+/// future menu bar app can call the same function from a button or menu item.
+enum ShutUpMac {
+    static func clearNotifications() -> ClearNotificationsResult {
+        debugLog("AX trusted: \(AXIsProcessTrusted())")
 
-let wasInitiallyOpen = isNotificationCenterOpen()
-debugLog("Notification Center initially open: \(wasInitiallyOpen)")
+        let wasInitiallyOpen = isNotificationCenterOpen()
+        debugLog("Notification Center initially open: \(wasInitiallyOpen)")
 
-if !wasInitiallyOpen {
-    guard openNotificationCenterViaAX() else {
-        print("Could not open Notification Center")
-        exit(1)
+        if !wasInitiallyOpen {
+            guard openNotificationCenterViaAX() else {
+                return .failure("Could not open Notification Center")
+            }
+        }
+
+        guard let window = waitForNotificationCenterWindow() else {
+            dumpLikelySystemWindows()
+            return .failure("Notification Center window not found or not focused")
+        }
+
+        debugLog("WINDOW: \(describe(window))")
+
+        guard let xmark = findXmark(window) else {
+            closeNotificationCenterIfNeeded(wasInitiallyOpen: wasInitiallyOpen)
+            return .success("Nothing to clear: xmark button not found", didClear: false)
+        }
+
+        debugLog("FOUND XMARK: \(describe(xmark))")
+
+        let showErr = AXUIElementPerformAction(xmark, kAXShowMenuAction as CFString)
+        debugLog("AXShowMenu result: \(showErr.rawValue) \(showErr)")
+
+        guard let clearItem = waitForClearAll(in: window) else {
+            closeNotificationCenterIfNeeded(wasInitiallyOpen: wasInitiallyOpen)
+            return .success("Nothing to clear: Clear All Notifications menu item not found", didClear: false)
+        }
+
+        debugLog("FOUND CLEAR ITEM: \(describe(clearItem))")
+
+        if press(clearItem) {
+            closeNotificationCenterIfNeeded(wasInitiallyOpen: wasInitiallyOpen)
+            return .success("SUCCESS", didClear: true)
+        }
+
+        return .failure("PRESS FAILED")
     }
 }
 
-guard let window = waitForNotificationCenterWindow() else {
-    print("Notification Center window not found or not focused")
-    dumpLikelySystemWindows()
-    exit(1)
+// MARK: - CLI Entry Point
+
+/// Thin command-line wrapper.
+///
+/// This keeps the current CLI behavior intact while ensuring the actual clearing
+/// implementation is callable from somewhere else later.
+@main
+struct STFUCommand {
+    static func main() {
+        let result = ShutUpMac.clearNotifications()
+        print(result.message)
+        exit(result.exitCode)
+    }
 }
-
-debugLog("WINDOW: \(describe(window))")
-
-guard let xmark = findXmark(window) else {
-    print("Nothing to clear: xmark button not found")
-    closeNotificationCenterIfNeeded(wasInitiallyOpen: wasInitiallyOpen)
-    print("SUCCESS")
-    exit(0)
-}
-
-debugLog("FOUND XMARK: \(describe(xmark))")
-
-let showErr = AXUIElementPerformAction(xmark, kAXShowMenuAction as CFString)
-debugLog("AXShowMenu result: \(showErr.rawValue) \(showErr)")
-
-guard let clearItem = waitForClearAll(in: window) else {
-    print("Nothing to clear: Clear All Notifications menu item not found")
-    closeNotificationCenterIfNeeded(wasInitiallyOpen: wasInitiallyOpen)
-    print("SUCCESS")
-    exit(0)
-}
-
-debugLog("FOUND CLEAR ITEM: \(describe(clearItem))")
-
-if press(clearItem) {
-    closeNotificationCenterIfNeeded(wasInitiallyOpen: wasInitiallyOpen)
-    print("SUCCESS")
-    exit(0)
-}
-
-print("PRESS FAILED")
-exit(1)
