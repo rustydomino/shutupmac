@@ -37,7 +37,7 @@ let menuExtraSearchMaxDepth = 8
 
 // MARK: - Debug Logging
 
-let DEBUG_LOGGING = false
+let DEBUG_LOGGING = true
 
 /// Emits developer-facing diagnostic output when debug logging is enabled.
 ///
