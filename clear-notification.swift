@@ -33,84 +33,47 @@ func describe(_ e: AXUIElement) -> String {
     return "role=\(role) title=\(title) desc=\(desc) id=\(id) actions=[\(acts)]"
 }
 
-func elementAt(_ point: CGPoint) -> AXUIElement? {
-    let system = AXUIElementCreateSystemWide()
-    var element: AXUIElement?
-    let err = AXUIElementCopyElementAtPosition(system, Float(point.x), Float(point.y), &element)
-    print("ElementAtPosition \(point.x),\(point.y): \(err.rawValue) \(err)")
-    return err == .success ? element : nil
-}
+func findElement(
+    _ e: AXUIElement,
+    depth: Int = 0,
+    maxDepth: Int = 20,
+    matches: (AXUIElement) -> Bool
+) -> AXUIElement? {
+    if depth > maxDepth { return nil }
 
-func parentChain(_ e: AXUIElement) -> [AXUIElement] {
-    var result: [AXUIElement] = []
-    var current: AXUIElement? = e
+    if matches(e) {
+        return e
+    }
 
-    while let node = current, result.count < 20 {
-        result.append(node)
-        if let parent = attr(node, kAXParentAttribute) {
-            current = (parent as! AXUIElement)
-        } else {
-            current = nil
+    for name in [kAXChildrenAttribute, kAXVisibleChildrenAttribute, "AXChildrenInNavigationOrder"] {
+        for child in children(e, name) {
+            if let found = findElement(child, depth: depth + 1, maxDepth: maxDepth, matches: matches) {
+                return found
+            }
         }
     }
 
-    return result
+    return nil
 }
 
 func findXmark(_ e: AXUIElement, depth: Int = 0, maxDepth: Int = 20) -> AXUIElement? {
-    if depth > maxDepth { return nil }
-
-    if strAttr(e, kAXRoleAttribute) == kAXMenuButtonRole as String,
-       strAttr(e, kAXIdentifierAttribute) == "xmark" {
-        return e
+    findElement(e, depth: depth, maxDepth: maxDepth) { node in
+        strAttr(node, kAXRoleAttribute) == kAXMenuButtonRole as String &&
+        strAttr(node, kAXIdentifierAttribute) == "xmark"
     }
-
-    for name in [kAXChildrenAttribute, kAXVisibleChildrenAttribute, "AXChildrenInNavigationOrder"] {
-        for child in children(e, name) {
-            if let found = findXmark(child, depth: depth + 1, maxDepth: maxDepth) {
-                return found
-            }
-        }
-    }
-
-    return nil
 }
 
 func findClearAll(_ e: AXUIElement, depth: Int = 0, maxDepth: Int = 20) -> AXUIElement? {
-    if depth > maxDepth { return nil }
-
-    if strAttr(e, kAXRoleAttribute) == kAXMenuItemRole as String,
-       strAttr(e, kAXTitleAttribute) == "Clear All Notifications" {
-        return e
+    findElement(e, depth: depth, maxDepth: maxDepth) { node in
+        strAttr(node, kAXRoleAttribute) == kAXMenuItemRole as String &&
+        strAttr(node, kAXTitleAttribute) == "Clear All Notifications"
     }
-
-    for name in [kAXChildrenAttribute, kAXVisibleChildrenAttribute, "AXChildrenInNavigationOrder"] {
-        for child in children(e, name) {
-            if let found = findClearAll(child, depth: depth + 1, maxDepth: maxDepth) {
-                return found
-            }
-        }
-    }
-
-    return nil
 }
 
 func findMenuExtra(_ e: AXUIElement, id targetID: String, depth: Int = 0, maxDepth: Int = 8) -> AXUIElement? {
-    if depth > maxDepth { return nil }
-
-    if strAttr(e, kAXIdentifierAttribute) == targetID {
-        return e
+    findElement(e, depth: depth, maxDepth: maxDepth) { node in
+        strAttr(node, kAXIdentifierAttribute) == targetID
     }
-
-    for name in [kAXChildrenAttribute, kAXVisibleChildrenAttribute, "AXChildrenInNavigationOrder"] {
-        for child in children(e, name) {
-            if let found = findMenuExtra(child, id: targetID, depth: depth + 1, maxDepth: maxDepth) {
-                return found
-            }
-        }
-    }
-
-    return nil
 }
 
 func press(_ e: AXUIElement) -> Bool {
@@ -149,9 +112,99 @@ func closeNotificationCenterViaAX() -> Bool {
     pressClockMenuExtra(label: "Close")
 }
 
-print("AX trusted: \(AXIsProcessTrusted())")
+func isNotificationCenterWindow(_ e: AXUIElement) -> Bool {
+    strAttr(e, kAXRoleAttribute) == kAXWindowRole as String &&
+    strAttr(e, kAXTitleAttribute) == "Notification Center"
+}
 
-let knownPoint = CGPoint(x: 1373.3, y: 151.1)
+func axWindows(for app: NSRunningApplication) -> [AXUIElement] {
+    let axApp = AXUIElementCreateApplication(app.processIdentifier)
+
+    var windows = children(axApp, kAXWindowsAttribute)
+
+    // Some system UI processes do not expose everything through AXWindows.
+    // Search the app subtree as a fallback, but still avoid screen-coordinate hit tests.
+    if let found = findElement(axApp, maxDepth: 10, matches: isNotificationCenterWindow),
+       !windows.contains(where: { CFEqual($0, found) }) {
+        windows.append(found)
+    }
+
+    return windows
+}
+
+func findNotificationCenterWindowInApp(_ app: NSRunningApplication) -> AXUIElement? {
+    for window in axWindows(for: app) {
+        if isNotificationCenterWindow(window) {
+            return window
+        }
+
+        if let found = findElement(window, maxDepth: 10, matches: isNotificationCenterWindow) {
+            return found
+        }
+    }
+
+    return nil
+}
+
+func findNotificationCenterWindow() -> AXUIElement? {
+    let workspace = NSWorkspace.shared
+
+    // Try the most likely owning processes first. The exact process name/bundle
+    // has varied across macOS releases, so keep this as a ranked list.
+    let preferredBundleIDs = [
+        "com.apple.notificationcenterui",
+        "com.apple.UserNotificationCenter",
+        "com.apple.notificationcenter",
+        "com.apple.controlcenter"
+    ]
+
+    for bundleID in preferredBundleIDs {
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) {
+            if let found = findNotificationCenterWindowInApp(app) {
+                print("FOUND NOTIFICATION CENTER APP: bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier)")
+                return found
+            }
+        }
+    }
+
+    // Last resort: scan all running applications by AX window title.
+    // This is still AX-only and removes the hard-coded coordinate dependency.
+    for app in workspace.runningApplications {
+        if let found = findNotificationCenterWindowInApp(app) {
+            print("FOUND NOTIFICATION CENTER APP BY SCAN: bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier)")
+            return found
+        }
+    }
+
+    return nil
+}
+
+func dumpLikelySystemWindows() {
+    print("DEBUG: visible AX windows with titles from likely system UI apps:")
+
+    for app in NSWorkspace.shared.runningApplications {
+        let name = app.localizedName ?? ""
+        let bundle = app.bundleIdentifier ?? ""
+
+        if !(name.localizedCaseInsensitiveContains("Notification") ||
+             name.localizedCaseInsensitiveContains("Control") ||
+             bundle.localizedCaseInsensitiveContains("notification") ||
+             bundle.localizedCaseInsensitiveContains("controlcenter")) {
+            continue
+        }
+
+        let windows = axWindows(for: app)
+        if windows.isEmpty {
+            print("  app bundle=\(bundle) name=\(name) pid=\(app.processIdentifier) windows=[]")
+        } else {
+            for window in windows {
+                print("  app bundle=\(bundle) name=\(name) pid=\(app.processIdentifier) window=\(describe(window))")
+            }
+        }
+    }
+}
+
+print("AX trusted: \(AXIsProcessTrusted())")
 
 guard openNotificationCenterViaAX() else {
     print("Could not open Notification Center")
@@ -160,18 +213,9 @@ guard openNotificationCenterViaAX() else {
 
 Thread.sleep(forTimeInterval: 0.20)
 
-guard let underPoint = elementAt(knownPoint) else {
-    print("Could not get element at known point")
-    exit(1)
-}
-
-let chain = parentChain(underPoint)
-
-guard let window = chain.first(where: {
-    strAttr($0, kAXRoleAttribute) == kAXWindowRole as String &&
-    strAttr($0, kAXTitleAttribute) == "Notification Center"
-}) else {
+guard let window = findNotificationCenterWindow() else {
     print("Notification Center window not found")
+    dumpLikelySystemWindows()
     exit(1)
 }
 
