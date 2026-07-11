@@ -156,19 +156,23 @@ func axWindows(for app: NSRunningApplication) -> [AXUIElement] {
     return children(axApp, kAXWindowsAttribute)
 }
 
+func notificationCenterApplications() -> [NSRunningApplication] {
+    notificationCenterBundleIDs.flatMap { bundleID in
+        NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+    }
+}
+
 func notificationCenterWindows(logFound: Bool = true) -> [AXUIElement] {
     var windows: [AXUIElement] = []
 
-    for bundleID in notificationCenterBundleIDs {
-        for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) {
-            let matchingWindows = axWindows(for: app).filter(isNotificationCenterWindow)
+    for app in notificationCenterApplications() {
+        let matchingWindows = axWindows(for: app).filter(isNotificationCenterWindow)
 
-            if logFound && !matchingWindows.isEmpty {
-                print("FOUND NOTIFICATION CENTER APP: bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier)")
-            }
-
-            windows.append(contentsOf: matchingWindows)
+        if logFound && !matchingWindows.isEmpty {
+            print("FOUND NOTIFICATION CENTER APP: bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier)")
         }
+
+        windows.append(contentsOf: matchingWindows)
     }
 
     return windows
@@ -227,16 +231,14 @@ func closeNotificationCenterIfNeeded(wasInitiallyOpen: Bool) {
 func dumpLikelySystemWindows() {
     print("DEBUG: AX windows from Notification Center candidate apps:")
 
-    for bundleID in notificationCenterBundleIDs {
-        for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) {
-            let windows = axWindows(for: app)
+    for app in notificationCenterApplications() {
+        let windows = axWindows(for: app)
 
-            if windows.isEmpty {
-                print("  app bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier) windows=[]")
-            } else {
-                for window in windows {
-                    print("  app bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier) window=\(describe(window))")
-                }
+        if windows.isEmpty {
+            print("  app bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier) windows=[]")
+        } else {
+            for window in windows {
+                print("  app bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier) window=\(describe(window))")
             }
         }
     }
