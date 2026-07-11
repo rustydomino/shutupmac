@@ -112,6 +112,24 @@ func closeNotificationCenterViaAX() -> Bool {
     pressClockMenuExtra(label: "Close")
 }
 
+func waitUntil(
+    timeout: TimeInterval = 1.0,
+    interval: TimeInterval = 0.02,
+    condition: () -> Bool
+) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+
+    while Date() < deadline {
+        if condition() {
+            return true
+        }
+
+        Thread.sleep(forTimeInterval: interval)
+    }
+
+    return false
+}
+
 func isNotificationCenterWindow(_ e: AXUIElement) -> Bool {
     strAttr(e, kAXRoleAttribute) == kAXWindowRole as String &&
     strAttr(e, kAXTitleAttribute) == "Notification Center"
@@ -179,6 +197,29 @@ func findNotificationCenterWindow() -> AXUIElement? {
     return nil
 }
 
+func waitForNotificationCenterWindow(timeout: TimeInterval = 1.0) -> AXUIElement? {
+    var window: AXUIElement?
+
+    let found = waitUntil(timeout: timeout) {
+        window = findNotificationCenterWindow()
+        return window != nil
+    }
+
+    return found ? window : nil
+}
+
+func waitForClearAll(in window: AXUIElement, timeout: TimeInterval = 1.0) -> AXUIElement? {
+    var clearItem: AXUIElement?
+
+    let found = waitUntil(timeout: timeout) {
+        clearItem = findClearAll(window)
+        return clearItem != nil
+    }
+
+    return found ? clearItem : nil
+}
+
+
 func dumpLikelySystemWindows() {
     print("DEBUG: visible AX windows with titles from likely system UI apps:")
 
@@ -211,9 +252,7 @@ guard openNotificationCenterViaAX() else {
     exit(1)
 }
 
-Thread.sleep(forTimeInterval: 0.20)
-
-guard let window = findNotificationCenterWindow() else {
+guard let window = waitForNotificationCenterWindow() else {
     print("Notification Center window not found")
     dumpLikelySystemWindows()
     exit(1)
@@ -231,9 +270,7 @@ print("FOUND XMARK:", describe(xmark))
 let showErr = AXUIElementPerformAction(xmark, kAXShowMenuAction as CFString)
 print("AXShowMenu result: \(showErr.rawValue) \(showErr)")
 
-Thread.sleep(forTimeInterval: 0.25)
-
-guard let clearItem = findClearAll(window) else {
+guard let clearItem = waitForClearAll(in: window) else {
     print("CLEAR ITEM NOT FOUND")
     exit(1)
 }
@@ -241,8 +278,11 @@ guard let clearItem = findClearAll(window) else {
 print("FOUND CLEAR ITEM:", describe(clearItem))
 
 if press(clearItem) {
-    Thread.sleep(forTimeInterval: 0.15)
-    _ = closeNotificationCenterViaAX()
+    guard closeNotificationCenterViaAX() else {
+        print("Notifications cleared, but could not close Notification Center")
+        exit(1)
+    }
+
     print("SUCCESS")
     exit(0)
 }
