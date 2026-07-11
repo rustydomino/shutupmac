@@ -156,54 +156,44 @@ func axWindows(for app: NSRunningApplication) -> [AXUIElement] {
     return children(axApp, kAXWindowsAttribute)
 }
 
-func findNotificationCenterWindow(logFound: Bool = true) -> AXUIElement? {
+func notificationCenterWindows(logFound: Bool = true) -> [AXUIElement] {
+    var windows: [AXUIElement] = []
+
     for bundleID in notificationCenterBundleIDs {
         for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) {
-            for window in axWindows(for: app) {
-                if isNotificationCenterWindow(window) {
-                    if logFound {
-                        print("FOUND NOTIFICATION CENTER APP: bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier)")
-                    }
-                    return window
-                }
+            let matchingWindows = axWindows(for: app).filter(isNotificationCenterWindow)
+
+            if logFound && !matchingWindows.isEmpty {
+                print("FOUND NOTIFICATION CENTER APP: bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier)")
             }
+
+            windows.append(contentsOf: matchingWindows)
         }
     }
 
-    return nil
+    return windows
 }
 
-func findFocusedNotificationCenterWindow(logFound: Bool = true) -> AXUIElement? {
-    for bundleID in notificationCenterBundleIDs {
-        for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) {
-            for window in axWindows(for: app) {
-                if isFocusedNotificationCenterWindow(window) {
-                    if logFound {
-                        print("FOUND FOCUSED NOTIFICATION CENTER APP: bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier)")
-                    }
-                    return window
-                }
-            }
-        }
+func focusedNotificationCenterWindow(logFound: Bool = true) -> AXUIElement? {
+    notificationCenterWindows(logFound: logFound).first { window in
+        boolAttr(window, kAXFocusedAttribute) == true
     }
-
-    return nil
 }
 
 func isNotificationCenterOpen() -> Bool {
-    findFocusedNotificationCenterWindow(logFound: false) != nil
+    focusedNotificationCenterWindow(logFound: false) != nil
 }
 
 func waitForNotificationCenterWindow() -> AXUIElement? {
     var window: AXUIElement?
 
     let found = waitUntil(timeout: 1.0, interval: 0.02) {
-        window = findFocusedNotificationCenterWindow(logFound: false)
+        window = focusedNotificationCenterWindow(logFound: false)
         return window != nil
     }
 
     if found {
-        return findFocusedNotificationCenterWindow(logFound: true) ?? window
+        return focusedNotificationCenterWindow(logFound: true) ?? window
     }
 
     return nil
