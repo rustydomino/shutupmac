@@ -140,6 +140,10 @@ func isNotificationCenterWindow(_ e: AXUIElement) -> Bool {
     strAttr(e, kAXTitleAttribute) == "Notification Center"
 }
 
+// Notification Center may expose an AXWindow even when it is not visibly
+// open. Through testing, AXFocused proved to be the reliable indicator
+// that Notification Center is actually being presented to the user.
+
 func isFocusedNotificationCenterWindow(_ e: AXUIElement) -> Bool {
     isNotificationCenterWindow(e) &&
     boolAttr(e, kAXFocusedAttribute) == true
