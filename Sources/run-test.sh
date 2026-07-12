@@ -1,0 +1,1 @@
+../Tools/run-test.sh
