@@ -6,8 +6,12 @@ struct ShutUpMacApp: App {
     init() {
         AppPreferences.registerDefaults()
         DockIconController.apply(hideDockIcon: AppPreferences.hideDockIcon)
-        HotKeyController.shared.start()
+
         TestNotificationSender.shared.start()
+
+        if AppPreferences.enableGlobalHotkeys {
+            HotKeyController.shared.start()
+        }
     }
 
     var body: some Scene {
@@ -32,10 +36,11 @@ struct ShutUpMacMenu: View {
                 NotificationClearer.clear()
             }
         }
+
         Button("Send Test Notification") {
             TestNotificationSender.shared.sendTestNotification()
         }
-        
+
         Divider()
 
         Button("Settings…") {

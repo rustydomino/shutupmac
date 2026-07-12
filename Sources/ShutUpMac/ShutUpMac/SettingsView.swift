@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @AppStorage(PreferenceKeys.hideDockIcon) private var hideDockIcon = true
+    @AppStorage(PreferenceKeys.enableGlobalHotkeys) private var enableGlobalHotkeys = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -15,12 +16,27 @@ struct SettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            Divider()
+
+            Toggle("Enable global hotkeys", isOn: $enableGlobalHotkeys)
+
+            Text("Ctrl-Option-Command-D clears notifications. Ctrl-Option-Command-S sends a test notification.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             Spacer()
         }
         .padding(20)
-        .frame(width: 360, height: 150)
+        .frame(width: 420, height: 230)
         .onChange(of: hideDockIcon) { _, newValue in
             DockIconController.apply(hideDockIcon: newValue)
+        }
+        .onChange(of: enableGlobalHotkeys) { _, newValue in
+            if newValue {
+                HotKeyController.shared.start()
+            } else {
+                HotKeyController.shared.stop()
+            }
         }
     }
 }
