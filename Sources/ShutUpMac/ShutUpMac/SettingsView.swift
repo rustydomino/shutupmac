@@ -4,8 +4,16 @@ import ServiceManagement
 struct SettingsView: View {
     @AppStorage(PreferenceKeys.hideDockIcon) private var hideDockIcon = true
     @AppStorage(PreferenceKeys.enableGlobalHotkeys) private var enableGlobalHotkeys = true
+    @AppStorage(PreferenceKeys.clearNotificationsHotKey) private var clearNotificationsHotKey = HotKeyChoice.controlOptionCommandD.rawValue
+    @AppStorage(PreferenceKeys.testNotificationHotKey) private var testNotificationHotKey = HotKeyChoice.controlOptionCommandS.rawValue
 
     @State private var launchAtLogin = LaunchAtLoginController.isEnabled
+
+    private var duplicateHotkeysSelected: Bool {
+        clearNotificationsHotKey != HotKeyChoice.disabled.rawValue &&
+        testNotificationHotKey != HotKeyChoice.disabled.rawValue &&
+        clearNotificationsHotKey == testNotificationHotKey
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -23,9 +31,30 @@ struct SettingsView: View {
 
             Toggle("Enable global hotkeys", isOn: $enableGlobalHotkeys)
 
-            Text("Ctrl-Option-Command-D clears notifications. Ctrl-Option-Command-S sends a test notification.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                Picker("Clear Notifications:", selection: $clearNotificationsHotKey) {
+                    ForEach(HotKeyChoice.allCases) { choice in
+                        Text(choice.displayName).tag(choice.rawValue)
+                    }
+                }
+
+                Picker("Send Test Notification:", selection: $testNotificationHotKey) {
+                    ForEach(HotKeyChoice.allCases) { choice in
+                        Text(choice.displayName).tag(choice.rawValue)
+                    }
+                }
+            }
+            .disabled(!enableGlobalHotkeys)
+
+            if duplicateHotkeysSelected {
+                Text("Both actions use the same hotkey. The test notification hotkey will not be registered.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Choose global hotkeys for ShutUpMac actions.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             Divider()
 
@@ -48,7 +77,7 @@ struct SettingsView: View {
             Spacer()
         }
         .padding(20)
-        .frame(width: 440, height: 320)
+        .frame(width: 500, height: 420)
         .onAppear {
             launchAtLogin = LaunchAtLoginController.isEnabled
         }
@@ -61,6 +90,12 @@ struct SettingsView: View {
             } else {
                 HotKeyController.shared.stop()
             }
+        }
+        .onChange(of: clearNotificationsHotKey) { _, _ in
+            HotKeyController.shared.restart()
+        }
+        .onChange(of: testNotificationHotKey) { _, _ in
+            HotKeyController.shared.restart()
         }
         .onChange(of: launchAtLogin) { _, newValue in
             LaunchAtLoginController.setEnabled(newValue)

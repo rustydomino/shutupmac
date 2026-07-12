@@ -19,6 +19,14 @@ final class HotKeyController {
     func start() {
         guard !isStarted else { return }
 
+        let clearChoice = AppPreferences.clearNotificationsHotKey
+        let testChoice = AppPreferences.testNotificationHotKey
+
+        guard clearChoice != .disabled || testChoice != .disabled else {
+            print("Global hotkeys enabled, but all hotkeys are disabled")
+            return
+        }
+
         var eventType = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed)
@@ -52,21 +60,26 @@ final class HotKeyController {
             return
         }
 
-        let modifiers = UInt32(controlKey) | UInt32(optionKey) | UInt32(cmdKey)
-
         clearHotKeyRef = registerHotKey(
-            keyCode: UInt32(kVK_ANSI_D),
-            modifiers: modifiers,
+            choice: clearChoice,
             id: HotKeyID.clearNotifications,
-            name: "Control-Option-Command-D"
+            purpose: "Clear Notifications"
         )
 
-        testNotificationHotKeyRef = registerHotKey(
-            keyCode: UInt32(kVK_ANSI_S),
-            modifiers: modifiers,
-            id: HotKeyID.sendTestNotification,
-            name: "Control-Option-Command-S"
-        )
+        let duplicateHotKey =
+            clearChoice != .disabled &&
+            testChoice != .disabled &&
+            clearChoice == testChoice
+
+        if duplicateHotKey {
+            print("Test Notification hotkey duplicates Clear Notifications hotkey; not registering test hotkey")
+        } else {
+            testNotificationHotKeyRef = registerHotKey(
+                choice: testChoice,
+                id: HotKeyID.sendTestNotification,
+                purpose: "Send Test Notification"
+            )
+        }
 
         isStarted = true
     }
@@ -90,12 +103,24 @@ final class HotKeyController {
         isStarted = false
     }
 
+    func restart() {
+        stop()
+
+        if AppPreferences.enableGlobalHotkeys {
+            start()
+        }
+    }
+
     private func registerHotKey(
-        keyCode: UInt32,
-        modifiers: UInt32,
+        choice: HotKeyChoice,
         id: UInt32,
-        name: String
+        purpose: String
     ) -> EventHotKeyRef? {
+        guard let keyCode = choice.keyCode,
+              let modifiers = choice.modifiers else {
+            return nil
+        }
+
         var hotKeyRef: EventHotKeyRef?
 
         let hotKeyID = EventHotKeyID(
@@ -113,11 +138,11 @@ final class HotKeyController {
         )
 
         guard status == noErr else {
-            print("Failed to register global hotkey \(name): \(status)")
+            print("Failed to register global hotkey for \(purpose) (\(choice.displayName)): \(status)")
             return nil
         }
 
-        print("Registered global hotkey: \(name)")
+        print("Registered global hotkey for \(purpose): \(choice.displayName)")
         return hotKeyRef
     }
 
@@ -147,15 +172,11 @@ final class HotKeyController {
     private func handleHotKey(id: UInt32) {
         switch id {
         case HotKeyID.clearNotifications:
-            print("GLOBAL HOTKEY PRESSED: Clear Notifications")
-
             DispatchQueue.main.async {
                 NotificationClearer.clear()
             }
 
         case HotKeyID.sendTestNotification:
-            print("GLOBAL HOTKEY PRESSED: Send Test Notification")
-
             DispatchQueue.main.async {
                 TestNotificationSender.shared.sendTestNotification()
             }

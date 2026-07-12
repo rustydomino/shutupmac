@@ -4,13 +4,17 @@ import AppKit
 enum PreferenceKeys {
     static let hideDockIcon = "hideDockIcon"
     static let enableGlobalHotkeys = "enableGlobalHotkeys"
+    static let clearNotificationsHotKey = "clearNotificationsHotKey"
+    static let testNotificationHotKey = "testNotificationHotKey"
 }
 
 enum AppPreferences {
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             PreferenceKeys.hideDockIcon: true,
-            PreferenceKeys.enableGlobalHotkeys: true
+            PreferenceKeys.enableGlobalHotkeys: true,
+            PreferenceKeys.clearNotificationsHotKey: HotKeyChoice.controlOptionCommandD.rawValue,
+            PreferenceKeys.testNotificationHotKey: HotKeyChoice.controlOptionCommandS.rawValue
         ])
     }
 
@@ -20,6 +24,16 @@ enum AppPreferences {
 
     static var enableGlobalHotkeys: Bool {
         UserDefaults.standard.bool(forKey: PreferenceKeys.enableGlobalHotkeys)
+    }
+
+    static var clearNotificationsHotKey: HotKeyChoice {
+        let rawValue = UserDefaults.standard.string(forKey: PreferenceKeys.clearNotificationsHotKey)
+        return HotKeyChoice(rawValue: rawValue ?? "") ?? .controlOptionCommandD
+    }
+
+    static var testNotificationHotKey: HotKeyChoice {
+        let rawValue = UserDefaults.standard.string(forKey: PreferenceKeys.testNotificationHotKey)
+        return HotKeyChoice(rawValue: rawValue ?? "") ?? .controlOptionCommandS
     }
 }
 
