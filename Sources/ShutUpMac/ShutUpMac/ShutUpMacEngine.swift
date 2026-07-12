@@ -303,15 +303,39 @@ func isNotificationCenterOpen() -> Bool {
 /// Opening Notification Center through the menu extra is asynchronous, so the
 /// AX window may not be available immediately after pressing the Clock item.
 func waitForNotificationCenterWindow() -> AXUIElement? {
-    var window: AXUIElement?
+    var focusedWindow: AXUIElement?
+    var anyWindow: AXUIElement?
 
     let found = waitUntil(timeout: Config.defaultPollingTimeout, interval: Config.defaultPollingInterval) {
-        window = focusedNotificationCenterWindow(logFound: false)
-        return window != nil
+        let windows = notificationCenterWindows(logFound: false)
+
+        focusedWindow = windows.first { window in
+            boolAttr(window, kAXFocusedAttribute as String) == true
+        }
+
+        anyWindow = windows.first
+
+        return focusedWindow != nil || anyWindow != nil
     }
 
-    if found {
-        return focusedNotificationCenterWindow(logFound: true) ?? window
+    guard found else {
+        return nil
+    }
+
+    if let focusedWindow {
+        debugLog("FOUND FOCUSED NOTIFICATION CENTER WINDOW: \(describe(focusedWindow))")
+        return focusedWindow
+    }
+
+    if let anyWindow {
+        debugLog("FOUND NOTIFICATION CENTER WINDOW, NOT FOCUSED BUT USING IT: \(describe(anyWindow))")
+
+        if actions(anyWindow).contains(kAXRaiseAction as String) {
+            let raiseErr = AXUIElementPerformAction(anyWindow, kAXRaiseAction as CFString)
+            debugLog("Notification Center AXRaise result: \(raiseErr.rawValue) \(raiseErr)")
+        }
+
+        return anyWindow
     }
 
     return nil
@@ -368,12 +392,7 @@ func closeNotificationCenterViaAX() -> Bool {
 /// open. Otherwise, it is closed after clearing is complete.
 func closeNotificationCenterIfNeeded(wasInitiallyOpen: Bool) {
     if wasInitiallyOpen {
-        print("Leaving Notification Center open because it was already open")
-        return
-    }
-
-    if !isNotificationCenterOpen() {
-        print("Notification Center already closed")
+        debugLog("Leaving Notification Center open because it was already open")
         return
     }
 
@@ -502,7 +521,7 @@ enum ShutUpMac {
 
         guard let window = waitForNotificationCenterWindow() else {
             dumpLikelySystemWindows()
-            return .failure("Notification Center window not found or not focused")
+            return .failure("Notification Center window not found")
         }
 
         debugLog("WINDOW: \(describe(window))")

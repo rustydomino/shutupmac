@@ -1,5 +1,6 @@
 import SwiftUI
 import ServiceManagement
+import AppKit
 
 struct SettingsView: View {
     @AppStorage(PreferenceKeys.hideDockIcon) private var hideDockIcon = true
@@ -8,6 +9,7 @@ struct SettingsView: View {
     @AppStorage(PreferenceKeys.testNotificationHotKey) private var testNotificationHotKey = HotKeyChoice.controlOptionCommandS.rawValue
 
     @State private var launchAtLogin = LaunchAtLoginController.isEnabled
+    @State private var cliInstallCommand = CLIInstallCommandBuilder.makeCommand()
 
     private var duplicateHotkeysSelected: Bool {
         clearNotificationsHotKey != HotKeyChoice.disabled.rawValue &&
@@ -74,10 +76,35 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Divider()
+
+            Text("Command Line Tool")
+                .font(.headline)
+
+            Text("Copy this command into Terminal to create a shutupmac command in ~/.local/bin. You can edit the path before copying.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            TextEditor(text: $cliInstallCommand)
+                .font(.system(.body, design: .monospaced))
+                .frame(height: 80)
+                .border(.secondary.opacity(0.3))
+
+            HStack {
+                Button("Reset Command") {
+                    cliInstallCommand = CLIInstallCommandBuilder.makeCommand()
+                }
+
+                Button("Copy Command") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(cliInstallCommand, forType: .string)
+                }
+            }
+            
             Spacer()
         }
         .padding(20)
-        .frame(width: 500, height: 420)
+        .frame(width: 560, height: 620)
         .onAppear {
             launchAtLogin = LaunchAtLoginController.isEnabled
         }
