@@ -7,6 +7,7 @@ final class HotKeyController {
     private var clearHotKeyRef: EventHotKeyRef?
     private var testNotificationHotKeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
+
     private var isStarted = false
 
     private enum HotKeyID {
@@ -17,67 +18,64 @@ final class HotKeyController {
     private init() {}
 
     func start() {
-        guard !isStarted else { return }
-
-        let clearChoice = AppPreferences.clearNotificationsHotKey
-        let testChoice = AppPreferences.testNotificationHotKey
-
-        guard clearChoice != .disabled || testChoice != .disabled else {
-            print("Global hotkeys enabled, but all hotkeys are disabled")
+        guard !isStarted else {
             return
         }
 
-        var eventType = EventTypeSpec(
+        guard AppPreferences.enableGlobalHotkeys else {
+            print("Global hotkeys disabled")
+            return
+        }
+
+        let eventCallback: EventHandlerUPP = { _, event, userData in
+            guard let userData else {
+                return noErr
+            }
+
+            let controller = Unmanaged<HotKeyController>
+                .fromOpaque(userData)
+                .takeUnretainedValue()
+
+            controller.handleCarbonHotKeyEvent(event)
+
+            return noErr
+        }
+
+        var eventSpec = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed)
         )
 
-        let userData = Unmanaged.passUnretained(self).toOpaque()
-
         let installStatus = InstallEventHandler(
             GetApplicationEventTarget(),
-            { _, event, userData in
-                guard let userData else {
-                    return noErr
-                }
-
-                let controller = Unmanaged<HotKeyController>
-                    .fromOpaque(userData)
-                    .takeUnretainedValue()
-
-                controller.handleCarbonHotKeyEvent(event)
-
-                return noErr
-            },
+            eventCallback,
             1,
-            &eventType,
-            userData,
+            &eventSpec,
+            UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()),
             &eventHandlerRef
         )
 
-        guard installStatus == noErr else {
+        if installStatus != noErr {
             print("Failed to install hotkey event handler: \(installStatus)")
             return
         }
 
+        let clearHotKey = AppPreferences.clearNotificationsHotKey
+        let testHotKey = AppPreferences.testNotificationHotKey
+
         clearHotKeyRef = registerHotKey(
-            choice: clearChoice,
+            clearHotKey,
             id: HotKeyID.clearNotifications,
-            purpose: "Clear Notifications"
+            purpose: "clear notifications"
         )
 
-        let duplicateHotKey =
-            clearChoice != .disabled &&
-            testChoice != .disabled &&
-            clearChoice == testChoice
-
-        if duplicateHotKey {
-            print("Test Notification hotkey duplicates Clear Notifications hotkey; not registering test hotkey")
+        if testHotKey == clearHotKey {
+            print("Test notification hotkey not registered because it duplicates clear notifications: \(testHotKey.displayString)")
         } else {
             testNotificationHotKeyRef = registerHotKey(
-                choice: testChoice,
+                testHotKey,
                 id: HotKeyID.sendTestNotification,
-                purpose: "Send Test Notification"
+                purpose: "send test notification"
             )
         }
 
@@ -112,12 +110,12 @@ final class HotKeyController {
     }
 
     private func registerHotKey(
-        choice: HotKeyChoice,
+        _ hotKey: HotKey,
         id: UInt32,
         purpose: String
     ) -> EventHotKeyRef? {
-        guard let keyCode = choice.keyCode,
-              let modifiers = choice.modifiers else {
+        guard hotKey.isValidGlobalShortcut else {
+            print("Not registering invalid \(purpose) hotkey: \(hotKey.displayString)")
             return nil
         }
 
@@ -129,25 +127,27 @@ final class HotKeyController {
         )
 
         let status = RegisterEventHotKey(
-            keyCode,
-            modifiers,
+            hotKey.keyCode,
+            hotKey.modifiers,
             hotKeyID,
             GetApplicationEventTarget(),
             0,
             &hotKeyRef
         )
 
-        guard status == noErr else {
-            print("Failed to register global hotkey for \(purpose) (\(choice.displayName)): \(status)")
-            return nil
+        if status == noErr {
+            print("Registered \(purpose) hotkey: \(hotKey.displayString)")
+            return hotKeyRef
         }
 
-        print("Registered global hotkey for \(purpose): \(choice.displayName)")
-        return hotKeyRef
+        print("Failed to register \(purpose) hotkey \(hotKey.displayString): \(status)")
+        return nil
     }
 
     private func handleCarbonHotKeyEvent(_ event: EventRef?) {
-        guard let event else { return }
+        guard let event else {
+            return
+        }
 
         var hotKeyID = EventHotKeyID()
 
@@ -162,7 +162,7 @@ final class HotKeyController {
         )
 
         guard status == noErr else {
-            print("Could not read hotkey ID: \(status)")
+            print("Could not read hotkey event parameter: \(status)")
             return
         }
 
@@ -172,27 +172,23 @@ final class HotKeyController {
     private func handleHotKey(id: UInt32) {
         switch id {
         case HotKeyID.clearNotifications:
-            DispatchQueue.main.async {
-                NotificationClearer.clear()
-            }
+            NotificationClearer.clear()
 
         case HotKeyID.sendTestNotification:
-            DispatchQueue.main.async {
-                TestNotificationSender.shared.sendTestNotification()
-            }
+            TestNotificationSender.shared.sendTestNotification()
 
         default:
-            print("Unknown global hotkey ID: \(id)")
+            break
         }
     }
-}
 
-private func fourCharCode(_ string: String) -> OSType {
-    var result: OSType = 0
+    private func fourCharCode(_ string: String) -> OSType {
+        var result: OSType = 0
 
-    for scalar in string.unicodeScalars {
-        result = (result << 8) + OSType(scalar.value)
+        for scalar in string.unicodeScalars.prefix(4) {
+            result = (result << 8) + OSType(scalar.value)
+        }
+
+        return result
     }
-
-    return result
 }

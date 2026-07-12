@@ -5,17 +5,11 @@ import AppKit
 struct SettingsView: View {
     @AppStorage(PreferenceKeys.hideDockIcon) private var hideDockIcon = true
     @AppStorage(PreferenceKeys.enableGlobalHotkeys) private var enableGlobalHotkeys = true
-    @AppStorage(PreferenceKeys.clearNotificationsHotKey) private var clearNotificationsHotKey = HotKeyChoice.controlOptionCommandD.rawValue
-    @AppStorage(PreferenceKeys.testNotificationHotKey) private var testNotificationHotKey = HotKeyChoice.controlOptionCommandS.rawValue
+    @AppStorage(PreferenceKeys.clearNotificationsHotKey) private var clearNotificationsHotKey = HotKey.defaultClear.encodedString
+    @AppStorage(PreferenceKeys.testNotificationHotKey) private var testNotificationHotKey = HotKey.defaultTestNotification.encodedString
 
     @State private var launchAtLogin = LaunchAtLoginController.isEnabled
     @State private var cliInstallCommand = CLIInstallCommandBuilder.makeCommand()
-
-    private var duplicateHotkeysSelected: Bool {
-        clearNotificationsHotKey != HotKeyChoice.disabled.rawValue &&
-        testNotificationHotKey != HotKeyChoice.disabled.rawValue &&
-        clearNotificationsHotKey == testNotificationHotKey
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -33,30 +27,44 @@ struct SettingsView: View {
 
             Toggle("Enable global hotkeys", isOn: $enableGlobalHotkeys)
 
-            VStack(alignment: .leading, spacing: 8) {
-                Picker("Clear Notifications:", selection: $clearNotificationsHotKey) {
-                    ForEach(HotKeyChoice.allCases) { choice in
-                        Text(choice.displayName).tag(choice.rawValue)
+            VStack(alignment: .leading, spacing: 10) {
+                HotKeyRecorderView(
+                    title: "Clear Notifications:",
+                    encodedHotKey: $clearNotificationsHotKey,
+                    defaultHotKey: .defaultClear,
+                    otherEncodedHotKey: testNotificationHotKey,
+                    onChange: {
+                        HotKeyController.shared.restart()
+                    },
+                    onRecordingStarted: {
+                        HotKeyController.shared.stop()
+                    },
+                    onRecordingEnded: {
+                        HotKeyController.shared.restart()
                     }
-                }
+                )
 
-                Picker("Send Test Notification:", selection: $testNotificationHotKey) {
-                    ForEach(HotKeyChoice.allCases) { choice in
-                        Text(choice.displayName).tag(choice.rawValue)
+                HotKeyRecorderView(
+                    title: "Send Test Notification:",
+                    encodedHotKey: $testNotificationHotKey,
+                    defaultHotKey: .defaultTestNotification,
+                    otherEncodedHotKey: clearNotificationsHotKey,
+                    onChange: {
+                        HotKeyController.shared.restart()
+                    },
+                    onRecordingStarted: {
+                        HotKeyController.shared.stop()
+                    },
+                    onRecordingEnded: {
+                        HotKeyController.shared.restart()
                     }
-                }
+                )
             }
             .disabled(!enableGlobalHotkeys)
 
-            if duplicateHotkeysSelected {
-                Text("Both actions use the same hotkey. The test notification hotkey will not be registered.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Choose global hotkeys for ShutUpMac actions.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text("Click a shortcut field, then press a new shortcut. Shortcuts must use at least two of Control, Option, and Command. Shift is allowed.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             Divider()
 
@@ -100,7 +108,7 @@ struct SettingsView: View {
                     NSPasteboard.general.setString(cliInstallCommand, forType: .string)
                 }
             }
-            
+
             Spacer()
         }
         .padding(20)
@@ -117,12 +125,6 @@ struct SettingsView: View {
             } else {
                 HotKeyController.shared.stop()
             }
-        }
-        .onChange(of: clearNotificationsHotKey) { _, _ in
-            HotKeyController.shared.restart()
-        }
-        .onChange(of: testNotificationHotKey) { _, _ in
-            HotKeyController.shared.restart()
         }
         .onChange(of: launchAtLogin) { _, newValue in
             LaunchAtLoginController.setEnabled(newValue)

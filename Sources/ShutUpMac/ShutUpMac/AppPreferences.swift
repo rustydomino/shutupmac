@@ -13,8 +13,8 @@ enum AppPreferences {
         UserDefaults.standard.register(defaults: [
             PreferenceKeys.hideDockIcon: true,
             PreferenceKeys.enableGlobalHotkeys: true,
-            PreferenceKeys.clearNotificationsHotKey: HotKeyChoice.controlOptionCommandD.rawValue,
-            PreferenceKeys.testNotificationHotKey: HotKeyChoice.controlOptionCommandS.rawValue
+            PreferenceKeys.clearNotificationsHotKey: HotKey.defaultClear.encodedString,
+            PreferenceKeys.testNotificationHotKey: HotKey.defaultTestNotification.encodedString
         ])
     }
 
@@ -26,14 +26,14 @@ enum AppPreferences {
         UserDefaults.standard.bool(forKey: PreferenceKeys.enableGlobalHotkeys)
     }
 
-    static var clearNotificationsHotKey: HotKeyChoice {
-        let rawValue = UserDefaults.standard.string(forKey: PreferenceKeys.clearNotificationsHotKey)
-        return HotKeyChoice(rawValue: rawValue ?? "") ?? .controlOptionCommandD
+    static var clearNotificationsHotKey: HotKey {
+        let storedValue = UserDefaults.standard.string(forKey: PreferenceKeys.clearNotificationsHotKey)
+        return HotKey.decode(storedValue) ?? .defaultClear
     }
 
-    static var testNotificationHotKey: HotKeyChoice {
-        let rawValue = UserDefaults.standard.string(forKey: PreferenceKeys.testNotificationHotKey)
-        return HotKeyChoice(rawValue: rawValue ?? "") ?? .controlOptionCommandS
+    static var testNotificationHotKey: HotKey {
+        let storedValue = UserDefaults.standard.string(forKey: PreferenceKeys.testNotificationHotKey)
+        return HotKey.decode(storedValue) ?? .defaultTestNotification
     }
 }
 
