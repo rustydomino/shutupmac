@@ -4,24 +4,49 @@ import AppKit
 @main
 struct ShutUpMacApp: App {
     init() {
-        NSApplication.shared.setActivationPolicy(.accessory)
-        HotKeyManager.shared.registerHotKey()
+        AppPreferences.registerDefaults()
+        DockIconController.apply(hideDockIcon: AppPreferences.hideDockIcon)
+        HotKeyController.shared.start()
+        TestNotificationSender.shared.start()
     }
 
     var body: some Scene {
         MenuBarExtra("ShutUpMac", systemImage: "bell.slash") {
-            Button("Clear Notifications Now") {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    NotificationClearer.clear()
-                }
-            }
-
-            Divider()
-
-            Button("Quit ShutUpMac") {
-                NSApplication.shared.terminate(nil)
-            }
+            ShutUpMacMenu()
         }
         .menuBarExtraStyle(.menu)
+
+        Window("ShutUpMac Settings", id: "settings") {
+            SettingsView()
+        }
+        .windowResizability(.contentSize)
+    }
+}
+
+struct ShutUpMacMenu: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Clear Notifications Now") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                NotificationClearer.clear()
+            }
+        }
+        Button("Send Test Notification") {
+            TestNotificationSender.shared.sendTestNotification()
+        }
+        
+        Divider()
+
+        Button("Settings…") {
+            openWindow(id: "settings")
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
+
+        Divider()
+
+        Button("Quit ShutUpMac") {
+            NSApplication.shared.terminate(nil)
+        }
     }
 }
