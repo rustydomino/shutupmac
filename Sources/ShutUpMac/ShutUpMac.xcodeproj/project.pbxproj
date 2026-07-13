@@ -34,7 +34,6 @@
 		27D387023004419B00DC4586 /* Exceptions for "ShutUpMac" folder in "ShutUpMac" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				HotKeyChoice.swift,
 				main.swift,
 			);
 			target = 27D386B03002E8CC00DC4586 /* ShutUpMac */;
@@ -43,7 +42,6 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				ContentView.swift,
-				HotKeyChoice.swift,
 				HotKeyController.swift,
 				HotKeyManager.swift,
 				LaunchAtLoginController.swift,

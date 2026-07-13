@@ -1,6 +1,26 @@
 import Foundation
 import ApplicationServices
 
+let arguments = CommandLine.arguments.dropFirst()
+
+Debug.isEnabled = false
+
+if arguments.contains("--help") || arguments.contains("-h") {
+    print("""
+    Usage:
+      shutupmac [--debug]
+
+    Options:
+      --debug     Print diagnostic Accessibility logs.
+      -h, --help  Show this help text.
+    """)
+    exit(0)
+}
+
+if arguments.contains("--debug") {
+    Debug.isEnabled = true
+}
+
 guard isAccessibilityTrusted(prompt: true) else {
     fputs("ShutUpMac needs Accessibility permission.\n", stderr)
     exit(1)

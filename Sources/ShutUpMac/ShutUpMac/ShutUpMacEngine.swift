@@ -45,7 +45,11 @@ enum Config {
 // MARK: - Debug Logging
 
 enum Debug {
-    static let isEnabled = true
+#if DEBUG
+    static var isEnabled = true
+#else
+    static var isEnabled = false
+#endif
 }
 
 /// Emits developer-facing diagnostic output when debug logging is enabled.
@@ -54,7 +58,7 @@ enum Debug {
 /// Accessibility tree descriptions, is skipped when debug logging is disabled.
 func debugLog(_ message: @autoclosure () -> String) {
     guard Debug.isEnabled else { return }
-    print(message())
+    fputs(message() + "\n", stderr)
 }
 
 // MARK: - Result Model
