@@ -5,7 +5,7 @@ enum CLIInstallCommandBuilder {
         let cliPath = preferredCLIPath()
 
         return """
-        mkdir -p "$HOME/.local/bin" && ln -sf \(shellQuote(cliPath)) "$HOME/.local/bin/shutupmac"
+        mkdir -p "$HOME/.local/bin" && ln -sf \(shellQuote(cliPath)) "$HOME/.local/bin/shutupmac-cli"
         """
     }
 
@@ -13,11 +13,11 @@ enum CLIInstallCommandBuilder {
         let appURL = Bundle.main.bundleURL
 
         // Final/product location we probably want later:
-        // ShutUpMac.app/Contents/Helpers/shutupmac
+        // ShutUpMac.app/Contents/Helpers/shutupmac-cli
         let bundledHelperURL = appURL
             .appendingPathComponent("Contents")
             .appendingPathComponent("Helpers")
-            .appendingPathComponent("shutupmac")
+            .appendingPathComponent("shutupmac-cli")
 
         if FileManager.default.isExecutableFile(atPath: bundledHelperURL.path) {
             return bundledHelperURL.path
@@ -25,10 +25,10 @@ enum CLIInstallCommandBuilder {
 
         // Development fallback:
         // Products/Debug/ShutUpMac.app
-        // Products/Debug/shutupmac
+        // Products/Debug/shutupmac-cli
         let siblingCLIURL = appURL
             .deletingLastPathComponent()
-            .appendingPathComponent("shutupmac")
+            .appendingPathComponent("shutupmac-cli")
 
         if FileManager.default.isExecutableFile(atPath: siblingCLIURL.path) {
             return siblingCLIURL.path

@@ -6,6 +6,16 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		27CD5A003004759300DAE353 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 27D386A93002E8CC00DC4586 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 27DD8B9E30046E06001B042B;
+			remoteInfo = ShutUpMacCLI;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXCopyFilesBuildPhase section */
 		27DD8B9D30046E06001B042B /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
@@ -103,10 +113,12 @@
 				27D386AD3002E8CC00DC4586 /* Sources */,
 				27D386AE3002E8CC00DC4586 /* Frameworks */,
 				27D386AF3002E8CC00DC4586 /* Resources */,
+				27CD5A02300475AA00DAE353 /* Bundle CLI Tool */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				27CD5A013004759300DAE353 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				27D386B33002E8CC00DC4586 /* ShutUpMac */,
@@ -188,6 +200,27 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		27CD5A02300475AA00DAE353 /* Bundle CLI Tool */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle CLI Tool";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n\nCLI_SOURCE=\"${BUILT_PRODUCTS_DIR}/shutupmac-cli\"\nHELPERS_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers\"\nCLI_DEST=\"${HELPERS_DIR}/shutupmac-cli\"\n\nif [ ! -x \"$CLI_SOURCE\" ]; then\n    echo \"error: CLI tool not found at ${CLI_SOURCE}\"\n    exit 1\nfi\n\nmkdir -p \"$HELPERS_DIR\"\ncp -f \"$CLI_SOURCE\" \"$CLI_DEST\"\nchmod 755 \"$CLI_DEST\"\n\nif [ \"${CODE_SIGNING_ALLOWED:-NO}\" = \"YES\" ]; then\n    SIGN_IDENTITY=\"${EXPANDED_CODE_SIGN_IDENTITY:-}\"\n\n    if [ -z \"$SIGN_IDENTITY\" ]; then\n        SIGN_IDENTITY=\"-\"\n    fi\n\n    /usr/bin/codesign --force --sign \"$SIGN_IDENTITY\" --timestamp=none \"$CLI_DEST\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		27D386AD3002E8CC00DC4586 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -204,6 +237,14 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		27CD5A013004759300DAE353 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 27DD8B9E30046E06001B042B /* ShutUpMacCLI */;
+			targetProxy = 27CD5A003004759300DAE353 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		27D386BA3002E8CD00DC4586 /* Debug */ = {
@@ -329,6 +370,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -370,6 +412,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
