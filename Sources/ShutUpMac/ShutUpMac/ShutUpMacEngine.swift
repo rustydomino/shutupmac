@@ -1,16 +1,16 @@
 /*
  High-level execution flow:
 
- 1. Determine whether Notification Center is already open.
+ 1. Determine whether the actual Notification Center panel is already open.
  2. Open Notification Center if necessary using the Clock menu extra.
  3. Locate the Notification Center Accessibility window.
  4. Locate the Clear (x) button.
  5. Invoke "Clear All Notifications."
- 6. Restore the original Notification Center state.
+ 6. Ensure Notification Center is closed afterward.
 
  This version is refactored so the core behavior is callable from either:
  - the command-line executable, or
- - a future macOS menu bar app.
+ - the macOS menu bar app.
 */
 
 import Foundation
@@ -35,11 +35,20 @@ enum Config {
     static let clearButtonIdentifier = "xmark"
     static let clearAllMenuItemTitle = "Clear All Notifications"
 
+    // Open-panel markers found through AX tree testing.
+    // A notification banner can create a Notification Center AXWindow even when
+    // the actual panel is closed, so window existence alone is not reliable.
+    static let widgetEditorButtonIdentifier = "widget-editor-button"
+    static let widgetGridSubrole = "AXOpaqueProviderGrid"
+
     static let defaultPollingTimeout: TimeInterval = 1.0
     static let defaultPollingInterval: TimeInterval = 0.02
 
     static let defaultAXTreeSearchMaxDepth = 20
     static let menuExtraSearchMaxDepth = 8
+
+    static let notificationCenterCloseRetries = 3
+    static let notificationCenterCloseRetryDelay: TimeInterval = 0.15
 }
 
 // MARK: - Debug Logging
@@ -66,7 +75,7 @@ func debugLog(_ message: @autoclosure () -> String) {
 /// The result of one attempt to clear Notification Center.
 ///
 /// The CLI uses this to decide which message to print and which exit code to
-/// return. A future GUI app can use the same result to update menu text, show a
+/// return. The GUI app can use the same result to update menu text, show a
 /// status message, or display an error without duplicating the clearing logic.
 struct ClearNotificationsResult {
     let succeeded: Bool
@@ -206,7 +215,6 @@ func findClockMenuExtra(
 
         let isMenuBarThing =
             role == kAXMenuBarItemRole as String ||
-            role == kAXMenuBarItemRole as String ||
             role == kAXButtonRole as String
 
         return looksLikeClock && isPressable && isMenuBarThing
@@ -242,14 +250,6 @@ func isNotificationCenterWindow(_ e: AXUIElement) -> Bool {
     strAttr(e, kAXTitleAttribute) == Config.notificationCenterWindowTitle
 }
 
-// Notification Center may expose an AXWindow even when it is not visibly
-// open. Through testing, AXFocused proved to be the reliable indicator
-// that Notification Center is actually being presented to the user.
-func isFocusedNotificationCenterWindow(_ e: AXUIElement) -> Bool {
-    isNotificationCenterWindow(e) &&
-    boolAttr(e, kAXFocusedAttribute) == true
-}
-
 func axWindows(for app: NSRunningApplication) -> [AXUIElement] {
     let axApp = AXUIElementCreateApplication(app.processIdentifier)
     return children(axApp, kAXWindowsAttribute)
@@ -268,9 +268,11 @@ func notificationCenterApplications() -> [NSRunningApplication] {
 
 /// Returns all Accessibility windows that appear to be Notification Center windows.
 ///
-/// This is the shared discovery point for Notification Center window lookup.
-/// More specific helpers should filter this result rather than duplicating
-/// bundle/application/window traversal.
+/// Important: the presence of a Notification Center AXWindow does not always mean
+/// Notification Center is actually open. A visible notification banner can also
+/// create a full-screen Notification Center AXWindow. Callers that need to know
+/// whether the actual Notification Center panel is open should use
+/// notificationCenterOpenPanelWindow().
 func notificationCenterWindows(logFound: Bool = true) -> [AXUIElement] {
     var windows: [AXUIElement] = []
 
@@ -287,62 +289,86 @@ func notificationCenterWindows(logFound: Bool = true) -> [AXUIElement] {
     return windows
 }
 
-/// Returns the Notification Center window that is currently presented to the user.
+/// Returns true when a node appears to be part of the actual open Notification Center panel.
 ///
-/// This intentionally filters the general Notification Center window list by
-/// focus state instead of treating window existence alone as visibility.
-func focusedNotificationCenterWindow(logFound: Bool = true) -> AXUIElement? {
-    notificationCenterWindows(logFound: logFound).first { window in
-        boolAttr(window, kAXFocusedAttribute) == true
+/// Testing showed that a notification banner can create a Notification Center AXWindow
+/// even when Notification Center itself is closed. The actual open panel exposes
+/// additional controls, including:
+///
+/// - the Clear Notifications menu button with identifier "xmark"
+/// - the Edit Widgets button with identifier "widget-editor-button"
+/// - the widget grid with subrole "AXOpaqueProviderGrid"
+func isNotificationCenterOpenPanelMarker(_ e: AXUIElement) -> Bool {
+    let id = strAttr(e, kAXIdentifierAttribute) ?? ""
+    let subrole = strAttr(e, kAXSubroleAttribute) ?? ""
+
+    if id == Config.clearButtonIdentifier {
+        return true
     }
+
+    if id == Config.widgetEditorButtonIdentifier {
+        return true
+    }
+
+    if subrole == Config.widgetGridSubrole {
+        return true
+    }
+
+    return false
 }
 
-/// Returns true when Notification Center appears to be visibly open.
-func isNotificationCenterOpen() -> Bool {
-    focusedNotificationCenterWindow(logFound: false) != nil
+/// Returns true when this Notification Center AXWindow contains controls that only
+/// appear when the full Notification Center panel is actually open.
+func isNotificationCenterOpenPanelWindow(_ window: AXUIElement) -> Bool {
+    findElement(window, maxDepth: Config.defaultAXTreeSearchMaxDepth) { node in
+        isNotificationCenterOpenPanelMarker(node)
+    } != nil
 }
 
-/// Waits briefly for the focused Notification Center window to appear.
+/// Returns the Notification Center window only if the actual panel appears open.
 ///
-/// Opening Notification Center through the menu extra is asynchronous, so the
-/// AX window may not be available immediately after pressing the Clock item.
-func waitForNotificationCenterWindow() -> AXUIElement? {
-    var focusedWindow: AXUIElement?
-    var anyWindow: AXUIElement?
-
-    let found = waitUntil(timeout: Config.defaultPollingTimeout, interval: Config.defaultPollingInterval) {
-        let windows = notificationCenterWindows(logFound: false)
-
-        focusedWindow = windows.first { window in
-            boolAttr(window, kAXFocusedAttribute as String) == true
+/// This is stricter than checking for the Notification Center AXWindow alone.
+/// It avoids false positives caused by ordinary notification banners.
+func notificationCenterOpenPanelWindow(logFound: Bool = true) -> AXUIElement? {
+    for window in notificationCenterWindows(logFound: logFound) {
+        if isNotificationCenterOpenPanelWindow(window) {
+            debugLog("FOUND OPEN NOTIFICATION CENTER PANEL: \(describe(window))")
+            return window
         }
-
-        anyWindow = windows.first
-
-        return focusedWindow != nil || anyWindow != nil
-    }
-
-    guard found else {
-        return nil
-    }
-
-    if let focusedWindow {
-        debugLog("FOUND FOCUSED NOTIFICATION CENTER WINDOW: \(describe(focusedWindow))")
-        return focusedWindow
-    }
-
-    if let anyWindow {
-        debugLog("FOUND NOTIFICATION CENTER WINDOW, NOT FOCUSED BUT USING IT: \(describe(anyWindow))")
-
-        if actions(anyWindow).contains(kAXRaiseAction as String) {
-            let raiseErr = AXUIElementPerformAction(anyWindow, kAXRaiseAction as CFString)
-            debugLog("Notification Center AXRaise result: \(raiseErr.rawValue) \(raiseErr)")
-        }
-
-        return anyWindow
     }
 
     return nil
+}
+
+/// Returns true when the actual Notification Center panel appears to be visibly open.
+func isNotificationCenterOpen() -> Bool {
+    notificationCenterOpenPanelWindow(logFound: false) != nil
+}
+
+/// Waits briefly for the actual Notification Center panel to appear.
+///
+/// Opening Notification Center through the menu extra is asynchronous, so the
+/// open-panel controls may not be available immediately after pressing the Clock item.
+func waitForNotificationCenterOpenPanelWindow() -> AXUIElement? {
+    var panelWindow: AXUIElement?
+
+    let found = waitUntil(timeout: Config.defaultPollingTimeout, interval: Config.defaultPollingInterval) {
+        panelWindow = notificationCenterOpenPanelWindow(logFound: false)
+        return panelWindow != nil
+    }
+
+    guard found, let panelWindow else {
+        return nil
+    }
+
+    debugLog("FOUND NOTIFICATION CENTER OPEN PANEL WINDOW: \(describe(panelWindow))")
+
+    if actions(panelWindow).contains(kAXRaiseAction as String) {
+        let raiseErr = AXUIElementPerformAction(panelWindow, kAXRaiseAction as CFString)
+        debugLog("Notification Center AXRaise result: \(raiseErr.rawValue) \(raiseErr)")
+    }
+
+    return panelWindow
 }
 
 // MARK: - Notification Center Actions
@@ -390,17 +416,54 @@ func closeNotificationCenterViaAX() -> Bool {
     pressClockMenuExtra(label: "Close")
 }
 
-/// Restores Notification Center to its original open/closed state.
+/// Ensures the actual Notification Center panel is open.
 ///
-/// If Notification Center was already open when the program started, it is left
-/// open. Otherwise, it is closed after clearing is complete.
-func closeNotificationCenterIfNeeded(wasInitiallyOpen: Bool) {
-    if wasInitiallyOpen {
-        debugLog("Leaving Notification Center open because it was already open")
-        return
+/// The Clock menu extra is a toggle, so this function first checks whether the
+/// open panel is already present. It only presses the Clock item if the panel
+/// does not appear to be open.
+func ensureNotificationCenterOpen() -> AXUIElement? {
+    if let existingWindow = notificationCenterOpenPanelWindow(logFound: false) {
+        debugLog("Notification Center panel already open")
+        return existingWindow
     }
 
-    _ = closeNotificationCenterViaAX()
+    debugLog("Notification Center panel not open; pressing Clock to open")
+
+    guard openNotificationCenterViaAX() else {
+        return nil
+    }
+
+    return waitForNotificationCenterOpenPanelWindow()
+}
+
+/// Ensures the actual Notification Center panel is closed.
+///
+/// The Clock menu extra is a toggle, so this function checks the panel state
+/// after pressing and retries if necessary.
+func ensureNotificationCenterClosed() {
+    for attempt in 1...Config.notificationCenterCloseRetries {
+        if !isNotificationCenterOpen() {
+            debugLog("Notification Center panel is closed")
+            return
+        }
+
+        debugLog("Notification Center panel still open; close attempt \(attempt)")
+
+        _ = closeNotificationCenterViaAX()
+
+        let closed = waitUntil(timeout: 0.75, interval: Config.defaultPollingInterval) {
+            !isNotificationCenterOpen()
+        }
+
+        if closed {
+            debugLog("Notification Center panel closed")
+            return
+        }
+
+        Thread.sleep(forTimeInterval: Config.notificationCenterCloseRetryDelay)
+    }
+
+    debugLog("Notification Center panel still appears open after close retries")
 }
 
 // MARK: - Notification Clearing
@@ -426,7 +489,6 @@ func waitForClearAll(in window: AXUIElement) -> AXUIElement? {
 ///
 /// This is only useful when window discovery fails, especially after macOS UI or
 /// Accessibility behavior changes.
-
 func dumpInterestingAXTree(
     _ e: AXUIElement,
     depth: Int = 0,
@@ -508,30 +570,21 @@ func dumpLikelySystemWindows() {
 /// Public-facing clearing engine.
 ///
 /// This is the important refactor: the full notification-clearing workflow now
-/// lives inside one callable function. The CLI can call this function, and a
-/// future menu bar app can call the same function from a button or menu item.
+/// lives inside one callable function. The CLI can call this function, and the
+/// menu bar app can call the same function from a button or menu item.
 enum ShutUpMac {
     static func clearNotifications() -> ClearNotificationsResult {
         debugLog("AX trusted: \(AXIsProcessTrusted())")
 
-        let wasInitiallyOpen = isNotificationCenterOpen()
-        debugLog("Notification Center initially open: \(wasInitiallyOpen)")
-
-        if !wasInitiallyOpen {
-            guard openNotificationCenterViaAX() else {
-                return .failure("Could not open Notification Center")
-            }
-        }
-
-        guard let window = waitForNotificationCenterWindow() else {
+        guard let window = ensureNotificationCenterOpen() else {
             dumpLikelySystemWindows()
-            return .failure("Notification Center window not found")
+            return .failure("Could not open Notification Center")
         }
 
         debugLog("WINDOW: \(describe(window))")
 
         guard let xmark = findXmark(window) else {
-            closeNotificationCenterIfNeeded(wasInitiallyOpen: wasInitiallyOpen)
+            ensureNotificationCenterClosed()
             return .success("Nothing to clear: xmark button not found", didClear: false)
         }
 
@@ -541,17 +594,18 @@ enum ShutUpMac {
         debugLog("AXShowMenu result: \(showErr.rawValue) \(showErr)")
 
         guard let clearItem = waitForClearAll(in: window) else {
-            closeNotificationCenterIfNeeded(wasInitiallyOpen: wasInitiallyOpen)
+            ensureNotificationCenterClosed()
             return .success("Nothing to clear: Clear All Notifications menu item not found", didClear: false)
         }
 
         debugLog("FOUND CLEAR ITEM: \(describe(clearItem))")
 
         if press(clearItem) {
-            closeNotificationCenterIfNeeded(wasInitiallyOpen: wasInitiallyOpen)
+            ensureNotificationCenterClosed()
             return .success("SUCCESS", didClear: true)
         }
 
+        ensureNotificationCenterClosed()
         return .failure("PRESS FAILED")
     }
 }
