@@ -50,11 +50,6 @@
 			path = ShutUpMac;
 			sourceTree = "<group>";
 		};
-		27D386DE30043CCB00DC4586 /* shutupmac */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = shutupmac;
-			sourceTree = "<group>";
-		};
 		27DD8BA030046E06001B042B /* ShutUpMacCLI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = ShutUpMacCLI;
@@ -84,7 +79,6 @@
 			isa = PBXGroup;
 			children = (
 				27D386B33002E8CC00DC4586 /* ShutUpMac */,
-				27D386DE30043CCB00DC4586 /* shutupmac */,
 				27DD8BA030046E06001B042B /* ShutUpMacCLI */,
 				27D386B23002E8CC00DC4586 /* Products */,
 			);
