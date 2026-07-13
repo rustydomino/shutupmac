@@ -15,7 +15,7 @@ struct ShutUpMacApp: App {
     }
 
     var body: some Scene {
-        MenuBarExtra("ShutUpMac", systemImage: "bell.slash") {
+        MenuBarExtra("ShutUpMac", image: "MenuBarIcon") {
             ShutUpMacMenu()
         }
         .menuBarExtraStyle(.menu)

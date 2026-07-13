@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct AboutView: View {
     private var appVersion: String {
@@ -11,8 +12,10 @@ struct AboutView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Image(systemName: "bell.slash")
-                .font(.system(size: 48))
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 96, height: 96)
 
             Text("ShutUpMac")
                 .font(.title)
