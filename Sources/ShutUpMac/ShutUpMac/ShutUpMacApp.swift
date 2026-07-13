@@ -24,6 +24,11 @@ struct ShutUpMacApp: App {
             SettingsView()
         }
         .windowResizability(.contentSize)
+
+        Window("About ShutUpMac", id: "about") {
+            AboutView()
+        }
+        .windowResizability(.contentSize)
     }
 }
 
@@ -53,6 +58,21 @@ struct ShutUpMacMenu: View {
         }
 
         Divider()
+
+        Button("About ShutUpMac") {
+            openWindow(id: "about")
+
+            DispatchQueue.main.async {
+                NSApplication.shared.activate(ignoringOtherApps: true)
+
+                if let aboutWindow = NSApplication.shared.windows.first(where: { window in
+                    window.title == "About ShutUpMac"
+                }) {
+                    aboutWindow.makeKeyAndOrderFront(nil)
+                    aboutWindow.orderFrontRegardless()
+                }
+            }
+        }
 
         Button("Settings…") {
             openWindow(id: "settings")
