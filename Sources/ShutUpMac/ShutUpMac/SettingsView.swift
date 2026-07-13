@@ -62,7 +62,7 @@ struct SettingsView: View {
             }
             .disabled(!enableGlobalHotkeys)
 
-            Text("Click a shortcut field, then press a new shortcut. Shortcuts must use at least two of Control, Option, and Command. Shift is allowed.")
+            Text("Click a shortcut field, then press a new shortcut. Shortcuts must use at least two of Control, Option, and Command.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -86,12 +86,12 @@ struct SettingsView: View {
 
             Divider()
 
-            Text("Command Line Tool")
-                .font(.headline)
-
-            Text("Copy this command into Terminal to create a shutupmac command in ~/.local/bin. You can edit the path before copying.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text("""
+            Copy and paste the text below to a Terminal prompt to install a symlink to the bundled shutupmac-cli helper. You can edit the text if you prefer a different install location or command name (maybe like stfu :) Note: ~/.local/bin must be in your PATH to run shutupmac-cli directly.
+            """)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
 
             TextEditor(text: $cliInstallCommand)
                 .font(.system(.body, design: .monospaced))
