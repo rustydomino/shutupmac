@@ -16,21 +16,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 1;
 		};
+		27DD8B9D30046E06001B042B /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		27D386B13002E8CC00DC4586 /* ShutUpMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ShutUpMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		27D386DD30043CCB00DC4586 /* shutupmac */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = shutupmac; sourceTree = BUILT_PRODUCTS_DIR; };
+		27DD8B9F30046E06001B042B /* shutupmac-cli */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "shutupmac-cli"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		27D387003004404300DC4586 /* Exceptions for "ShutUpMac" folder in "shutupmac" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				ShutUpMacEngine.swift,
-			);
-			target = 27D386DC30043CCB00DC4586 /* shutupmac */;
-		};
 		27D387023004419B00DC4586 /* Exceptions for "ShutUpMac" folder in "ShutUpMac" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -53,6 +56,13 @@
 			);
 			target = 27D386DC30043CCB00DC4586 /* shutupmac */;
 		};
+		27DD8BA93004715C001B042B /* Exceptions for "ShutUpMac" folder in "ShutUpMacCLI" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				ShutUpMacEngine.swift,
+			);
+			target = 27DD8B9E30046E06001B042B /* ShutUpMacCLI */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -60,7 +70,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				27D387023004419B00DC4586 /* Exceptions for "ShutUpMac" folder in "ShutUpMac" target */,
-				27D387003004404300DC4586 /* Exceptions for "ShutUpMac" folder in "shutupmac" target */,
+				27DD8BA93004715C001B042B /* Exceptions for "ShutUpMac" folder in "ShutUpMacCLI" target */,
 			);
 			path = ShutUpMac;
 			sourceTree = "<group>";
@@ -71,6 +81,11 @@
 				27D38703300444A100DC4586 /* Exceptions for "shutupmac" folder in "shutupmac" target */,
 			);
 			path = shutupmac;
+			sourceTree = "<group>";
+		};
+		27DD8BA030046E06001B042B /* ShutUpMacCLI */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ShutUpMacCLI;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -90,6 +105,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		27DD8B9C30046E06001B042B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -98,6 +120,7 @@
 			children = (
 				27D386B33002E8CC00DC4586 /* ShutUpMac */,
 				27D386DE30043CCB00DC4586 /* shutupmac */,
+				27DD8BA030046E06001B042B /* ShutUpMacCLI */,
 				27D386B23002E8CC00DC4586 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -107,6 +130,7 @@
 			children = (
 				27D386B13002E8CC00DC4586 /* ShutUpMac.app */,
 				27D386DD30043CCB00DC4586 /* shutupmac */,
+				27DD8B9F30046E06001B042B /* shutupmac-cli */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -158,6 +182,28 @@
 			productReference = 27D386DD30043CCB00DC4586 /* shutupmac */;
 			productType = "com.apple.product-type.tool";
 		};
+		27DD8B9E30046E06001B042B /* ShutUpMacCLI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 27DD8BA530046E06001B042B /* Build configuration list for PBXNativeTarget "ShutUpMacCLI" */;
+			buildPhases = (
+				27DD8B9B30046E06001B042B /* Sources */,
+				27DD8B9C30046E06001B042B /* Frameworks */,
+				27DD8B9D30046E06001B042B /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				27DD8BA030046E06001B042B /* ShutUpMacCLI */,
+			);
+			name = ShutUpMacCLI;
+			packageProductDependencies = (
+			);
+			productName = ShutUpMacCLI;
+			productReference = 27DD8B9F30046E06001B042B /* shutupmac-cli */;
+			productType = "com.apple.product-type.tool";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -172,6 +218,9 @@
 						CreatedOnToolsVersion = 26.6;
 					};
 					27D386DC30043CCB00DC4586 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					27DD8B9E30046E06001B042B = {
 						CreatedOnToolsVersion = 26.6;
 					};
 				};
@@ -192,6 +241,7 @@
 			targets = (
 				27D386B03002E8CC00DC4586 /* ShutUpMac */,
 				27D386DC30043CCB00DC4586 /* shutupmac */,
+				27DD8B9E30046E06001B042B /* ShutUpMacCLI */,
 			);
 		};
 /* End PBXProject section */
@@ -215,6 +265,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		27D386D930043CCB00DC4586 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		27DD8B9B30046E06001B042B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -446,6 +503,32 @@
 			};
 			name = Release;
 		};
+		27DD8BA330046E06001B042B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				PRODUCT_NAME = "shutupmac-cli";
+				SDKROOT = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		27DD8BA430046E06001B042B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				PRODUCT_NAME = "shutupmac-cli";
+				SDKROOT = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -472,6 +555,15 @@
 			buildConfigurations = (
 				27D386E230043CCB00DC4586 /* Debug */,
 				27D386E330043CCB00DC4586 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		27DD8BA530046E06001B042B /* Build configuration list for PBXNativeTarget "ShutUpMacCLI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				27DD8BA330046E06001B042B /* Debug */,
+				27DD8BA430046E06001B042B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
