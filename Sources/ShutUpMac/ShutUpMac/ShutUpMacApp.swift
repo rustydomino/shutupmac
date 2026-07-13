@@ -48,12 +48,16 @@ struct ShutUpMacMenu: View {
 
     var body: some View {
         Button("Clear Notifications Now  \(clearNotificationsHotKeyDisplay)") {
+            print("GUI menu: Clear Notifications Now clicked")
+
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                print("GUI menu: calling NotificationClearer.clear()")
                 NotificationClearer.clear()
             }
         }
 
         Button("Send Test Notification  \(testNotificationHotKeyDisplay)") {
+            print("GUI menu: Send Test Notification clicked")
             TestNotificationSender.shared.sendTestNotification()
         }
 
