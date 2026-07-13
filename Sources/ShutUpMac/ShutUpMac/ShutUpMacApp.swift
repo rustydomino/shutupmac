@@ -45,7 +45,17 @@ struct ShutUpMacMenu: View {
 
         Button("Settings…") {
             openWindow(id: "settings")
-            NSApplication.shared.activate(ignoringOtherApps: true)
+
+            DispatchQueue.main.async {
+                NSApplication.shared.activate(ignoringOtherApps: true)
+
+                if let settingsWindow = NSApplication.shared.windows.first(where: { window in
+                    window.title == "ShutUpMac Settings"
+                }) {
+                    settingsWindow.makeKeyAndOrderFront(nil)
+                    settingsWindow.orderFrontRegardless()
+                }
+            }
         }
 
         Divider()
