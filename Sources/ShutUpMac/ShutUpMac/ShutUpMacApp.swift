@@ -30,14 +30,25 @@ struct ShutUpMacApp: App {
 struct ShutUpMacMenu: View {
     @Environment(\.openWindow) private var openWindow
 
+    @AppStorage(PreferenceKeys.clearNotificationsHotKey) private var clearNotificationsHotKey = HotKey.defaultClear.encodedString
+    @AppStorage(PreferenceKeys.testNotificationHotKey) private var testNotificationHotKey = HotKey.defaultTestNotification.encodedString
+
+    private var clearNotificationsHotKeyDisplay: String {
+        (HotKey.decode(clearNotificationsHotKey) ?? .defaultClear).displayString
+    }
+
+    private var testNotificationHotKeyDisplay: String {
+        (HotKey.decode(testNotificationHotKey) ?? .defaultTestNotification).displayString
+    }
+
     var body: some View {
-        Button("Clear Notifications Now") {
+        Button("Clear Notifications Now  \(clearNotificationsHotKeyDisplay)") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                 NotificationClearer.clear()
             }
         }
 
-        Button("Send Test Notification") {
+        Button("Send Test Notification  \(testNotificationHotKeyDisplay)") {
             TestNotificationSender.shared.sendTestNotification()
         }
 
