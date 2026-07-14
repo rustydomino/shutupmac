@@ -9,13 +9,13 @@
     - Invoke "Clear All Notifications."
     - Ensure Notification Center is closed afterward.
 
- 2. Add bare-bones visible-notification actions:
+ 2. Add visible-notification actions that do not open Notification Center:
     - closeTopVisibleNotification(): find the top visible single alert and run Name:Close.
     - clearTopVisibleStack(): find the top visible stack and run Name:Clear All.
+    - clearVisibleNotifications(): repeatedly clear visible singles/stacks until none remain.
 
  The nuclear path is intentionally separate from the newer targeted actions.
- The targeted actions do not expand stacks, do not close single notifications when
- asked to clear a stack, and do not open/close Notification Center.
+ The targeted actions do not expand stacks and do not open/close Notification Center.
 */
 
 import Foundation
@@ -39,6 +39,7 @@ enum Config {
     static let clockMenuExtraIdentifier = "com.apple.menuextra.clock"
     static let clearButtonIdentifier = "xmark"
     static let clearAllMenuItemTitle = "Clear All Notifications"
+    static let clearAllButtonDescription = "Clear All Notifications"
 
     static let notificationAlertSubrole = "AXNotificationCenterAlert"
     static let notificationAlertStackSubrole = "AXNotificationCenterAlertStack"
@@ -59,16 +60,18 @@ enum Config {
 
     static let notificationCenterCloseRetries = 3
     static let notificationCenterCloseRetryDelay: TimeInterval = 0.15
+
+    static let clearVisibleMaxCycles = 50
+    static let clearVisibleMaxActions = 200
+    static let clearVisibleMaxConsecutiveNoProgressActions = 20
+    static let clearVisibleProgressTimeout: TimeInterval = 0.20
+    static let clearVisibleProgressPollingInterval: TimeInterval = 0.02
 }
 
 // MARK: - Debug Logging
 
 enum Debug {
-#if DEBUG
-    static var isEnabled = true
-#else
     static var isEnabled = false
-#endif
 }
 
 /// Emits developer-facing diagnostic output when debug logging is enabled.
@@ -327,6 +330,39 @@ func findClearAll(
     }
 }
 
+/// Finds the direct bottom/global Clear All Notifications button in Notification Center.
+///
+/// In a filled Notification Center, macOS exposes the bottom X/clear-all control
+/// as a plain AXButton with description "Clear All Notifications" and AXPress.
+/// This is different from the top stack clear button, whose description is just
+/// "Clear", and different from the older xmark -> AXShowMenu fallback path.
+func findDirectClearAllNotificationsButton(
+    _ e: AXUIElement,
+    depth: Int = 0,
+    maxDepth: Int = Config.defaultAXTreeSearchMaxDepth
+) -> AXUIElement? {
+    findElement(e, depth: depth, maxDepth: maxDepth) { node in
+        let role = strAttr(node, kAXRoleAttribute) ?? ""
+        let textValues = [
+            strAttr(node, kAXTitleAttribute),
+            strAttr(node, kAXDescriptionAttribute),
+            strAttr(node, kAXHelpAttribute)
+        ].compactMap { $0 }
+
+        let hasClearAllText = textValues.contains { value in
+            value == Config.clearAllButtonDescription
+        }
+
+        let isButtonLike =
+            role == kAXButtonRole as String ||
+            role == kAXMenuButtonRole as String
+
+        let isPressable = actions(node).contains(kAXPressAction as String)
+
+        return isButtonLike && hasClearAllText && isPressable
+    }
+}
+
 // MARK: - Notification Center Detection
 
 func isNotificationCenterWindow(_ e: AXUIElement) -> Bool {
@@ -561,21 +597,62 @@ func ensureNotificationCenterClosed() {
 
 // MARK: - Visible Notification Discovery
 
-struct VisibleNotificationCandidate {
+enum VisibleNotificationKind: String, Hashable {
+    case single
+    case stack
+
+    init?(subrole: String) {
+        switch subrole {
+        case Config.notificationAlertSubrole:
+            self = .single
+        case Config.notificationAlertStackSubrole:
+            self = .stack
+        default:
+            return nil
+        }
+    }
+
+    var subrole: String {
+        switch self {
+        case .single:
+            return Config.notificationAlertSubrole
+        case .stack:
+            return Config.notificationAlertStackSubrole
+        }
+    }
+
+    var actionNameFragment: String {
+        switch self {
+        case .single:
+            return Config.notificationCloseActionNameFragment
+        case .stack:
+            return Config.notificationClearAllActionNameFragment
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .single:
+            return "single"
+        case .stack:
+            return "stack"
+        }
+    }
+}
+
+struct VisibleNotificationItem {
     let element: AXUIElement
-    let subrole: String
+    let kind: VisibleNotificationKind
     let frame: CGRect
 
     var kindLabel: String {
-        if subrole == Config.notificationAlertStackSubrole {
-            return "stack"
-        }
+        kind.label
+    }
 
-        if subrole == Config.notificationAlertSubrole {
-            return "alert"
+    var isActionable: Bool {
+        actions(element).contains { actionName in
+            actionName.localizedCaseInsensitiveContains(kind.actionNameFragment)
         }
-
-        return subrole
     }
 }
 
@@ -601,7 +678,7 @@ func notificationSearchRoots(logFound: Bool = true) -> [AXUIElement] {
     return roots
 }
 
-func isUsableVisibleNotificationCandidate(_ e: AXUIElement) -> Bool {
+func isUsableVisibleNotificationItem(_ e: AXUIElement) -> Bool {
     if boolAttr(e, kAXHiddenAttribute) == true {
         return false
     }
@@ -613,15 +690,15 @@ func isUsableVisibleNotificationCandidate(_ e: AXUIElement) -> Bool {
     return frame.size.width > 1 && frame.size.height > 1
 }
 
-func notificationCandidateIdentityKey(_ candidate: VisibleNotificationCandidate) -> String {
-    let title = strAttr(candidate.element, kAXTitleAttribute) ?? ""
-    let desc = strAttr(candidate.element, kAXDescriptionAttribute) ?? ""
-    let id = strAttr(candidate.element, kAXIdentifierAttribute) ?? ""
-    let actionKey = actions(candidate.element).joined(separator: "|")
+func visibleNotificationItemIdentityKey(_ item: VisibleNotificationItem) -> String {
+    let title = strAttr(item.element, kAXTitleAttribute) ?? ""
+    let desc = strAttr(item.element, kAXDescriptionAttribute) ?? ""
+    let id = strAttr(item.element, kAXIdentifierAttribute) ?? ""
+    let actionKey = actions(item.element).joined(separator: "|")
 
     return [
-        candidate.subrole,
-        roundedFrameKey(candidate.frame),
+        item.kind.rawValue,
+        roundedFrameKey(item.frame),
         title,
         desc,
         id,
@@ -629,13 +706,13 @@ func notificationCandidateIdentityKey(_ candidate: VisibleNotificationCandidate)
     ].joined(separator: "::")
 }
 
-func collectVisibleNotificationCandidates(
+func collectVisibleNotificationItems(
     _ e: AXUIElement,
-    matchingSubroles targetSubroles: Set<String>,
+    matchingKinds targetKinds: Set<VisibleNotificationKind>? = nil,
     depth: Int = 0,
     maxDepth: Int = Config.defaultAXTreeSearchMaxDepth,
     visited: inout Set<CFHashCode>,
-    candidates: inout [VisibleNotificationCandidate]
+    items: inout [VisibleNotificationItem]
 ) {
     if depth > maxDepth { return }
 
@@ -645,11 +722,16 @@ func collectVisibleNotificationCandidates(
 
     let subrole = strAttr(e, kAXSubroleAttribute) ?? ""
 
-    if targetSubroles.contains(subrole), isUsableVisibleNotificationCandidate(e), let frame = frameAttr(e) {
-        candidates.append(
-            VisibleNotificationCandidate(
+    if
+        let kind = VisibleNotificationKind(subrole: subrole),
+        targetKinds == nil || targetKinds!.contains(kind),
+        isUsableVisibleNotificationItem(e),
+        let frame = frameAttr(e)
+    {
+        items.append(
+            VisibleNotificationItem(
                 element: e,
-                subrole: subrole,
+                kind: kind,
                 frame: frame
             )
         )
@@ -657,20 +739,20 @@ func collectVisibleNotificationCandidates(
 
     for name in [kAXVisibleChildrenAttribute, kAXChildrenAttribute, "AXChildrenInNavigationOrder"] {
         for child in children(e, name) {
-            collectVisibleNotificationCandidates(
+            collectVisibleNotificationItems(
                 child,
-                matchingSubroles: targetSubroles,
+                matchingKinds: targetKinds,
                 depth: depth + 1,
                 maxDepth: maxDepth,
                 visited: &visited,
-                candidates: &candidates
+                items: &items
             )
         }
     }
 }
 
-func sortVisibleNotificationCandidates(_ candidates: [VisibleNotificationCandidate]) -> [VisibleNotificationCandidate] {
-    candidates.sorted { a, b in
+func sortVisibleNotificationItems(_ items: [VisibleNotificationItem]) -> [VisibleNotificationItem] {
+    items.sorted { a, b in
         let yDelta = abs(a.frame.minY - b.frame.minY)
         if yDelta > 1.0 {
             return a.frame.minY < b.frame.minY
@@ -679,7 +761,7 @@ func sortVisibleNotificationCandidates(_ candidates: [VisibleNotificationCandida
         let xDelta = abs(a.frame.minX - b.frame.minX)
         if xDelta > 1.0 {
             // Notification banners and stacks usually live at the right edge.
-            // For equal vertical positions, prefer the rightmost candidate.
+            // For equal vertical positions, prefer the rightmost item.
             return a.frame.minX > b.frame.minX
         }
 
@@ -687,66 +769,144 @@ func sortVisibleNotificationCandidates(_ candidates: [VisibleNotificationCandida
     }
 }
 
-func visibleNotificationCandidates(matchingSubroles targetSubroles: Set<String>) -> [VisibleNotificationCandidate] {
-    var allCandidates: [VisibleNotificationCandidate] = []
+func visibleNotificationItems(matchingKinds targetKinds: Set<VisibleNotificationKind>? = nil) -> [VisibleNotificationItem] {
+    var allItems: [VisibleNotificationItem] = []
 
     for root in notificationSearchRoots() {
         var visited = Set<CFHashCode>()
-        collectVisibleNotificationCandidates(
+        collectVisibleNotificationItems(
             root,
-            matchingSubroles: targetSubroles,
+            matchingKinds: targetKinds,
             visited: &visited,
-            candidates: &allCandidates
+            items: &allItems
         )
     }
 
-    var seenCandidateKeys = Set<String>()
-    var deduplicated: [VisibleNotificationCandidate] = []
+    var seenItemKeys = Set<String>()
+    var deduplicated: [VisibleNotificationItem] = []
 
-    for candidate in allCandidates {
-        let key = notificationCandidateIdentityKey(candidate)
-        guard !seenCandidateKeys.contains(key) else { continue }
+    for item in allItems {
+        let key = visibleNotificationItemIdentityKey(item)
+        guard !seenItemKeys.contains(key) else { continue }
 
-        seenCandidateKeys.insert(key)
-        deduplicated.append(candidate)
+        seenItemKeys.insert(key)
+        deduplicated.append(item)
     }
 
-    let sorted = sortVisibleNotificationCandidates(deduplicated)
+    let sorted = sortVisibleNotificationItems(deduplicated)
 
-    debugLog("VISIBLE NOTIFICATION CANDIDATES: raw=\(allCandidates.count) deduplicated=\(deduplicated.count)")
-    for (index, candidate) in sorted.enumerated() {
-        debugLog("  [\(index)] kind=\(candidate.kindLabel) frame=\(formatFrame(candidate.frame)) \(describe(candidate.element))")
+    debugLog("VISIBLE NOTIFICATION ITEMS: raw=\(allItems.count) deduplicated=\(deduplicated.count)")
+    for (index, item) in sorted.enumerated() {
+        debugLog("  [\(index)] kind=\(item.kindLabel) frame=\(formatFrame(item.frame)) actionable=\(item.isActionable) \(describe(item.element))")
     }
 
     return sorted
 }
 
-func topVisibleNotificationCandidate(
-    subrole: String,
-    actionNameContaining actionNameFragment: String
-) -> VisibleNotificationCandidate? {
-    visibleNotificationCandidates(matchingSubroles: [subrole]).first { candidate in
-        actions(candidate.element).contains { actionName in
-            actionName.localizedCaseInsensitiveContains(actionNameFragment)
-        }
+func topVisibleNotificationItem(
+    kind: VisibleNotificationKind
+) -> VisibleNotificationItem? {
+    visibleNotificationItems(matchingKinds: [kind]).first { item in
+        item.isActionable
     }
 }
 
-func visibleNotificationSummaryLines() -> [String] {
-    let candidates = visibleNotificationCandidates(
-        matchingSubroles: [
-            Config.notificationAlertSubrole,
-            Config.notificationAlertStackSubrole
-        ]
-    )
+func clearVisibleNotificationItem(_ item: VisibleNotificationItem) -> Bool {
+    performFirstAction(on: item.element, nameContaining: item.kind.actionNameFragment)
+}
 
-    return candidates.enumerated().map { index, candidate in
-        let actionList = actions(candidate.element).joined(separator: ", ")
-        return "\(index + 1). \(candidate.kindLabel) frame=[\(formatFrame(candidate.frame))] actions=[\(actionList)] \(describe(candidate.element))"
+
+func visibleNotificationStableKey(_ item: VisibleNotificationItem) -> String {
+    let id = strAttr(item.element, kAXIdentifierAttribute) ?? ""
+    if !id.isEmpty {
+        return "\(item.kind.rawValue)::id::\(id)"
+    }
+
+    let title = strAttr(item.element, kAXTitleAttribute) ?? ""
+    let desc = strAttr(item.element, kAXDescriptionAttribute) ?? ""
+    let actionKey = actions(item.element).joined(separator: "|")
+
+    // Fallback for OS versions/elements that do not expose AXIdentifier.
+    // Avoid frame here because notification frames move during animations.
+    return [
+        item.kind.rawValue,
+        title,
+        desc,
+        actionKey
+    ].joined(separator: "::")
+}
+
+func countVisibleNotificationItems(_ items: [VisibleNotificationItem], kind: VisibleNotificationKind) -> Int {
+    items.filter { $0.kind == kind }.count
+}
+
+func topActionableVisibleNotificationItem(
+    kind: VisibleNotificationKind,
+    in items: [VisibleNotificationItem]
+) -> VisibleNotificationItem? {
+    items.first { item in
+        item.kind == kind && item.isActionable
+    }
+}
+
+/// Waits until an AX action appears to have made real visible progress.
+///
+/// Important: AXUIElementPerformAction can return success even while the
+/// notification remains visible during redraw/animation. This helper does not
+/// assume that a successful AX action means a notification was actually removed.
+func waitForVisibleNotificationProgress(
+    afterClearing targetItem: VisibleNotificationItem,
+    previousItems: [VisibleNotificationItem]
+) -> Bool {
+    let targetKey = visibleNotificationStableKey(targetItem)
+    let previousAllCount = previousItems.count
+    let previousKindCount = countVisibleNotificationItems(previousItems, kind: targetItem.kind)
+    let deadline = Date().addingTimeInterval(Config.clearVisibleProgressTimeout)
+
+    while Date() < deadline {
+        let currentItems = visibleNotificationItems()
+        let currentAllCount = currentItems.count
+        let currentKindCount = countVisibleNotificationItems(currentItems, kind: targetItem.kind)
+        let targetStillVisible = currentItems.contains { item in
+            visibleNotificationStableKey(item) == targetKey
+        }
+
+        if !targetStillVisible || currentAllCount < previousAllCount || currentKindCount < previousKindCount {
+            debugLog("CLEAR VISIBLE PROGRESS: targetStillVisible=\(targetStillVisible) all=\(previousAllCount)->\(currentAllCount) kind=\(previousKindCount)->\(currentKindCount)")
+            return true
+        }
+
+        Thread.sleep(forTimeInterval: Config.clearVisibleProgressPollingInterval)
+    }
+
+    debugLog("CLEAR VISIBLE NO OBSERVED PROGRESS: kind=\(targetItem.kindLabel) targetKey=\(targetKey)")
+    return false
+}
+
+func visibleNotificationSummaryLines() -> [String] {
+    visibleNotificationItems().enumerated().map { index, item in
+        let actionList = actions(item.element).joined(separator: ", ")
+        return "\(index + 1). \(item.kindLabel) actionable=\(item.isActionable) frame=[\(formatFrame(item.frame))] actions=[\(actionList)] \(describe(item.element))"
     }
 }
 
 // MARK: - Notification Clearing
+
+/// Waits briefly for the direct Clear All Notifications button to appear.
+///
+/// This is the preferred path for the nuclear clear-all operation. In filled
+/// Notification Center layouts, this button may be lower than the visible window
+/// frame, but still present in the Accessibility tree.
+func waitForDirectClearAllNotificationsButton(in window: AXUIElement) -> AXUIElement? {
+    var button: AXUIElement?
+
+    let found = waitUntil(timeout: Config.defaultPollingTimeout, interval: Config.defaultPollingInterval) {
+        button = findDirectClearAllNotificationsButton(window)
+        return button != nil
+    }
+
+    return found ? button : nil
+}
 
 /// Waits briefly for the Clear All Notifications menu item to appear.
 ///
@@ -878,12 +1038,31 @@ enum ShutUpMac {
 
         debugLog("WINDOW: \(describe(window))")
 
-        guard let xmark = findXmark(window) else {
-            ensureNotificationCenterClosed()
-            return .success("Nothing to clear: xmark button not found", didClear: false)
+        // Preferred path: the bottom/global clear-all control is sometimes
+        // exposed directly as an AXButton with description "Clear All Notifications".
+        // This handles the filled Notification Center case where the old xmark/menu
+        // search could find the top per-stack clear control instead.
+        if let directClearAllButton = waitForDirectClearAllNotificationsButton(in: window) {
+            debugLog("FOUND DIRECT CLEAR ALL BUTTON: \(describe(directClearAllButton))")
+
+            if press(directClearAllButton) {
+                ensureNotificationCenterClosed()
+                return .success("SUCCESS: cleared all notifications", didClear: true)
+            }
+
+            debugLog("DIRECT CLEAR ALL BUTTON PRESS FAILED; trying xmark menu fallback")
+        } else {
+            debugLog("DIRECT CLEAR ALL BUTTON NOT FOUND; trying xmark menu fallback")
         }
 
-        debugLog("FOUND XMARK: \(describe(xmark))")
+        // Fallback path: older/normal layouts expose Clear All Notifications only
+        // after showing the xmark/menu-button menu.
+        guard let xmark = findXmark(window) else {
+            ensureNotificationCenterClosed()
+            return .success("Nothing to clear: Clear All Notifications control not found", didClear: false)
+        }
+
+        debugLog("FOUND XMARK FALLBACK: \(describe(xmark))")
 
         let showErr = AXUIElementPerformAction(xmark, kAXShowMenuAction as CFString)
         debugLog("AXShowMenu result: \(showErr.rawValue) \(showErr)")
@@ -893,7 +1072,7 @@ enum ShutUpMac {
             return .success("Nothing to clear: Clear All Notifications menu item not found", didClear: false)
         }
 
-        debugLog("FOUND CLEAR ITEM: \(describe(clearItem))")
+        debugLog("FOUND CLEAR ITEM FALLBACK: \(describe(clearItem))")
 
         if press(clearItem) {
             ensureNotificationCenterClosed()
@@ -917,21 +1096,18 @@ enum ShutUpMac {
     static func closeTopVisibleNotificationResult() -> ClearNotificationsResult {
         debugLog("AX trusted: \(AXIsProcessTrusted())")
 
-        guard let candidate = topVisibleNotificationCandidate(
-            subrole: Config.notificationAlertSubrole,
-            actionNameContaining: Config.notificationCloseActionNameFragment
-        ) else {
+        guard let item = topVisibleNotificationItem(kind: .single) else {
             dumpLikelySystemWindows()
-            return .success("Nothing to close: no visible single notification found", didClear: false)
+            return .success("Nothing to clear: no visible single notification found", didClear: false)
         }
 
-        debugLog("FOUND TOP VISIBLE SINGLE NOTIFICATION: \(describe(candidate.element))")
+        debugLog("FOUND TOP VISIBLE SINGLE NOTIFICATION: \(describe(item.element))")
 
-        if performFirstAction(on: candidate.element, nameContaining: Config.notificationCloseActionNameFragment) {
-            return .success("SUCCESS: closed top visible notification", didClear: true)
+        if clearVisibleNotificationItem(item) {
+            return .success("SUCCESS: cleared top visible single notification", didClear: true)
         }
 
-        return .failure("Close failed")
+        return .failure("Clear single notification failed")
     }
 
     /// Bare-bones targeted action.
@@ -947,21 +1123,108 @@ enum ShutUpMac {
     static func clearTopVisibleStackResult() -> ClearNotificationsResult {
         debugLog("AX trusted: \(AXIsProcessTrusted())")
 
-        guard let candidate = topVisibleNotificationCandidate(
-            subrole: Config.notificationAlertStackSubrole,
-            actionNameContaining: Config.notificationClearAllActionNameFragment
-        ) else {
+        guard let item = topVisibleNotificationItem(kind: .stack) else {
             dumpLikelySystemWindows()
             return .success("Nothing to clear: no visible notification stack found", didClear: false)
         }
 
-        debugLog("FOUND TOP VISIBLE NOTIFICATION STACK: \(describe(candidate.element))")
+        debugLog("FOUND TOP VISIBLE NOTIFICATION STACK: \(describe(item.element))")
 
-        if performFirstAction(on: candidate.element, nameContaining: Config.notificationClearAllActionNameFragment) {
+        if clearVisibleNotificationItem(item) {
             return .success("SUCCESS: cleared top visible notification stack", didClear: true)
         }
 
         return .failure("Clear stack failed")
+    }
+
+    /// Clears visible notifications without opening Notification Center.
+    ///
+    /// This repeatedly takes a fresh snapshot of visible single notifications and
+    /// visible stacks, clears the top actionable item, waits briefly for macOS to
+    /// update the AX tree, then repeats until nothing actionable is visible.
+    static func clearVisibleNotifications() -> ClearNotificationsResult {
+        let result = clearVisibleNotificationsResult()
+        return result
+    }
+
+    /// Result-returning variant for the CLI.
+    static func clearVisibleNotificationsResult() -> ClearNotificationsResult {
+        debugLog("AX trusted: \(AXIsProcessTrusted())")
+
+        var didClearAnything = false
+        var actionCount = 0
+        var observedProgressCount = 0
+        var consecutiveNoProgressActions = 0
+
+        for cycle in 1...Config.clearVisibleMaxCycles {
+            let cycleStartItems = visibleNotificationItems()
+            let cycleStartActionableItems = cycleStartItems.filter { $0.isActionable }
+
+            if cycleStartActionableItems.isEmpty {
+                if didClearAnything {
+                    return .success(
+                        "SUCCESS: cleared visible notifications with \(actionCount) AX action(s) and \(observedProgressCount) observed progress event(s)",
+                        didClear: true
+                    )
+                } else {
+                    return .success("Nothing to clear: no visible notifications found", didClear: false)
+                }
+            }
+
+            let singleCount = countVisibleNotificationItems(cycleStartActionableItems, kind: .single)
+            let stackCount = countVisibleNotificationItems(cycleStartActionableItems, kind: .stack)
+            debugLog("CLEAR VISIBLE CYCLE \(cycle): singles=\(singleCount) stacks=\(stackCount) total=\(cycleStartActionableItems.count)")
+
+            // Order does not matter for the visible sweep. Clear singles first,
+            // then stacks. Each action uses a fresh snapshot and waits for
+            // observed progress before moving on.
+            for kind in [VisibleNotificationKind.single, VisibleNotificationKind.stack] {
+                while true {
+                    let beforeItems = visibleNotificationItems()
+
+                    guard let item = topActionableVisibleNotificationItem(kind: kind, in: beforeItems) else {
+                        break
+                    }
+
+                    if actionCount >= Config.clearVisibleMaxActions {
+                        return .failure(
+                            "Stopped after \(actionCount) visible clear AX action(s); visible notifications may remain"
+                        )
+                    }
+
+                    debugLog("CLEAR VISIBLE ACTION \(actionCount + 1): kind=\(item.kindLabel) frame=\(formatFrame(item.frame)) \(describe(item.element))")
+
+                    guard clearVisibleNotificationItem(item) else {
+                        return .failure("Clear visible failed on \(item.kindLabel) after \(actionCount) AX action(s)")
+                    }
+
+                    didClearAnything = true
+                    actionCount += 1
+
+                    let observedProgress = waitForVisibleNotificationProgress(
+                        afterClearing: item,
+                        previousItems: beforeItems
+                    )
+
+                    if observedProgress {
+                        observedProgressCount += 1
+                        consecutiveNoProgressActions = 0
+                    } else {
+                        consecutiveNoProgressActions += 1
+
+                        if consecutiveNoProgressActions >= Config.clearVisibleMaxConsecutiveNoProgressActions {
+                            return .failure(
+                                "Stopped after \(actionCount) visible clear AX action(s); no visible progress was observed for \(consecutiveNoProgressActions) consecutive action(s)"
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        return .failure(
+            "Stopped after \(Config.clearVisibleMaxCycles) visible clear cycle(s); visible notifications may remain"
+        )
     }
 
     /// CLI/debug helper. Safe for the menu app to ignore.
@@ -969,3 +1232,4 @@ enum ShutUpMac {
         visibleNotificationSummaryLines()
     }
 }
+

@@ -5,6 +5,7 @@ import Darwin
 
 private enum CLIAction {
     case clearAll
+    case clearVisible
     case clearSingleNotification
     case clearTopVisibleStack
     case listVisible
@@ -53,6 +54,9 @@ case .listVisible:
 case .clearAll:
     finish(with: ShutUpMac.clearNotifications(), quiet: options.quiet)
 
+case .clearVisible:
+    finish(with: ShutUpMac.clearVisibleNotificationsResult(), quiet: options.quiet)
+
 case .clearSingleNotification:
     finish(with: ShutUpMac.closeTopVisibleNotificationResult(), quiet: options.quiet)
 
@@ -80,6 +84,9 @@ private func parse(arguments: [String]) -> (options: CLIOptions?, error: String?
 
         case "--clear-all", "-a":
             if let error = setAction(.clearAll, from: arg) { return (nil, error) }
+
+        case "--clear-visible", "-v":
+            if let error = setAction(.clearVisible, from: arg) { return (nil, error) }
 
         case "--clear-single", "-n":
             if let error = setAction(.clearSingleNotification, from: arg) { return (nil, error) }
@@ -127,6 +134,11 @@ private func usage() -> String {
           uses Clear All Notifications, then closes Notification Center.
           This is also the default when no action is provided.
 
+      --clear-visible, -v
+          Clear visible notifications only without opening Notification Center.
+          Repeatedly clears visible single notifications and visible stacks
+          until no actionable visible notification items remain.
+
       --clear-single, -n
           Clear the top visible single notification only.
           Ignores notification stacks.
@@ -152,6 +164,7 @@ private func usage() -> String {
     Examples:
       shutupmac-cli
       shutupmac-cli --clear-all
+      shutupmac-cli --clear-visible
       shutupmac-cli --clear-single
       shutupmac-cli --clear-stack
       shutupmac-cli --list --debug
