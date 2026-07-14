@@ -44,6 +44,7 @@
 		27DD8BA93004715C001B042B /* Exceptions for "ShutUpMac" folder in "ShutUpMacCLI" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				AXDiagnostics.swift,
 				AXHelpers.swift,
 				NotificationCenterAccess.swift,
 				ShutUpMacEngine.swift,
