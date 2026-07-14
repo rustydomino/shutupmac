@@ -47,6 +47,7 @@
 				AXHelpers.swift,
 				NotificationCenterAccess.swift,
 				ShutUpMacEngine.swift,
+				VisibleNotifications.swift,
 			);
 			target = 27DD8B9E30046E06001B042B /* ShutUpMacCLI */;
 		};
