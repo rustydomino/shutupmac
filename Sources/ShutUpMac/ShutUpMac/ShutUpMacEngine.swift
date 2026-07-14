@@ -209,6 +209,29 @@ func describe(_ e: AXUIElement) -> String {
     return "role=\(role) subrole=\(subrole) title=\(title) desc=\(desc) id=\(id) focused=\(focused) frame=\(frameDescription) actions=[\(acts)]"
 }
 
+func shortenedAXText(_ value: String?, maxLength: Int = 80) -> String {
+    guard let value, !value.isEmpty else { return "nil" }
+
+    let cleaned = value
+        .replacingOccurrences(of: "\n", with: "\\n")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+
+    guard cleaned.count > maxLength else { return cleaned }
+    return String(cleaned.prefix(maxLength)) + "..."
+}
+
+func compactDescribe(_ e: AXUIElement, maxTextLength: Int = 80) -> String {
+    let role = strAttr(e, kAXRoleAttribute) ?? "nil"
+    let subrole = strAttr(e, kAXSubroleAttribute) ?? "nil"
+    let title = shortenedAXText(strAttr(e, kAXTitleAttribute), maxLength: maxTextLength)
+    let desc = shortenedAXText(strAttr(e, kAXDescriptionAttribute), maxLength: maxTextLength)
+    let id = shortenedAXText(strAttr(e, kAXIdentifierAttribute), maxLength: maxTextLength)
+    let frameDescription = frameAttr(e).map(formatFrame) ?? "nil"
+    let acts = actions(e).joined(separator: ",")
+
+    return "role=\(role) subrole=\(subrole) title=\(title) desc=\(desc) id=\(id) frame=\(frameDescription) actions=[\(acts)]"
+}
+
 func waitUntil(
     timeout: TimeInterval = Config.defaultPollingTimeout,
     interval: TimeInterval = Config.defaultPollingInterval,
@@ -769,10 +792,13 @@ func sortVisibleNotificationItems(_ items: [VisibleNotificationItem]) -> [Visibl
     }
 }
 
-func visibleNotificationItems(matchingKinds targetKinds: Set<VisibleNotificationKind>? = nil) -> [VisibleNotificationItem] {
+func visibleNotificationItems(
+    matchingKinds targetKinds: Set<VisibleNotificationKind>? = nil,
+    debugDump: Bool = false
+) -> [VisibleNotificationItem] {
     var allItems: [VisibleNotificationItem] = []
 
-    for root in notificationSearchRoots() {
+    for root in notificationSearchRoots(logFound: debugDump) {
         var visited = Set<CFHashCode>()
         collectVisibleNotificationItems(
             root,
@@ -795,9 +821,11 @@ func visibleNotificationItems(matchingKinds targetKinds: Set<VisibleNotification
 
     let sorted = sortVisibleNotificationItems(deduplicated)
 
-    debugLog("VISIBLE NOTIFICATION ITEMS: raw=\(allItems.count) deduplicated=\(deduplicated.count)")
-    for (index, item) in sorted.enumerated() {
-        debugLog("  [\(index)] kind=\(item.kindLabel) frame=\(formatFrame(item.frame)) actionable=\(item.isActionable) \(describe(item.element))")
+    if debugDump {
+        debugLog("VISIBLE_SCAN: raw=\(allItems.count) deduplicated=\(deduplicated.count)")
+        for (index, item) in sorted.enumerated() {
+            debugLog("  [\(index)] kind=\(item.kindLabel) frame=\(formatFrame(item.frame)) actionable=\(item.isActionable) \(compactDescribe(item.element))")
+        }
     }
 
     return sorted
@@ -872,14 +900,14 @@ func waitForVisibleNotificationProgress(
         }
 
         if !targetStillVisible || currentAllCount < previousAllCount || currentKindCount < previousKindCount {
-            debugLog("CLEAR VISIBLE PROGRESS: targetStillVisible=\(targetStillVisible) all=\(previousAllCount)->\(currentAllCount) kind=\(previousKindCount)->\(currentKindCount)")
+            debugLog("CLEAR_VISIBLE: progress targetStillVisible=\(targetStillVisible) all=\(previousAllCount)->\(currentAllCount) kind=\(previousKindCount)->\(currentKindCount)")
             return true
         }
 
         Thread.sleep(forTimeInterval: Config.clearVisibleProgressPollingInterval)
     }
 
-    debugLog("CLEAR VISIBLE NO OBSERVED PROGRESS: kind=\(targetItem.kindLabel) targetKey=\(targetKey)")
+    debugLog("CLEAR_VISIBLE: no observed progress kind=\(targetItem.kindLabel) targetKey=\(shortenedAXText(targetKey, maxLength: 120))")
     return false
 }
 
@@ -1021,6 +1049,391 @@ func dumpVisibleNotificationCandidates() {
     }
 }
 
+struct AXDumpCandidate {
+    let appName: String
+    let bundleID: String
+    let pid: pid_t
+    let element: AXUIElement
+    let frame: CGRect?
+    let role: String?
+    let subrole: String?
+    let identifier: String?
+    let title: String?
+    let desc: String?
+    let help: String?
+    let actions: [String]
+    let reasons: [String]
+    let path: [String]
+}
+
+struct AXDumpMenuItem {
+    let role: String?
+    let title: String?
+    let desc: String?
+    let frame: CGRect?
+    let actions: [String]
+}
+
+func formatFrameWithMaxY(_ rect: CGRect?) -> String {
+    guard let rect else { return "nil" }
+
+    return String(
+        format: "x=%.0f y=%.0f w=%.0f h=%.0f maxY=%.0f",
+        rect.origin.x,
+        rect.origin.y,
+        rect.size.width,
+        rect.size.height,
+        rect.maxY
+    )
+}
+
+func axDumpElementPathPart(_ element: AXUIElement) -> String {
+    let role = strAttr(element, kAXRoleAttribute) ?? "?"
+    let subrole = strAttr(element, kAXSubroleAttribute)
+    let identifier = strAttr(element, kAXIdentifierAttribute)
+    let title = strAttr(element, kAXTitleAttribute)
+    let desc = strAttr(element, kAXDescriptionAttribute)
+
+    var pieces = [role]
+
+    if let subrole, !subrole.isEmpty {
+        pieces.append("subrole=\(subrole)")
+    }
+
+    if let identifier, !identifier.isEmpty {
+        pieces.append("id=\(shortenedAXText(identifier, maxLength: 36))")
+    }
+
+    if let title, !title.isEmpty {
+        pieces.append("title=\(shortenedAXText(title, maxLength: 36))")
+    } else if let desc, !desc.isEmpty {
+        pieces.append("desc=\(shortenedAXText(desc, maxLength: 36))")
+    }
+
+    return pieces.joined(separator: " ")
+}
+
+func axDumpReasons(
+    role: String?,
+    subrole: String?,
+    identifier: String?,
+    title: String?,
+    desc: String?,
+    help: String?,
+    actions: [String]
+) -> [String] {
+    var reasons: [String] = []
+
+    let text = [role, subrole, identifier, title, desc, help]
+        .compactMap { $0 }
+        .joined(separator: " ")
+        .lowercased()
+
+    let actionText = actions.joined(separator: " ").lowercased()
+    let roleText = role ?? ""
+
+    if identifier?.localizedCaseInsensitiveContains(Config.clearButtonIdentifier) == true {
+        reasons.append("identifier contains xmark")
+    }
+
+    if text.contains("clear") {
+        reasons.append("text contains clear")
+    }
+
+    if text.contains("close") {
+        reasons.append("text contains close")
+    }
+
+    if text.contains("notification") {
+        reasons.append("text contains notification")
+    }
+
+    if actions.contains(kAXShowMenuAction as String) {
+        reasons.append("has AXShowMenu")
+    }
+
+    if actionText.contains("clear") {
+        reasons.append("action contains clear")
+    }
+
+    if actionText.contains("close") {
+        reasons.append("action contains close")
+    }
+
+    if subrole == Config.notificationAlertSubrole || subrole == Config.notificationAlertStackSubrole {
+        reasons.append("notification item")
+    }
+
+    if (
+        roleText == kAXButtonRole as String ||
+        roleText == kAXMenuButtonRole as String
+    ), !reasons.isEmpty {
+        reasons.append("button-like")
+    }
+
+    return reasons
+}
+
+func collectAXDumpCandidates(
+    _ element: AXUIElement,
+    appName: String,
+    bundleID: String,
+    pid: pid_t,
+    path: [String],
+    depth: Int = 0,
+    maxDepth: Int = Config.defaultAXTreeSearchMaxDepth,
+    visited: inout Set<CFHashCode>,
+    candidates: inout [AXDumpCandidate]
+) {
+    if depth > maxDepth { return }
+
+    let hash = CFHash(element)
+    if visited.contains(hash) { return }
+    visited.insert(hash)
+
+    let role = strAttr(element, kAXRoleAttribute)
+    let subrole = strAttr(element, kAXSubroleAttribute)
+    let identifier = strAttr(element, kAXIdentifierAttribute)
+    let title = strAttr(element, kAXTitleAttribute)
+    let desc = strAttr(element, kAXDescriptionAttribute)
+    let help = strAttr(element, kAXHelpAttribute)
+    let elementActions = actions(element)
+    let reasons = axDumpReasons(
+        role: role,
+        subrole: subrole,
+        identifier: identifier,
+        title: title,
+        desc: desc,
+        help: help,
+        actions: elementActions
+    )
+
+    let currentPath = path + [axDumpElementPathPart(element)]
+
+    if !reasons.isEmpty {
+        candidates.append(
+            AXDumpCandidate(
+                appName: appName,
+                bundleID: bundleID,
+                pid: pid,
+                element: element,
+                frame: frameAttr(element),
+                role: role,
+                subrole: subrole,
+                identifier: identifier,
+                title: title,
+                desc: desc,
+                help: help,
+                actions: elementActions,
+                reasons: reasons,
+                path: currentPath
+            )
+        )
+    }
+
+    for name in [kAXVisibleChildrenAttribute, kAXChildrenAttribute, "AXChildrenInNavigationOrder"] {
+        for child in children(element, name) {
+            collectAXDumpCandidates(
+                child,
+                appName: appName,
+                bundleID: bundleID,
+                pid: pid,
+                path: currentPath,
+                depth: depth + 1,
+                maxDepth: maxDepth,
+                visited: &visited,
+                candidates: &candidates
+            )
+        }
+    }
+}
+
+func collectAXDumpMenuItems(
+    _ element: AXUIElement,
+    depth: Int = 0,
+    maxDepth: Int = 12,
+    visited: inout Set<CFHashCode>,
+    items: inout [AXDumpMenuItem]
+) {
+    if depth > maxDepth { return }
+
+    let hash = CFHash(element)
+    if visited.contains(hash) { return }
+    visited.insert(hash)
+
+    let role = strAttr(element, kAXRoleAttribute)
+    let title = strAttr(element, kAXTitleAttribute)
+    let desc = strAttr(element, kAXDescriptionAttribute)
+    let elementFrame = frameAttr(element)
+    let elementActions = actions(element)
+
+    let roleText = role?.lowercased() ?? ""
+    let text = [title, desc]
+        .compactMap { $0 }
+        .joined(separator: " ")
+        .lowercased()
+
+    let hasRelevantText =
+        text.contains("clear") ||
+        text.contains("notification") ||
+        text.contains("mute") ||
+        text.contains("turn off") ||
+        text.contains("settings")
+
+    let isRealMenu =
+        (roleText.contains("menu") || roleText.contains("button")) &&
+        ((elementFrame?.width ?? 0) > 1) &&
+        ((elementFrame?.height ?? 0) > 1)
+
+    if hasRelevantText || isRealMenu {
+        items.append(
+            AXDumpMenuItem(
+                role: role,
+                title: title,
+                desc: desc,
+                frame: elementFrame,
+                actions: elementActions
+            )
+        )
+    }
+
+    for name in [kAXVisibleChildrenAttribute, kAXChildrenAttribute, "AXChildrenInNavigationOrder"] {
+        for child in children(element, name) {
+            collectAXDumpMenuItems(
+                child,
+                depth: depth + 1,
+                maxDepth: maxDepth,
+                visited: &visited,
+                items: &items
+            )
+        }
+    }
+}
+
+func pressEscapeForAXDump() {
+    let source = CGEventSource(stateID: .hidSystemState)
+    let down = CGEvent(keyboardEventSource: source, virtualKey: 53, keyDown: true)
+    let up = CGEvent(keyboardEventSource: source, virtualKey: 53, keyDown: false)
+
+    down?.post(tap: .cghidEventTap)
+    up?.post(tap: .cghidEventTap)
+}
+
+func dumpNotificationCenterAXControlsImpl(probeMenus: Bool) {
+    print("AX trusted: \(AXIsProcessTrusted())")
+
+    var allCandidates: [AXDumpCandidate] = []
+
+    for app in notificationCenterApplications() {
+        let bundleID = app.bundleIdentifier ?? "unknown"
+        let appName = app.localizedName ?? "unknown"
+        let pid = app.processIdentifier
+        let axApp = AXUIElementCreateApplication(pid)
+        let windows = children(axApp, kAXWindowsAttribute)
+        let notificationWindows = windows.filter(isNotificationCenterWindow)
+        let roots = notificationWindows.isEmpty ? [axApp] : notificationWindows
+
+        print("APP: \(appName) bundle=\(bundleID) pid=\(pid) windows=\(windows.count) notificationWindows=\(notificationWindows.count)")
+
+        if notificationWindows.isEmpty {
+            var visited = Set<CFHashCode>()
+            collectAXDumpCandidates(
+                axApp,
+                appName: appName,
+                bundleID: bundleID,
+                pid: pid,
+                path: ["\(appName) pid=\(pid)", "app"],
+                visited: &visited,
+                candidates: &allCandidates
+            )
+        } else {
+            for window in roots {
+                let title = strAttr(window, kAXTitleAttribute)
+                print("  WINDOW: title=\(shortenedAXText(title, maxLength: 80)) frame=\(formatFrameWithMaxY(frameAttr(window)))")
+
+                var visited = Set<CFHashCode>()
+                collectAXDumpCandidates(
+                    window,
+                    appName: appName,
+                    bundleID: bundleID,
+                    pid: pid,
+                    path: ["\(appName) pid=\(pid)", "window=\(shortenedAXText(title, maxLength: 80))"],
+                    visited: &visited,
+                    candidates: &allCandidates
+                )
+            }
+        }
+    }
+
+    let candidates = allCandidates.sorted { left, right in
+        let leftMaxY = left.frame?.maxY ?? -Double.greatestFiniteMagnitude
+        let rightMaxY = right.frame?.maxY ?? -Double.greatestFiniteMagnitude
+
+        if leftMaxY != rightMaxY {
+            return leftMaxY > rightMaxY
+        }
+
+        return (left.frame?.minX ?? 0) > (right.frame?.minX ?? 0)
+    }
+
+    print("")
+    print("FOUND \(candidates.count) suspicious Notification Center AX candidate(s), sorted bottom-to-top")
+    print("")
+
+    for (index, candidate) in candidates.enumerated() {
+        print("[\(index)]")
+        print("  app: \(candidate.appName) bundle=\(candidate.bundleID) pid=\(candidate.pid)")
+        print("  frame: \(formatFrameWithMaxY(candidate.frame))")
+        print("  role: \(shortenedAXText(candidate.role, maxLength: 80))")
+        print("  subrole: \(shortenedAXText(candidate.subrole, maxLength: 80))")
+        print("  identifier: \(shortenedAXText(candidate.identifier, maxLength: 80))")
+        print("  title: \(shortenedAXText(candidate.title, maxLength: 100))")
+        print("  desc: \(shortenedAXText(candidate.desc, maxLength: 100))")
+        print("  help: \(shortenedAXText(candidate.help, maxLength: 100))")
+        print("  actions: \(candidate.actions.joined(separator: ", "))")
+        print("  reasons: \(candidate.reasons.joined(separator: ", "))")
+        print("  path:")
+
+        for pathPart in candidate.path {
+            print("    \(pathPart)")
+        }
+
+        if probeMenus, candidate.actions.contains(kAXShowMenuAction as String) {
+            print("  menu probe:")
+
+            let result = AXUIElementPerformAction(candidate.element, kAXShowMenuAction as CFString)
+            print("    AXShowMenu result: \(result.rawValue) \(result)")
+            Thread.sleep(forTimeInterval: 0.25)
+
+            let axApp = AXUIElementCreateApplication(candidate.pid)
+            var visited = Set<CFHashCode>()
+            var menuItems: [AXDumpMenuItem] = []
+            collectAXDumpMenuItems(
+                axApp,
+                visited: &visited,
+                items: &menuItems
+            )
+
+            if menuItems.isEmpty {
+                print("    no relevant menu-ish items found after AXShowMenu")
+            } else {
+                for (menuIndex, item) in menuItems.prefix(60).enumerated() {
+                    print("    [menu \(menuIndex)] role=\(shortenedAXText(item.role, maxLength: 60)) title=\(shortenedAXText(item.title, maxLength: 100)) desc=\(shortenedAXText(item.desc, maxLength: 100)) frame=\(formatFrameWithMaxY(item.frame)) actions=\(item.actions.joined(separator: ", "))")
+                }
+
+                if menuItems.count > 60 {
+                    print("    ... \(menuItems.count - 60) additional relevant menu-ish item(s) omitted")
+                }
+            }
+
+            pressEscapeForAXDump()
+            Thread.sleep(forTimeInterval: 0.10)
+        }
+
+        print("")
+    }
+}
+
 // MARK: - Callable Engine
 
 /// Public-facing notification engine.
@@ -1036,23 +1449,23 @@ enum ShutUpMac {
             return .failure("Could not open Notification Center")
         }
 
-        debugLog("WINDOW: \(describe(window))")
+        debugLog("CLEAR_ALL: window \(compactDescribe(window))")
 
         // Preferred path: the bottom/global clear-all control is sometimes
         // exposed directly as an AXButton with description "Clear All Notifications".
         // This handles the filled Notification Center case where the old xmark/menu
         // search could find the top per-stack clear control instead.
         if let directClearAllButton = waitForDirectClearAllNotificationsButton(in: window) {
-            debugLog("FOUND DIRECT CLEAR ALL BUTTON: \(describe(directClearAllButton))")
+            debugLog("CLEAR_ALL: found direct Clear All Notifications button \(compactDescribe(directClearAllButton))")
 
             if press(directClearAllButton) {
                 ensureNotificationCenterClosed()
                 return .success("SUCCESS: cleared all notifications", didClear: true)
             }
 
-            debugLog("DIRECT CLEAR ALL BUTTON PRESS FAILED; trying xmark menu fallback")
+            debugLog("CLEAR_ALL: direct button press failed; trying xmark/menu fallback")
         } else {
-            debugLog("DIRECT CLEAR ALL BUTTON NOT FOUND; trying xmark menu fallback")
+            debugLog("CLEAR_ALL: direct button not found; trying xmark/menu fallback")
         }
 
         // Fallback path: older/normal layouts expose Clear All Notifications only
@@ -1062,17 +1475,17 @@ enum ShutUpMac {
             return .success("Nothing to clear: Clear All Notifications control not found", didClear: false)
         }
 
-        debugLog("FOUND XMARK FALLBACK: \(describe(xmark))")
+        debugLog("CLEAR_ALL: found xmark fallback \(compactDescribe(xmark))")
 
         let showErr = AXUIElementPerformAction(xmark, kAXShowMenuAction as CFString)
-        debugLog("AXShowMenu result: \(showErr.rawValue) \(showErr)")
+        debugLog("CLEAR_ALL: AXShowMenu result \(showErr.rawValue) \(showErr)")
 
         guard let clearItem = waitForClearAll(in: window) else {
             ensureNotificationCenterClosed()
             return .success("Nothing to clear: Clear All Notifications menu item not found", didClear: false)
         }
 
-        debugLog("FOUND CLEAR ITEM FALLBACK: \(describe(clearItem))")
+        debugLog("CLEAR_ALL: found Clear All menu item fallback \(compactDescribe(clearItem))")
 
         if press(clearItem) {
             ensureNotificationCenterClosed()
@@ -1101,7 +1514,7 @@ enum ShutUpMac {
             return .success("Nothing to clear: no visible single notification found", didClear: false)
         }
 
-        debugLog("FOUND TOP VISIBLE SINGLE NOTIFICATION: \(describe(item.element))")
+        debugLog("CLEAR_SINGLE: found top visible single notification \(compactDescribe(item.element))")
 
         if clearVisibleNotificationItem(item) {
             return .success("SUCCESS: cleared top visible single notification", didClear: true)
@@ -1128,7 +1541,7 @@ enum ShutUpMac {
             return .success("Nothing to clear: no visible notification stack found", didClear: false)
         }
 
-        debugLog("FOUND TOP VISIBLE NOTIFICATION STACK: \(describe(item.element))")
+        debugLog("CLEAR_STACK: found top visible notification stack \(compactDescribe(item.element))")
 
         if clearVisibleNotificationItem(item) {
             return .success("SUCCESS: cleared top visible notification stack", didClear: true)
@@ -1173,7 +1586,7 @@ enum ShutUpMac {
 
             let singleCount = countVisibleNotificationItems(cycleStartActionableItems, kind: .single)
             let stackCount = countVisibleNotificationItems(cycleStartActionableItems, kind: .stack)
-            debugLog("CLEAR VISIBLE CYCLE \(cycle): singles=\(singleCount) stacks=\(stackCount) total=\(cycleStartActionableItems.count)")
+            debugLog("CLEAR_VISIBLE: cycle=\(cycle) singles=\(singleCount) stacks=\(stackCount) total=\(cycleStartActionableItems.count)")
 
             // Order does not matter for the visible sweep. Clear singles first,
             // then stacks. Each action uses a fresh snapshot and waits for
@@ -1192,7 +1605,7 @@ enum ShutUpMac {
                         )
                     }
 
-                    debugLog("CLEAR VISIBLE ACTION \(actionCount + 1): kind=\(item.kindLabel) frame=\(formatFrame(item.frame)) \(describe(item.element))")
+                    debugLog("CLEAR_VISIBLE: action=\(actionCount + 1) kind=\(item.kindLabel) frame=\(formatFrame(item.frame))")
 
                     guard clearVisibleNotificationItem(item) else {
                         return .failure("Clear visible failed on \(item.kindLabel) after \(actionCount) AX action(s)")
@@ -1227,9 +1640,15 @@ enum ShutUpMac {
         )
     }
 
+    /// Diagnostic helper for AX reverse-engineering. This intentionally prints
+    /// a large amount of information and may perturb Notification Center state
+    /// when menu probing is enabled.
+    static func dumpNotificationCenterAXControls(probeMenus: Bool = false) {
+        dumpNotificationCenterAXControlsImpl(probeMenus: probeMenus)
+    }
+
     /// CLI/debug helper. Safe for the menu app to ignore.
     static func visibleNotificationSummaries() -> [String] {
         visibleNotificationSummaryLines()
     }
 }
-

@@ -3,12 +3,13 @@ import Darwin
 
 // Add this file only to the CLI target, not to the SwiftUI menu-bar app target.
 
-private enum CLIAction {
+private enum CLIAction: Equatable {
     case clearAll
     case clearVisible
     case clearSingleNotification
     case clearTopVisibleStack
     case listVisible
+    case axDump
     case help
 }
 
@@ -17,6 +18,7 @@ private struct CLIOptions {
     var didSetAction = false
     var quiet = false
     var debug = false
+    var probeMenus = false
 }
 
 private let parseResult = parse(arguments: Array(CommandLine.arguments.dropFirst()))
@@ -49,6 +51,10 @@ case .listVisible:
             print(line)
         }
     }
+    Darwin.exit(0)
+
+case .axDump:
+    ShutUpMac.dumpNotificationCenterAXControls(probeMenus: options.probeMenus)
     Darwin.exit(0)
 
 case .clearAll:
@@ -97,6 +103,12 @@ private func parse(arguments: [String]) -> (options: CLIOptions?, error: String?
         case "--list", "--list-visible", "-l":
             if let error = setAction(.listVisible, from: arg) { return (nil, error) }
 
+        case "--ax-dump":
+            if let error = setAction(.axDump, from: arg) { return (nil, error) }
+
+        case "--probe-menus":
+            options.probeMenus = true
+
         case "--debug":
             options.debug = true
 
@@ -106,6 +118,14 @@ private func parse(arguments: [String]) -> (options: CLIOptions?, error: String?
         default:
             return (nil, "Unknown argument: \(arg)")
         }
+    }
+
+    if options.probeMenus && options.action != .axDump {
+        return (nil, "--probe-menus can only be used with --ax-dump")
+    }
+
+    if options.quiet && options.action == .axDump {
+        return (nil, "--quiet cannot be used with --ax-dump")
     }
 
     return (options, nil)
@@ -130,8 +150,8 @@ private func usage() -> String {
 
     Actions:
       --clear-all, -a
-          Existing reliable clear-all method. Opens Notification Center,
-          uses Clear All Notifications, then closes Notification Center.
+          Reliable clear-all method. Opens Notification Center,
+          presses Clear All Notifications, then closes Notification Center.
           This is also the default when no action is provided.
 
       --clear-visible, -v
@@ -151,22 +171,33 @@ private func usage() -> String {
           Print visible notification and stack candidates for testing.
           Does not perform an action.
 
+      --ax-dump
+          Print suspicious Notification Center Accessibility elements for
+          reverse-engineering and diagnostics. Does not clear notifications.
+
     Options:
+      --probe-menus
+          With --ax-dump only, actively perform AXShowMenu on suspicious
+          elements and print the relevant menu-ish items that appear.
+          This may perturb Notification Center state.
+
       --debug
-          Enable debug logging in release builds.
+          Enable concise operational debug logging in release builds.
 
       --quiet, -q
-          Suppress successful status output.
+          Suppress successful status output. Not valid with --ax-dump.
 
       --help, -h
           Show this help text.
 
     Examples:
       shutupmac-cli
-      shutupmac-cli --clear-all
-      shutupmac-cli --clear-visible
+      shutupmac-cli --clear-all --debug
+      shutupmac-cli --clear-visible --debug
       shutupmac-cli --clear-single
       shutupmac-cli --clear-stack
-      shutupmac-cli --list --debug
+      shutupmac-cli --list
+      shutupmac-cli --ax-dump
+      shutupmac-cli --ax-dump --probe-menus
     """
 }
