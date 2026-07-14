@@ -64,8 +64,8 @@ enum Config {
     static let clearVisibleMaxCycles = 50
     static let clearVisibleMaxActions = 200
     static let clearVisibleMaxConsecutiveNoProgressActions = 20
-    static let clearVisibleProgressTimeout: TimeInterval = 0.20
-    static let clearVisibleProgressPollingInterval: TimeInterval = 0.02
+    static let clearVisibleProgressTimeout: TimeInterval = 0.35
+    static let clearVisibleProgressPollingInterval: TimeInterval = 0.03
 }
 
 // MARK: - Debug Logging
