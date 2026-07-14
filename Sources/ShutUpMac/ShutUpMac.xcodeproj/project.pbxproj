@@ -47,6 +47,7 @@
 				AXDiagnostics.swift,
 				AXHelpers.swift,
 				NotificationCenterAccess.swift,
+				NotificationClearAll.swift,
 				ShutUpMacEngine.swift,
 				VisibleNotifications.swift,
 			);
