@@ -35,33 +35,40 @@ struct ShutUpMacApp: App {
 struct ShutUpMacMenu: View {
     @Environment(\.openWindow) private var openWindow
 
-    @AppStorage(PreferenceKeys.clearNotificationsHotKey) private var clearNotificationsHotKey = HotKey.defaultClear.encodedString
-    @AppStorage(PreferenceKeys.testNotificationHotKey) private var testNotificationHotKey = HotKey.defaultTestNotification.encodedString
-
-    private var clearNotificationsHotKeyDisplay: String {
-        (HotKey.decode(clearNotificationsHotKey) ?? .defaultClear).displayString
-    }
-
-    private var testNotificationHotKeyDisplay: String {
-        (HotKey.decode(testNotificationHotKey) ?? .defaultTestNotification).displayString
-    }
-
     var body: some View {
-        Button("Clear Notifications Now  \(clearNotificationsHotKeyDisplay)") {
-            print("GUI menu: Clear Notifications Now clicked")
+
+        // MARK: - Notification Actions Menu
+
+        Button("Clear Visible Notifications") {
+            print("GUI menu: Clear Visible Notifications clicked")
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                print("GUI menu: calling NotificationClearer.clear()")
-                NotificationClearer.clear()
+                print("GUI menu: calling NotificationClearer.clearVisible()")
+                NotificationClearer.clearVisible()
             }
         }
 
-        Button("Send Test Notification  \(testNotificationHotKeyDisplay)") {
+        Button("Clear All Notifications") {
+            print("GUI menu: Clear All Notifications clicked")
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                print("GUI menu: calling NotificationClearer.clearAll()")
+                NotificationClearer.clearAll()
+            }
+        }
+
+        Divider()
+
+        Button("Send Test Notification") {
             print("GUI menu: Send Test Notification clicked")
             TestNotificationSender.shared.sendTestNotification()
         }
 
+        // MARK: - End Notification Actions Menu
+
         Divider()
+
+        // MARK: - App Menu
 
         Button("About ShutUpMac") {
             openWindow(id: "about")
@@ -98,5 +105,7 @@ struct ShutUpMacMenu: View {
         Button("Quit ShutUpMac") {
             NSApplication.shared.terminate(nil)
         }
+
+        // MARK: - End App Menu
     }
 }
