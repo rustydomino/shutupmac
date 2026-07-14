@@ -15,9 +15,9 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "27D386B03002E8CC00DC4586"
-               BuildableName = "ShutUpMac.app"
-               BlueprintName = "ShutUpMac"
+               BlueprintIdentifier = "27DD8B9E30046E06001B042B"
+               BuildableName = "shutupmac-cli"
+               BlueprintName = "ShutUpMacCLI"
                ReferencedContainer = "container:ShutUpMac.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -31,7 +31,7 @@
       shouldAutocreateTestPlan = "YES">
    </TestAction>
    <LaunchAction
-      buildConfiguration = "Release"
+      buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       launchStyle = "0"
@@ -40,14 +40,15 @@
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES"
+      viewDebuggingEnabled = "No"
       queueDebuggingEnableBacktraceRecording = "Yes">
       <BuildableProductRunnable
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "27D386B03002E8CC00DC4586"
-            BuildableName = "ShutUpMac.app"
-            BlueprintName = "ShutUpMac"
+            BlueprintIdentifier = "27DD8B9E30046E06001B042B"
+            BuildableName = "shutupmac-cli"
+            BlueprintName = "ShutUpMacCLI"
             ReferencedContainer = "container:ShutUpMac.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -62,9 +63,9 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "27D386B03002E8CC00DC4586"
-            BuildableName = "ShutUpMac.app"
-            BlueprintName = "ShutUpMac"
+            BlueprintIdentifier = "27DD8B9E30046E06001B042B"
+            BuildableName = "shutupmac-cli"
+            BlueprintName = "ShutUpMacCLI"
             ReferencedContainer = "container:ShutUpMac.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

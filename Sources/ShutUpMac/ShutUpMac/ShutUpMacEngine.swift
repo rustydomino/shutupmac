@@ -1,16 +1,21 @@
 /*
  High-level execution flow:
 
- 1. Determine whether the actual Notification Center panel is already open.
- 2. Open Notification Center if necessary using the Clock menu extra.
- 3. Locate the Notification Center Accessibility window.
- 4. Locate the Clear (x) button.
- 5. Invoke "Clear All Notifications."
- 6. Ensure Notification Center is closed afterward.
+ 1. Keep the existing nuclear clear-all path:
+    - Determine whether the actual Notification Center panel is already open.
+    - Open Notification Center if necessary using the Clock menu extra.
+    - Locate the Notification Center Accessibility window.
+    - Locate the Clear (x) button.
+    - Invoke "Clear All Notifications."
+    - Ensure Notification Center is closed afterward.
 
- This version is refactored so the core behavior is callable from either:
- - the command-line executable, or
- - the macOS menu bar app.
+ 2. Add bare-bones visible-notification actions:
+    - closeTopVisibleNotification(): find the top visible single alert and run Name:Close.
+    - clearTopVisibleStack(): find the top visible stack and run Name:Clear All.
+
+ The nuclear path is intentionally separate from the newer targeted actions.
+ The targeted actions do not expand stacks, do not close single notifications when
+ asked to clear a stack, and do not open/close Notification Center.
 */
 
 import Foundation
@@ -34,6 +39,11 @@ enum Config {
     static let clockMenuExtraIdentifier = "com.apple.menuextra.clock"
     static let clearButtonIdentifier = "xmark"
     static let clearAllMenuItemTitle = "Clear All Notifications"
+
+    static let notificationAlertSubrole = "AXNotificationCenterAlert"
+    static let notificationAlertStackSubrole = "AXNotificationCenterAlertStack"
+    static let notificationCloseActionNameFragment = "Close"
+    static let notificationClearAllActionNameFragment = "Clear All"
 
     // Open-panel markers found through AX tree testing.
     // A notification banner can create a Notification Center AXWindow even when
@@ -72,7 +82,7 @@ func debugLog(_ message: @autoclosure () -> String) {
 
 // MARK: - Result Model
 
-/// The result of one attempt to clear Notification Center.
+/// The result of one notification operation.
 ///
 /// The CLI uses this to decide which message to print and which exit code to
 /// return. The GUI app can use the same result to update menu text, show a
@@ -129,14 +139,71 @@ func actions(_ e: AXUIElement) -> [String] {
     return (value as? [String]) ?? []
 }
 
+func cgPointAttr(_ e: AXUIElement, _ name: String) -> CGPoint? {
+    guard let value = attr(e, name) else { return nil }
+    guard CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+
+    let axValue = value as! AXValue
+    guard AXValueGetType(axValue) == .cgPoint else { return nil }
+
+    var point = CGPoint.zero
+    guard AXValueGetValue(axValue, .cgPoint, &point) else { return nil }
+    return point
+}
+
+func cgSizeAttr(_ e: AXUIElement, _ name: String) -> CGSize? {
+    guard let value = attr(e, name) else { return nil }
+    guard CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+
+    let axValue = value as! AXValue
+    guard AXValueGetType(axValue) == .cgSize else { return nil }
+
+    var size = CGSize.zero
+    guard AXValueGetValue(axValue, .cgSize, &size) else { return nil }
+    return size
+}
+
+func frameAttr(_ e: AXUIElement) -> CGRect? {
+    guard let position = cgPointAttr(e, kAXPositionAttribute) else { return nil }
+    guard let size = cgSizeAttr(e, kAXSizeAttribute) else { return nil }
+    return CGRect(origin: position, size: size)
+}
+
+func roundedFrameKey(_ rect: CGRect) -> String {
+    let x = Int(rect.origin.x.rounded())
+    let y = Int(rect.origin.y.rounded())
+    let w = Int(rect.size.width.rounded())
+    let h = Int(rect.size.height.rounded())
+    return "x\(x)-y\(y)-w\(w)-h\(h)"
+}
+
+func formatFrame(_ rect: CGRect) -> String {
+    String(
+        format: "x=%.0f y=%.0f w=%.0f h=%.0f",
+        rect.origin.x,
+        rect.origin.y,
+        rect.size.width,
+        rect.size.height
+    )
+}
+
 func describe(_ e: AXUIElement) -> String {
     let role = strAttr(e, kAXRoleAttribute) ?? "nil"
+    let subrole = strAttr(e, kAXSubroleAttribute) ?? "nil"
     let title = strAttr(e, kAXTitleAttribute) ?? "nil"
     let desc = strAttr(e, kAXDescriptionAttribute) ?? "nil"
     let id = strAttr(e, kAXIdentifierAttribute) ?? "nil"
     let acts = actions(e).joined(separator: ",")
     let focused = boolAttr(e, kAXFocusedAttribute).map { String($0) } ?? "nil"
-    return "role=\(role) title=\(title) desc=\(desc) id=\(id) focused=\(focused) actions=[\(acts)]"
+
+    let frameDescription: String
+    if let frame = frameAttr(e) {
+        frameDescription = formatFrame(frame)
+    } else {
+        frameDescription = "nil"
+    }
+
+    return "role=\(role) subrole=\(subrole) title=\(title) desc=\(desc) id=\(id) focused=\(focused) frame=\(frameDescription) actions=[\(acts)]"
 }
 
 func waitUntil(
@@ -161,6 +228,23 @@ func press(_ e: AXUIElement) -> Bool {
     let err = AXUIElementPerformAction(e, kAXPressAction as CFString)
     debugLog("AXPress result: \(err.rawValue) \(err)")
     return err == .success
+}
+
+func performAction(_ actionName: String, on e: AXUIElement) -> Bool {
+    let err = AXUIElementPerformAction(e, actionName as CFString)
+    debugLog("AX action \(actionName) result: \(err.rawValue) \(err)")
+    return err == .success
+}
+
+func performFirstAction(on e: AXUIElement, nameContaining needle: String) -> Bool {
+    guard let actionName = actions(e).first(where: { actionName in
+        actionName.localizedCaseInsensitiveContains(needle)
+    }) else {
+        debugLog("No AX action containing \(needle) found on element: \(describe(e))")
+        return false
+    }
+
+    return performAction(actionName, on: e)
 }
 
 // MARK: - AX Tree Search
@@ -261,9 +345,18 @@ func axWindows(for app: NSRunningApplication) -> [AXUIElement] {
 /// releases, so callers should search all known candidates rather than relying
 /// on a single bundle identifier.
 func notificationCenterApplications() -> [NSRunningApplication] {
-    Config.notificationCenterBundleIDs.flatMap { bundleID in
-        NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+    var seenPIDs = Set<pid_t>()
+    var apps: [NSRunningApplication] = []
+
+    for bundleID in Config.notificationCenterBundleIDs {
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) {
+            guard !seenPIDs.contains(app.processIdentifier) else { continue }
+            seenPIDs.insert(app.processIdentifier)
+            apps.append(app)
+        }
     }
+
+    return apps
 }
 
 /// Returns all Accessibility windows that appear to be Notification Center windows.
@@ -466,6 +559,193 @@ func ensureNotificationCenterClosed() {
     debugLog("Notification Center panel still appears open after close retries")
 }
 
+// MARK: - Visible Notification Discovery
+
+struct VisibleNotificationCandidate {
+    let element: AXUIElement
+    let subrole: String
+    let frame: CGRect
+
+    var kindLabel: String {
+        if subrole == Config.notificationAlertStackSubrole {
+            return "stack"
+        }
+
+        if subrole == Config.notificationAlertSubrole {
+            return "alert"
+        }
+
+        return subrole
+    }
+}
+
+func notificationSearchRoots(logFound: Bool = true) -> [AXUIElement] {
+    var roots: [AXUIElement] = []
+
+    for app in notificationCenterApplications() {
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        let windows = children(axApp, kAXWindowsAttribute)
+        let notificationWindows = windows.filter(isNotificationCenterWindow)
+
+        if logFound {
+            debugLog("SEARCH NOTIFICATION APP: bundle=\(app.bundleIdentifier ?? "nil") name=\(app.localizedName ?? "nil") pid=\(app.processIdentifier) windows=\(windows.count) notificationWindows=\(notificationWindows.count)")
+        }
+
+        if notificationWindows.isEmpty {
+            roots.append(axApp)
+        } else {
+            roots.append(contentsOf: notificationWindows)
+        }
+    }
+
+    return roots
+}
+
+func isUsableVisibleNotificationCandidate(_ e: AXUIElement) -> Bool {
+    if boolAttr(e, kAXHiddenAttribute) == true {
+        return false
+    }
+
+    guard let frame = frameAttr(e) else {
+        return false
+    }
+
+    return frame.size.width > 1 && frame.size.height > 1
+}
+
+func notificationCandidateIdentityKey(_ candidate: VisibleNotificationCandidate) -> String {
+    let title = strAttr(candidate.element, kAXTitleAttribute) ?? ""
+    let desc = strAttr(candidate.element, kAXDescriptionAttribute) ?? ""
+    let id = strAttr(candidate.element, kAXIdentifierAttribute) ?? ""
+    let actionKey = actions(candidate.element).joined(separator: "|")
+
+    return [
+        candidate.subrole,
+        roundedFrameKey(candidate.frame),
+        title,
+        desc,
+        id,
+        actionKey
+    ].joined(separator: "::")
+}
+
+func collectVisibleNotificationCandidates(
+    _ e: AXUIElement,
+    matchingSubroles targetSubroles: Set<String>,
+    depth: Int = 0,
+    maxDepth: Int = Config.defaultAXTreeSearchMaxDepth,
+    visited: inout Set<CFHashCode>,
+    candidates: inout [VisibleNotificationCandidate]
+) {
+    if depth > maxDepth { return }
+
+    let hash = CFHash(e)
+    if visited.contains(hash) { return }
+    visited.insert(hash)
+
+    let subrole = strAttr(e, kAXSubroleAttribute) ?? ""
+
+    if targetSubroles.contains(subrole), isUsableVisibleNotificationCandidate(e), let frame = frameAttr(e) {
+        candidates.append(
+            VisibleNotificationCandidate(
+                element: e,
+                subrole: subrole,
+                frame: frame
+            )
+        )
+    }
+
+    for name in [kAXVisibleChildrenAttribute, kAXChildrenAttribute, "AXChildrenInNavigationOrder"] {
+        for child in children(e, name) {
+            collectVisibleNotificationCandidates(
+                child,
+                matchingSubroles: targetSubroles,
+                depth: depth + 1,
+                maxDepth: maxDepth,
+                visited: &visited,
+                candidates: &candidates
+            )
+        }
+    }
+}
+
+func sortVisibleNotificationCandidates(_ candidates: [VisibleNotificationCandidate]) -> [VisibleNotificationCandidate] {
+    candidates.sorted { a, b in
+        let yDelta = abs(a.frame.minY - b.frame.minY)
+        if yDelta > 1.0 {
+            return a.frame.minY < b.frame.minY
+        }
+
+        let xDelta = abs(a.frame.minX - b.frame.minX)
+        if xDelta > 1.0 {
+            // Notification banners and stacks usually live at the right edge.
+            // For equal vertical positions, prefer the rightmost candidate.
+            return a.frame.minX > b.frame.minX
+        }
+
+        return roundedFrameKey(a.frame) < roundedFrameKey(b.frame)
+    }
+}
+
+func visibleNotificationCandidates(matchingSubroles targetSubroles: Set<String>) -> [VisibleNotificationCandidate] {
+    var allCandidates: [VisibleNotificationCandidate] = []
+
+    for root in notificationSearchRoots() {
+        var visited = Set<CFHashCode>()
+        collectVisibleNotificationCandidates(
+            root,
+            matchingSubroles: targetSubroles,
+            visited: &visited,
+            candidates: &allCandidates
+        )
+    }
+
+    var seenCandidateKeys = Set<String>()
+    var deduplicated: [VisibleNotificationCandidate] = []
+
+    for candidate in allCandidates {
+        let key = notificationCandidateIdentityKey(candidate)
+        guard !seenCandidateKeys.contains(key) else { continue }
+
+        seenCandidateKeys.insert(key)
+        deduplicated.append(candidate)
+    }
+
+    let sorted = sortVisibleNotificationCandidates(deduplicated)
+
+    debugLog("VISIBLE NOTIFICATION CANDIDATES: raw=\(allCandidates.count) deduplicated=\(deduplicated.count)")
+    for (index, candidate) in sorted.enumerated() {
+        debugLog("  [\(index)] kind=\(candidate.kindLabel) frame=\(formatFrame(candidate.frame)) \(describe(candidate.element))")
+    }
+
+    return sorted
+}
+
+func topVisibleNotificationCandidate(
+    subrole: String,
+    actionNameContaining actionNameFragment: String
+) -> VisibleNotificationCandidate? {
+    visibleNotificationCandidates(matchingSubroles: [subrole]).first { candidate in
+        actions(candidate.element).contains { actionName in
+            actionName.localizedCaseInsensitiveContains(actionNameFragment)
+        }
+    }
+}
+
+func visibleNotificationSummaryLines() -> [String] {
+    let candidates = visibleNotificationCandidates(
+        matchingSubroles: [
+            Config.notificationAlertSubrole,
+            Config.notificationAlertStackSubrole
+        ]
+    )
+
+    return candidates.enumerated().map { index, candidate in
+        let actionList = actions(candidate.element).joined(separator: ", ")
+        return "\(index + 1). \(candidate.kindLabel) frame=[\(formatFrame(candidate.frame))] actions=[\(actionList)] \(describe(candidate.element))"
+    }
+}
+
 // MARK: - Notification Clearing
 
 /// Waits briefly for the Clear All Notifications menu item to appear.
@@ -502,6 +782,7 @@ func dumpInterestingAXTree(
     counter += 1
 
     let role = strAttr(e, kAXRoleAttribute) ?? ""
+    let subrole = strAttr(e, kAXSubroleAttribute) ?? ""
     let title = strAttr(e, kAXTitleAttribute) ?? ""
     let desc = strAttr(e, kAXDescriptionAttribute) ?? ""
     let id = strAttr(e, kAXIdentifierAttribute) ?? ""
@@ -511,9 +792,11 @@ func dumpInterestingAXTree(
         !title.isEmpty ||
         !desc.isEmpty ||
         !id.isEmpty ||
+        !subrole.isEmpty ||
         !acts.isEmpty ||
         role.localizedCaseInsensitiveContains("menu") ||
-        role.localizedCaseInsensitiveContains("button")
+        role.localizedCaseInsensitiveContains("button") ||
+        subrole.localizedCaseInsensitiveContains("notification")
 
     if hasInterestingText {
         let indent = String(repeating: "  ", count: depth)
@@ -565,13 +848,25 @@ func dumpLikelySystemWindows() {
     }
 }
 
+func dumpVisibleNotificationCandidates() {
+    let lines = visibleNotificationSummaryLines()
+
+    if lines.isEmpty {
+        debugLog("DEBUG: no visible notification candidates found")
+        return
+    }
+
+    for line in lines {
+        debugLog("DEBUG: \(line)")
+    }
+}
+
 // MARK: - Callable Engine
 
-/// Public-facing clearing engine.
+/// Public-facing notification engine.
 ///
-/// This is the important refactor: the full notification-clearing workflow now
-/// lives inside one callable function. The CLI can call this function, and the
-/// menu bar app can call the same function from a button or menu item.
+/// clearNotifications() is the old reliable nuclear option. The newer targeted
+/// actions are intentionally narrow and do not call the nuclear path.
 enum ShutUpMac {
     static func clearNotifications() -> ClearNotificationsResult {
         debugLog("AX trusted: \(AXIsProcessTrusted())")
@@ -602,17 +897,75 @@ enum ShutUpMac {
 
         if press(clearItem) {
             ensureNotificationCenterClosed()
-            return .success("SUCCESS", didClear: true)
+            return .success("SUCCESS: cleared all notifications", didClear: true)
         }
 
         ensureNotificationCenterClosed()
         return .failure("PRESS FAILED")
     }
+
+    /// Bare-bones targeted action.
+    ///
+    /// Finds the top visible single notification and performs its Name:Close action.
+    /// This intentionally ignores stacks and does not expand them.
+    static func closeTopVisibleNotification() -> Bool {
+        let result = closeTopVisibleNotificationResult()
+        return result.succeeded && result.didClear
+    }
+
+    /// Result-returning variant for the CLI.
+    static func closeTopVisibleNotificationResult() -> ClearNotificationsResult {
+        debugLog("AX trusted: \(AXIsProcessTrusted())")
+
+        guard let candidate = topVisibleNotificationCandidate(
+            subrole: Config.notificationAlertSubrole,
+            actionNameContaining: Config.notificationCloseActionNameFragment
+        ) else {
+            dumpLikelySystemWindows()
+            return .success("Nothing to close: no visible single notification found", didClear: false)
+        }
+
+        debugLog("FOUND TOP VISIBLE SINGLE NOTIFICATION: \(describe(candidate.element))")
+
+        if performFirstAction(on: candidate.element, nameContaining: Config.notificationCloseActionNameFragment) {
+            return .success("SUCCESS: closed top visible notification", didClear: true)
+        }
+
+        return .failure("Close failed")
+    }
+
+    /// Bare-bones targeted action.
+    ///
+    /// Finds the top visible notification stack and performs its Name:Clear All action.
+    /// This intentionally ignores single notifications and does not expand stacks.
+    static func clearTopVisibleStack() -> Bool {
+        let result = clearTopVisibleStackResult()
+        return result.succeeded && result.didClear
+    }
+
+    /// Result-returning variant for the CLI.
+    static func clearTopVisibleStackResult() -> ClearNotificationsResult {
+        debugLog("AX trusted: \(AXIsProcessTrusted())")
+
+        guard let candidate = topVisibleNotificationCandidate(
+            subrole: Config.notificationAlertStackSubrole,
+            actionNameContaining: Config.notificationClearAllActionNameFragment
+        ) else {
+            dumpLikelySystemWindows()
+            return .success("Nothing to clear: no visible notification stack found", didClear: false)
+        }
+
+        debugLog("FOUND TOP VISIBLE NOTIFICATION STACK: \(describe(candidate.element))")
+
+        if performFirstAction(on: candidate.element, nameContaining: Config.notificationClearAllActionNameFragment) {
+            return .success("SUCCESS: cleared top visible notification stack", didClear: true)
+        }
+
+        return .failure("Clear stack failed")
+    }
+
+    /// CLI/debug helper. Safe for the menu app to ignore.
+    static func visibleNotificationSummaries() -> [String] {
+        visibleNotificationSummaryLines()
+    }
 }
-
-// MARK: - CLI Entry Point
-
-/// Thin command-line wrapper.
-///
-/// This keeps the current CLI behavior intact while ensuring the actual clearing
-/// implementation is callable from somewhere else later.
