@@ -4,106 +4,117 @@ import ApplicationServices
 import CoreGraphics
 
 private enum MuteConfig {
-    static let maxCycles = 50
-    static let menuOpenDelay: TimeInterval = 0.15
-    static let menuSearchTimeout: TimeInterval = 0.60
-    static let menuSearchInterval: TimeInterval = 0.03
-    static let postMuteDelay: TimeInterval = 0.30
-    static let progressTimeout: TimeInterval = 0.60
-    static let progressPollingInterval: TimeInterval = 0.03
+    static let menuSearchTimeout: TimeInterval = 0.1
+    static let menuSearchInterval: TimeInterval = 0.015
+    static let postMuteDelay: TimeInterval = 0.05
+
+    static let sourceDisappearTimeout: TimeInterval = 0.45
+    static let sourceDisappearPollingInterval: TimeInterval = 0.03
 
     static let muteForTodayTitle = "Mute for Today"
 }
+
+private let axChildAttributeNames = [
+    kAXVisibleChildrenAttribute as String,
+    kAXChildrenAttribute as String,
+    "AXChildrenInNavigationOrder"
+]
 
 extension ShutUpMac {
     static func muteVisibleNotificationsForTodayResult() -> ClearNotificationsResult {
         debugLog("AX trusted: \(AXIsProcessTrusted())")
 
-        var didMuteAnything = false
-        var muteActionCount = 0
-        var attemptedKeys = Set<String>()
+        let visibleItems = visibleNotificationItems()
 
-        for cycle in 1...MuteConfig.maxCycles {
-            let visibleItems = visibleNotificationItems()
-            let remainingCandidates = visibleItems.filter { item in
-                !attemptedKeys.contains(visibleNotificationStableKey(item))
-            }
-
-            if remainingCandidates.isEmpty {
-                if visibleItems.isEmpty {
-                    if didMuteAnything {
-                        let noun = muteActionCount == 1 ? "source" : "sources"
-
-                        return .success(
-                            "SUCCESS: muted \(muteActionCount) visible notification \(noun) for today",
-                            didClear: true
-                        )
-                    }
-
-                    return .success(
-                        "Nothing to mute: no visible notifications found",
-                        didClear: false
-                    )
-                }
-
-                if didMuteAnything {
-                    let noun = muteActionCount == 1 ? "source" : "sources"
-                    let itemNoun = visibleItems.count == 1 ? "item remains" : "items remain"
-
-                    return .success(
-                        "PARTIAL: muted \(muteActionCount) visible notification \(noun) for today; \(visibleItems.count) visible \(itemNoun) without a usable Mute for Today action",
-                        didClear: true
-                    )
-                }
-
-                return .success(
-                    "Nothing muted: no visible notification exposed Mute for Today",
-                    didClear: false
-                )
-            }
-
-            let item = remainingCandidates[0]
-            let itemKey = visibleNotificationStableKey(item)
-
-            debugLog("MUTE_VISIBLE: cycle=\(cycle) candidate kind=\(item.kindLabel) frame=\(formatFrame(item.frame)) \(compactDescribe(item.element))")
-
-            let beforeItems = visibleNotificationItems()
-
-            if performMuteForToday(on: item) {
-                didMuteAnything = true
-                muteActionCount += 1
-
-                let observedProgress = waitForMuteProgress(
-                    afterMuting: item,
-                    previousItems: beforeItems
-                )
-
-                if observedProgress {
-                    attemptedKeys.removeAll()
-                } else {
-                    attemptedKeys.insert(itemKey)
-                }
-
-                Thread.sleep(forTimeInterval: MuteConfig.postMuteDelay)
-            } else {
-                attemptedKeys.insert(itemKey)
-            }
+        guard let item = topVisibleNotificationItem(from: visibleItems) else {
+            return .success(
+                "Nothing to mute: no visible notifications found",
+                didClear: false
+            )
         }
 
-        return .failure(
-            "Stopped after \(MuteConfig.maxCycles) mute cycle(s); visible notifications may remain"
+        let sourceName = visibleNotificationSourceName(item) ?? "unknown source"
+
+        debugLog(
+            "MUTE_TOP: source=\(sourceName) " +
+            "candidate kind=\(item.kindLabel) frame=\(formatFrame(item.frame)) \(compactDescribe(item.element))"
+        )
+
+        guard performMuteForToday(on: item) else {
+            return .success(
+                "Nothing muted: top visible notification source did not expose Mute for Today",
+                didClear: false
+            )
+        }
+
+        debugLog("MUTE_TOP: pressed Mute for Today for source: \(sourceName)")
+
+        return .success(
+            "SUCCESS: pressed Mute for Today for top visible notification source: \(sourceName)",
+            didClear: true
         )
     }
 }
+private func topVisibleNotificationItem(
+    from items: [VisibleNotificationItem]
+) -> VisibleNotificationItem? {
+    items.sorted { lhs, rhs in
+        if lhs.frame.origin.y == rhs.frame.origin.y {
+            return lhs.frame.origin.x < rhs.frame.origin.x
+        }
+
+        // macOS screen coordinates: lower y is closer to the top.
+        return lhs.frame.origin.y < rhs.frame.origin.y
+    }
+    .first
+}
+
+private func visibleNotificationSourceName(_ item: VisibleNotificationItem) -> String? {
+    let desc = strAttr(item.element, kAXDescriptionAttribute) ?? ""
+
+    guard let firstPart = desc.split(separator: ",", maxSplits: 1).first else {
+        return nil
+    }
+
+    let sourceName = firstPart.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    return sourceName.isEmpty ? nil : sourceName
+}
+
+private func visibleNotificationSourceKey(_ item: VisibleNotificationItem) -> String {
+    if let sourceName = visibleNotificationSourceName(item) {
+        return "source:\(sourceName.lowercased())"
+    }
+
+    return "item:\(visibleNotificationStableKey(item))"
+}
+
+private func waitForSourceToDisappear(sourceKey: String) -> Bool {
+    let deadline = Date().addingTimeInterval(MuteConfig.sourceDisappearTimeout)
+
+    while Date() < deadline {
+        let stillVisible = visibleNotificationItems().contains { item in
+            visibleNotificationSourceKey(item) == sourceKey
+        }
+
+        if !stillVisible {
+            return true
+        }
+
+        Thread.sleep(forTimeInterval: MuteConfig.sourceDisappearPollingInterval)
+    }
+
+    return false
+}
 
 private func performMuteForToday(on item: VisibleNotificationItem) -> Bool {
-    debugLog("MUTE_VISIBLE: trying coordinate-free AXShowMenu path")
+    debugLog("MUTE_TOP: trying coordinate-free AXShowMenu path")
 
     if pressMuteForTodayUsingAXShowMenu(near: item) {
         return true
     }
 
-    debugLog("MUTE_VISIBLE: Mute for Today not found using AXShowMenu path")
+    debugLog("MUTE_TOP: Mute for Today not found using AXShowMenu path")
     debugDumpMuteMenuCandidates()
 
     return false
@@ -112,20 +123,18 @@ private func performMuteForToday(on item: VisibleNotificationItem) -> Bool {
 private func pressMuteForTodayUsingAXShowMenu(near item: VisibleNotificationItem) -> Bool {
     let candidates = axShowMenuCandidates(near: item)
 
-    debugLog("MUTE_VISIBLE: AXShowMenu candidate count=\(candidates.count)")
+    debugLog("MUTE_TOP: AXShowMenu candidate count=\(candidates.count)")
 
     for (index, candidate) in candidates.enumerated() {
-        debugLog("MUTE_VISIBLE: AXShowMenu attempt \(index + 1)/\(candidates.count)")
-        debugLog("MUTE_VISIBLE: AXShowMenu candidate \(compactDescribe(candidate))")
+        debugLog("MUTE_TOP: AXShowMenu attempt \(index + 1)/\(candidates.count)")
+        debugLog("MUTE_TOP: AXShowMenu candidate \(compactDescribe(candidate))")
 
         let result = AXUIElementPerformAction(
             candidate,
             kAXShowMenuAction as CFString
         )
 
-        debugLog("MUTE_VISIBLE: AXShowMenu result: \(result.rawValue) \(result)")
-
-        Thread.sleep(forTimeInterval: MuteConfig.menuOpenDelay)
+        debugLog("MUTE_TOP: AXShowMenu result: \(result.rawValue) \(result)")
 
         // Do not require result == .success.
         // Testing showed a non-success return can still expose the correct menu.
@@ -133,12 +142,13 @@ private func pressMuteForTodayUsingAXShowMenu(near item: VisibleNotificationItem
             return true
         }
 
-        debugLog("MUTE_VISIBLE: no Mute for Today after AXShowMenu attempt \(index + 1)")
+        debugLog("MUTE_TOP: no Mute for Today after AXShowMenu attempt \(index + 1)")
         closeOpenContextMenu()
     }
 
     return false
 }
+
 private func axShowMenuCandidates(near item: VisibleNotificationItem) -> [AXUIElement] {
     var candidates: [AXUIElement] = []
 
@@ -178,11 +188,7 @@ private func collectAXShowMenuDescendants(
         results.append(element)
     }
 
-    for name in [
-        kAXVisibleChildrenAttribute,
-        kAXChildrenAttribute,
-        "AXChildrenInNavigationOrder"
-    ] {
+    for name in axChildAttributeNames {
         for child in children(element, name) {
             collectAXShowMenuDescendants(
                 child,
@@ -282,14 +288,20 @@ private func axShowMenuPriority(_ element: AXUIElement) -> Int {
 }
 
 private func pressMuteForTodayMenuItemIfPresent() -> Bool {
+    let start = Date()
+
     guard let menuItem = waitForMuteForTodayMenuItem() else {
-        debugLog("MUTE_VISIBLE: no Mute for Today menu item found")
+        debugLog("MUTE_TOP: no Mute for Today menu item found after \(Date().timeIntervalSince(start))s")
         return false
     }
 
-    debugLog("MUTE_VISIBLE: found Mute for Today menu item \(compactDescribe(menuItem))")
+    debugLog("MUTE_TOP: found Mute for Today menu item after \(Date().timeIntervalSince(start))s \(compactDescribe(menuItem))")
 
-    return press(menuItem)
+    let pressStart = Date()
+    let didPress = press(menuItem)
+    debugLog("MUTE_TOP: press Mute for Today completed after \(Date().timeIntervalSince(pressStart))s")
+
+    return didPress
 }
 
 private func waitForMuteForTodayMenuItem() -> AXUIElement? {
@@ -310,11 +322,13 @@ private func findMuteForTodayMenuItem() -> AXUIElement? {
     for app in notificationCenterApplications() {
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
 
-        if let menuItem = findElement(
-            axApp,
-            maxDepth: Config.defaultAXTreeSearchMaxDepth,
-            matches: isMuteForTodayMenuItem
-        ) {
+        for root in focusedMenuSearchRoots(for: axApp) {
+            if let menuItem = findMuteForTodayMenuItemFast(in: root) {
+                return menuItem
+            }
+        }
+
+        if let menuItem = findMuteForTodayMenuItemFast(in: axApp) {
             return menuItem
         }
     }
@@ -322,56 +336,195 @@ private func findMuteForTodayMenuItem() -> AXUIElement? {
     return nil
 }
 
-private func isMuteForTodayMenuItem(_ element: AXUIElement) -> Bool {
-    let title = strAttr(element, kAXTitleAttribute) ?? ""
-    let desc = strAttr(element, kAXDescriptionAttribute) ?? ""
-    let role = strAttr(element, kAXRoleAttribute) ?? ""
-    let enabled = boolAttr(element, kAXEnabledAttribute)
+private func focusedMenuSearchRoots(for axApp: AXUIElement) -> [AXUIElement] {
+    var roots: [AXUIElement] = []
 
-    let text = "\(title) \(desc)"
+    if let focusedElement = axElementAttribute(axApp, kAXFocusedUIElementAttribute as String) {
+        roots.append(focusedElement)
+        roots.append(contentsOf: axAncestors(of: focusedElement, limit: 4))
+    }
 
-    guard text.localizedCaseInsensitiveContains(MuteConfig.muteForTodayTitle) else {
+    if let focusedWindow = axElementAttribute(axApp, kAXFocusedWindowAttribute as String) {
+        roots.append(focusedWindow)
+    }
+
+    return uniqueAXElements(roots)
+}
+
+private func findMuteForTodayMenuItemFast(in root: AXUIElement) -> AXUIElement? {
+    var visited = Set<CFHashCode>()
+    var queue: [(element: AXUIElement, depth: Int)] = [(root, 0)]
+    var scannedNodeCount = 0
+
+    let maxDepth = 8
+    let maxNodes = 250
+
+    while !queue.isEmpty {
+        let current = queue.removeFirst()
+        let element = current.element
+        let depth = current.depth
+
+        let hash = CFHash(element)
+
+        guard !visited.contains(hash) else {
+            continue
+        }
+
+        visited.insert(hash)
+        scannedNodeCount += 1
+
+        if scannedNodeCount > maxNodes {
+            debugLog("MUTE_TOP: fast menu search stopped at maxNodes=\(maxNodes)")
+            return nil
+        }
+
+        let role = strAttr(element, kAXRoleAttribute) ?? ""
+
+        // Do not wander into the normal macOS menu bar. Earlier dumps showed
+        // Apple menu / Recent Items noise here, which is not the context menu.
+        if role == "AXMenuBar" || role == "AXMenuBarItem" {
+            continue
+        }
+
+        if isVisibleMuteForTodayMenuItem(element, role: role) {
+            debugLog("MUTE_TOP: fast menu search scanned \(scannedNodeCount) node(s)")
+            return element
+        }
+
+        guard depth < maxDepth else {
+            continue
+        }
+
+        guard shouldDescendDuringMenuSearch(element, role: role, depth: depth) else {
+            continue
+        }
+
+        for name in axChildAttributeNames {
+            for child in children(element, name) {
+                queue.append((child, depth + 1))
+            }
+        }
+    }
+
+    debugLog("MUTE_TOP: fast menu search scanned \(scannedNodeCount) node(s), no match")
+    return nil
+}
+
+private func isVisibleMuteForTodayMenuItem(
+    _ element: AXUIElement,
+    role: String
+) -> Bool {
+    let isMenuItem =
+        role == "AXMenuItem" ||
+        role.localizedCaseInsensitiveContains("menu")
+
+    guard isMenuItem else {
         return false
     }
+
+    guard let frame = frameAttr(element),
+          frame.width > 0,
+          frame.height > 0
+    else {
+        return false
+    }
+
+    let title = strAttr(element, kAXTitleAttribute) ?? ""
+    let desc = strAttr(element, kAXDescriptionAttribute) ?? ""
+    let enabled = boolAttr(element, kAXEnabledAttribute)
 
     guard enabled != false else {
         return false
     }
 
-    let roleLooksMenuLike =
-        role.localizedCaseInsensitiveContains("menu") ||
-        role.localizedCaseInsensitiveContains("button")
+    let text = "\(title) \(desc)"
 
-    let canPress = actions(element).contains(kAXPressAction as String)
-
-    return roleLooksMenuLike || canPress
+    return text.localizedCaseInsensitiveContains(MuteConfig.muteForTodayTitle)
 }
 
-private func waitForMuteProgress(
-    afterMuting targetItem: VisibleNotificationItem,
-    previousItems: [VisibleNotificationItem]
+private func shouldDescendDuringMenuSearch(
+    _ element: AXUIElement,
+    role: String,
+    depth: Int
 ) -> Bool {
-    let targetKey = visibleNotificationStableKey(targetItem)
-    let previousAllCount = previousItems.count
-    let deadline = Date().addingTimeInterval(MuteConfig.progressTimeout)
-
-    while Date() < deadline {
-        let currentItems = visibleNotificationItems()
-        let currentAllCount = currentItems.count
-        let targetStillVisible = currentItems.contains { item in
-            visibleNotificationStableKey(item) == targetKey
-        }
-
-        if !targetStillVisible || currentAllCount < previousAllCount {
-            debugLog("MUTE_VISIBLE: observed progress targetStillVisible=\(targetStillVisible) all=\(previousAllCount)->\(currentAllCount)")
-            return true
-        }
-
-        Thread.sleep(forTimeInterval: MuteConfig.progressPollingInterval)
+    if depth <= 2 {
+        return true
     }
 
-    debugLog("MUTE_VISIBLE: no observed progress after mute action")
+    if role.localizedCaseInsensitiveContains("menu") {
+        return true
+    }
+
+    if role == "AXApplication" ||
+        role == "AXWindow" ||
+        role == "AXGroup" {
+        return depth <= 4
+    }
+
     return false
+}
+
+private func axElementAttribute(
+    _ element: AXUIElement,
+    _ name: String
+) -> AXUIElement? {
+    var value: CFTypeRef?
+
+    let result = AXUIElementCopyAttributeValue(
+        element,
+        name as CFString,
+        &value
+    )
+
+    guard result == .success,
+          let value
+    else {
+        return nil
+    }
+
+    return unsafeBitCast(value, to: AXUIElement.self)
+}
+
+private func axAncestors(
+    of element: AXUIElement,
+    limit: Int
+) -> [AXUIElement] {
+    var result: [AXUIElement] = []
+    var current = axParent(of: element)
+    var visited = Set<CFHashCode>()
+
+    while let item = current, result.count < limit {
+        let hash = CFHash(item)
+
+        guard !visited.contains(hash) else {
+            break
+        }
+
+        visited.insert(hash)
+        result.append(item)
+
+        current = axParent(of: item)
+    }
+
+    return result
+}
+
+private func uniqueAXElements(_ elements: [AXUIElement]) -> [AXUIElement] {
+    var result: [AXUIElement] = []
+    var seen = Set<CFHashCode>()
+
+    for element in elements {
+        let hash = CFHash(element)
+
+        guard !seen.contains(hash) else {
+            continue
+        }
+
+        seen.insert(hash)
+        result.append(element)
+    }
+
+    return result
 }
 
 private func closeOpenContextMenu() {
@@ -413,11 +566,11 @@ private func debugDumpMuteMenuCandidates() {
         )
 
         if candidates.isEmpty {
-            debugLog("MUTE_VISIBLE: no menu-ish debug candidates for pid=\(app.processIdentifier)")
+            debugLog("MUTE_TOP: no menu-ish debug candidates for pid=\(app.processIdentifier)")
             continue
         }
 
-        debugLog("MUTE_VISIBLE: menu-ish debug candidates for pid=\(app.processIdentifier)")
+        debugLog("MUTE_TOP: menu-ish debug candidates for pid=\(app.processIdentifier)")
 
         for (index, candidate) in candidates.prefix(40).enumerated() {
             debugLog("  [\(index)] \(compactDescribe(candidate))")
@@ -462,11 +615,7 @@ private func collectMuteDebugCandidates(
         candidates.append(element)
     }
 
-    for name in [
-        kAXVisibleChildrenAttribute,
-        kAXChildrenAttribute,
-        "AXChildrenInNavigationOrder"
-    ] {
+    for name in axChildAttributeNames {
         for child in children(element, name) {
             collectMuteDebugCandidates(
                 child,
