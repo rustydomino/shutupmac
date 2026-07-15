@@ -12,11 +12,21 @@ struct HotKey: Equatable, Hashable {
         UInt32(optionKey) |
         UInt32(cmdKey)
 
-    static let defaultClearVisible = HotKey(
+    static let legacyDefaultClearVisible = HotKey(
         keyCode: UInt32(kVK_ANSI_V),
         modifiers: standardModifiers,
         keyName: "V"
     )
+
+    static let defaultClearDesktop = HotKey(
+        keyCode: UInt32(kVK_ANSI_D),
+        modifiers: standardModifiers,
+        keyName: "D"
+    )
+
+    // Legacy internal name. The user-facing action is now
+    // "Clear Desktop Notifications".
+    static let defaultClearVisible = defaultClearDesktop
 
     static let defaultClearAll = HotKey(
         keyCode: UInt32(kVK_ANSI_A),

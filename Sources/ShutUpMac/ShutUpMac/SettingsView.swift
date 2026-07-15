@@ -5,7 +5,7 @@ import AppKit
 struct SettingsView: View {
     @AppStorage(PreferenceKeys.hideDockIcon) private var hideDockIcon = true
     @AppStorage(PreferenceKeys.enableGlobalHotkeys) private var enableGlobalHotkeys = true
-    @AppStorage(PreferenceKeys.clearVisibleNotificationsHotKey) private var clearVisibleNotificationsHotKey = HotKey.defaultClearVisible.encodedString
+    @AppStorage(PreferenceKeys.clearVisibleNotificationsHotKey) private var clearVisibleNotificationsHotKey = HotKey.defaultClearDesktop.encodedString
     @AppStorage(PreferenceKeys.clearAllNotificationsHotKey) private var clearAllNotificationsHotKey = HotKey.defaultClearAll.encodedString
     @AppStorage(PreferenceKeys.testNotificationHotKey) private var testNotificationHotKey = HotKey.defaultTestNotification.encodedString
 
@@ -45,9 +45,9 @@ struct SettingsView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 HotKeyRecorderView(
-                    title: "Clear Visible Notifications:",
+                    title: "Clear Desktop Notifications:",
                     encodedHotKey: $clearVisibleNotificationsHotKey,
-                    defaultHotKey: .defaultClearVisible,
+                    defaultHotKey: .defaultClearDesktop,
                     otherEncodedHotKeys: [
                         clearAllNotificationsHotKey,
                         testNotificationHotKey

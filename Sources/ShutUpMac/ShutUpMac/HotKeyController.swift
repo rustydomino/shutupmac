@@ -67,7 +67,7 @@ final class HotKeyController {
         clearVisibleHotKeyRef = registerHotKeyIfUnique(
             AppPreferences.clearVisibleNotificationsHotKey,
             id: HotKeyID.clearVisibleNotifications,
-            purpose: "clear visible notifications",
+            purpose: "clear desktop notifications",
             registeredHotKeys: &registeredHotKeys
         )
 

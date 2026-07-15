@@ -72,8 +72,8 @@ struct ShutUpMacMenu: View {
     }
 
     var body: some View {
-        Button("Clear Visible Notifications") {
-            print("GUI menu: Clear Visible Notifications clicked")
+        Button("Clear Desktop Notifications") {
+            print("GUI menu: Clear Desktop Notifications clicked")
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                 print("GUI menu: calling NotificationClearer.clearVisible()")
