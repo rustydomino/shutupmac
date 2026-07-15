@@ -90,7 +90,7 @@ final class TestNotificationSender: NSObject, UNUserNotificationCenterDelegate {
         content.sound = .default
 
         let trigger = UNTimeIntervalNotificationTrigger(
-            timeInterval: 1.0,
+            timeInterval: 0.1,
             repeats: false
         )
 
