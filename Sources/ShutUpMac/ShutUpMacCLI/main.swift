@@ -1,6 +1,7 @@
 import Foundation
 import Darwin
 
+
 // Add this file only to the CLI target, not to the SwiftUI menu-bar app target.
 
 private enum CLIAction: Equatable {
@@ -11,6 +12,7 @@ private enum CLIAction: Equatable {
     case listVisible
     case axDump
     case help
+    case mute
 }
 
 private struct CLIOptions {
@@ -68,6 +70,10 @@ case .clearSingleNotification:
 
 case .clearTopVisibleStack:
     finish(with: ShutUpMac.clearTopVisibleStackResult(), quiet: options.quiet)
+    
+case .mute:
+    finish(with: ShutUpMac.muteVisibleNotificationsForTodayResult(), quiet: options.quiet)
+    
 }
 
 private func parse(arguments: [String]) -> (options: CLIOptions?, error: String?) {
@@ -114,6 +120,9 @@ private func parse(arguments: [String]) -> (options: CLIOptions?, error: String?
 
         case "--quiet", "-q":
             options.quiet = true
+            
+        case "--mute", "-m":
+            if let error = setAction(.mute, from: arg) { return (nil, error) }
 
         default:
             return (nil, "Unknown argument: \(arg)")
@@ -174,6 +183,9 @@ private func usage() -> String {
       --ax-dump
           Print suspicious Notification Center Accessibility elements for
           reverse-engineering and diagnostics. Does not clear notifications.
+    
+      --mute, -m
+              Mute visible notification sources for today.
 
     Options:
       --probe-menus
