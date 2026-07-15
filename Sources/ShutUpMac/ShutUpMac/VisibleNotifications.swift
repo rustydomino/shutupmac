@@ -228,7 +228,6 @@ func clearVisibleNotificationItem(_ item: VisibleNotificationItem) -> Bool {
     performFirstAction(on: item.element, nameContaining: item.kind.actionNameFragment)
 }
 
-
 func visibleNotificationStableKey(_ item: VisibleNotificationItem) -> String {
     let id = strAttr(item.element, kAXIdentifierAttribute) ?? ""
     if !id.isEmpty {
@@ -259,6 +258,14 @@ func topActionableVisibleNotificationItem(
 ) -> VisibleNotificationItem? {
     items.first { item in
         item.kind == kind && item.isActionable
+    }
+}
+
+func topActionableVisibleNotificationItem(
+    in items: [VisibleNotificationItem]
+) -> VisibleNotificationItem? {
+    items.first { item in
+        item.isActionable
     }
 }
 
@@ -373,6 +380,41 @@ extension ShutUpMac {
         return .failure("Clear stack failed")
     }
 
+    /// Clears the top-most visible notification thing.
+    ///
+    /// If the top visible thing is a single notification, this performs its
+    /// Name:Close action. If the top visible thing is a stack, this performs its
+    /// Name:Clear All action.
+    static func clearMostRecentVisibleNotification() -> Bool {
+        let result = clearMostRecentVisibleNotificationResult()
+        return result.succeeded && result.didClear
+    }
+
+    /// Result-returning variant for the GUI/CLI.
+    static func clearMostRecentVisibleNotificationResult() -> ClearNotificationsResult {
+        debugLog("AX trusted: \(AXIsProcessTrusted())")
+
+        let items = visibleNotificationItems()
+
+        guard let item = topActionableVisibleNotificationItem(in: items) else {
+            dumpLikelySystemWindows()
+            return .success("Nothing to clear: no visible notification or stack found", didClear: false)
+        }
+
+        debugLog("CLEAR_RECENT: found top visible \(item.kindLabel) \(compactDescribe(item.element))")
+
+        if clearVisibleNotificationItem(item) {
+            switch item.kind {
+            case .single:
+                return .success("SUCCESS: cleared most recent visible notification", didClear: true)
+            case .stack:
+                return .success("SUCCESS: cleared most recent visible notification stack", didClear: true)
+            }
+        }
+
+        return .failure("Clear most recent notification failed")
+    }
+
     /// Clears visible notifications without opening Notification Center.
     ///
     /// This repeatedly takes a fresh snapshot of visible single notifications and
@@ -463,11 +505,8 @@ extension ShutUpMac {
         )
     }
 
-
-
     /// CLI/debug helper. Safe for the menu app to ignore.
     static func visibleNotificationSummaries() -> [String] {
         visibleNotificationSummaryLines()
     }
-
 }

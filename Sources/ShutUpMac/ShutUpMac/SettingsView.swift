@@ -5,6 +5,7 @@ import AppKit
 struct SettingsView: View {
     @AppStorage(PreferenceKeys.hideDockIcon) private var hideDockIcon = true
     @AppStorage(PreferenceKeys.enableGlobalHotkeys) private var enableGlobalHotkeys = true
+    @AppStorage(PreferenceKeys.clearMostRecentNotificationHotKey) private var clearMostRecentNotificationHotKey = HotKey.defaultClearMostRecent.encodedString
     @AppStorage(PreferenceKeys.clearVisibleNotificationsHotKey) private var clearVisibleNotificationsHotKey = HotKey.defaultClearDesktop.encodedString
     @AppStorage(PreferenceKeys.clearAllNotificationsHotKey) private var clearAllNotificationsHotKey = HotKey.defaultClearAll.encodedString
     @AppStorage(PreferenceKeys.testNotificationHotKey) private var testNotificationHotKey = HotKey.defaultTestNotification.encodedString
@@ -45,10 +46,31 @@ struct SettingsView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 HotKeyRecorderView(
+                    title: "Clear Most Recent Notification:",
+                    encodedHotKey: $clearMostRecentNotificationHotKey,
+                    defaultHotKey: .defaultClearMostRecent,
+                    otherEncodedHotKeys: [
+                        clearVisibleNotificationsHotKey,
+                        clearAllNotificationsHotKey,
+                        testNotificationHotKey
+                    ],
+                    onChange: {
+                        HotKeyController.shared.restart()
+                    },
+                    onRecordingStarted: {
+                        HotKeyController.shared.stop()
+                    },
+                    onRecordingEnded: {
+                        HotKeyController.shared.restart()
+                    }
+                )
+
+                HotKeyRecorderView(
                     title: "Clear Desktop Notifications:",
                     encodedHotKey: $clearVisibleNotificationsHotKey,
                     defaultHotKey: .defaultClearDesktop,
                     otherEncodedHotKeys: [
+                        clearMostRecentNotificationHotKey,
                         clearAllNotificationsHotKey,
                         testNotificationHotKey
                     ],
@@ -68,6 +90,7 @@ struct SettingsView: View {
                     encodedHotKey: $clearAllNotificationsHotKey,
                     defaultHotKey: .defaultClearAll,
                     otherEncodedHotKeys: [
+                        clearMostRecentNotificationHotKey,
                         clearVisibleNotificationsHotKey,
                         testNotificationHotKey
                     ],
@@ -87,6 +110,7 @@ struct SettingsView: View {
                     encodedHotKey: $testNotificationHotKey,
                     defaultHotKey: .defaultTestNotification,
                     otherEncodedHotKeys: [
+                        clearMostRecentNotificationHotKey,
                         clearVisibleNotificationsHotKey,
                         clearAllNotificationsHotKey
                     ],
@@ -156,7 +180,7 @@ struct SettingsView: View {
             Spacer()
         }
         .padding(20)
-        .frame(width: 620, height: 660)
+        .frame(width: 620, height: 700)
         .onAppear {
             launchAtLogin = LaunchAtLoginController.isEnabled
         }

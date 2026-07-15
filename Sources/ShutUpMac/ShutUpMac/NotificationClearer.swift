@@ -2,6 +2,12 @@ import Foundation
 import ApplicationServices
 
 enum NotificationClearer {
+    static func clearMostRecent() {
+        performClearAction {
+            ShutUpMac.clearMostRecentVisibleNotificationResult()
+        }
+    }
+
     static func clearVisible() {
         performClearAction {
             ShutUpMac.clearVisibleNotificationsResult()
@@ -14,7 +20,7 @@ enum NotificationClearer {
         }
     }
 
-    // Keep this for old call sites, especially the current hotkey handler.
+    // Keep this for old call sites, especially any legacy hotkey/menu handlers.
     // For now, the existing "clear" behavior remains "clear all".
     static func clear() {
         clearAll()

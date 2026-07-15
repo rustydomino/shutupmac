@@ -12,6 +12,12 @@ struct HotKey: Equatable, Hashable {
         UInt32(optionKey) |
         UInt32(cmdKey)
 
+    static let defaultClearMostRecent = HotKey(
+        keyCode: UInt32(kVK_ANSI_R),
+        modifiers: standardModifiers,
+        keyName: "R"
+    )
+
     static let legacyDefaultClearVisible = HotKey(
         keyCode: UInt32(kVK_ANSI_V),
         modifiers: standardModifiers,

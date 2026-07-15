@@ -4,6 +4,7 @@ import Carbon
 final class HotKeyController {
     static let shared = HotKeyController()
 
+    private var clearMostRecentHotKeyRef: EventHotKeyRef?
     private var clearVisibleHotKeyRef: EventHotKeyRef?
     private var clearAllHotKeyRef: EventHotKeyRef?
     private var testNotificationHotKeyRef: EventHotKeyRef?
@@ -12,9 +13,10 @@ final class HotKeyController {
     private var isStarted = false
 
     private enum HotKeyID {
-        static let clearVisibleNotifications: UInt32 = 1
-        static let clearAllNotifications: UInt32 = 2
-        static let sendTestNotification: UInt32 = 3
+        static let clearMostRecentNotification: UInt32 = 1
+        static let clearVisibleNotifications: UInt32 = 2
+        static let clearAllNotifications: UInt32 = 3
+        static let sendTestNotification: UInt32 = 4
     }
 
     private init() {}
@@ -64,6 +66,13 @@ final class HotKeyController {
 
         var registeredHotKeys: [HotKey: String] = [:]
 
+        clearMostRecentHotKeyRef = registerHotKeyIfUnique(
+            AppPreferences.clearMostRecentNotificationHotKey,
+            id: HotKeyID.clearMostRecentNotification,
+            purpose: "clear most recent notification",
+            registeredHotKeys: &registeredHotKeys
+        )
+
         clearVisibleHotKeyRef = registerHotKeyIfUnique(
             AppPreferences.clearVisibleNotificationsHotKey,
             id: HotKeyID.clearVisibleNotifications,
@@ -89,6 +98,11 @@ final class HotKeyController {
     }
 
     func stop() {
+        if let clearMostRecentHotKeyRef {
+            UnregisterEventHotKey(clearMostRecentHotKeyRef)
+            self.clearMostRecentHotKeyRef = nil
+        }
+
         if let clearVisibleHotKeyRef {
             UnregisterEventHotKey(clearVisibleHotKeyRef)
             self.clearVisibleHotKeyRef = nil
@@ -206,6 +220,9 @@ final class HotKeyController {
 
     private func handleHotKey(id: UInt32) {
         switch id {
+        case HotKeyID.clearMostRecentNotification:
+            NotificationClearer.clearMostRecent()
+
         case HotKeyID.clearVisibleNotifications:
             NotificationClearer.clearVisible()
 

@@ -5,6 +5,7 @@ enum PreferenceKeys {
     static let hideDockIcon = "hideDockIcon"
     static let enableGlobalHotkeys = "enableGlobalHotkeys"
 
+    static let clearMostRecentNotificationHotKey = "clearMostRecentNotificationHotKey"
     static let clearVisibleNotificationsHotKey = "clearVisibleNotificationsHotKey"
     static let clearAllNotificationsHotKey = "clearAllNotificationsHotKey"
     static let testNotificationHotKey = "testNotificationHotKey"
@@ -18,6 +19,7 @@ enum AppPreferences {
         UserDefaults.standard.register(defaults: [
             PreferenceKeys.hideDockIcon: true,
             PreferenceKeys.enableGlobalHotkeys: true,
+            PreferenceKeys.clearMostRecentNotificationHotKey: HotKey.defaultClearMostRecent.encodedString,
             PreferenceKeys.clearVisibleNotificationsHotKey: HotKey.defaultClearDesktop.encodedString,
             PreferenceKeys.clearAllNotificationsHotKey: HotKey.defaultClearAll.encodedString,
             PreferenceKeys.testNotificationHotKey: HotKey.defaultTestNotification.encodedString,
@@ -35,6 +37,14 @@ enum AppPreferences {
 
     static var enableGlobalHotkeys: Bool {
         UserDefaults.standard.bool(forKey: PreferenceKeys.enableGlobalHotkeys)
+    }
+
+    static var clearMostRecentNotificationHotKey: HotKey {
+        let storedValue = UserDefaults.standard.string(
+            forKey: PreferenceKeys.clearMostRecentNotificationHotKey
+        )
+
+        return HotKey.decode(storedValue) ?? .defaultClearMostRecent
     }
 
     static var clearVisibleNotificationsHotKey: HotKey {

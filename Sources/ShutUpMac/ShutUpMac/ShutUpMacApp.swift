@@ -38,8 +38,11 @@ struct ShutUpMacMenu: View {
     @AppStorage(PreferenceKeys.enableGlobalHotkeys)
     private var enableGlobalHotkeys = true
 
+    @AppStorage(PreferenceKeys.clearMostRecentNotificationHotKey)
+    private var clearMostRecentNotificationHotKey = HotKey.defaultClearMostRecent.encodedString
+
     @AppStorage(PreferenceKeys.clearVisibleNotificationsHotKey)
-    private var clearVisibleNotificationsHotKey = HotKey.defaultClearVisible.encodedString
+    private var clearVisibleNotificationsHotKey = HotKey.defaultClearDesktop.encodedString
 
     @AppStorage(PreferenceKeys.clearAllNotificationsHotKey)
     private var clearAllNotificationsHotKey = HotKey.defaultClearAll.encodedString
@@ -47,12 +50,20 @@ struct ShutUpMacMenu: View {
     @AppStorage(PreferenceKeys.testNotificationHotKey)
     private var testNotificationHotKey = HotKey.defaultTestNotification.encodedString
 
+    private var clearMostRecentMenuHotKey: HotKey? {
+        guard enableGlobalHotkeys else {
+            return nil
+        }
+
+        return HotKey.decode(clearMostRecentNotificationHotKey) ?? .defaultClearMostRecent
+    }
+
     private var clearVisibleMenuHotKey: HotKey? {
         guard enableGlobalHotkeys else {
             return nil
         }
 
-        return HotKey.decode(clearVisibleNotificationsHotKey) ?? .defaultClearVisible
+        return HotKey.decode(clearVisibleNotificationsHotKey) ?? .defaultClearDesktop
     }
 
     private var clearAllMenuHotKey: HotKey? {
@@ -72,6 +83,16 @@ struct ShutUpMacMenu: View {
     }
 
     var body: some View {
+        Button("Clear Most Recent Notification") {
+            print("GUI menu: Clear Most Recent Notification clicked")
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                print("GUI menu: calling NotificationClearer.clearMostRecent()")
+                NotificationClearer.clearMostRecent()
+            }
+        }
+        .menuKeyboardShortcut(clearMostRecentMenuHotKey)
+
         Button("Clear Desktop Notifications") {
             print("GUI menu: Clear Desktop Notifications clicked")
 
