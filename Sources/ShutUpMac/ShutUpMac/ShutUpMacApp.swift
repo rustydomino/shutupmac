@@ -107,7 +107,7 @@ struct ShutUpMacMenu: View {
 
         // MARK: - End App Menu
     }
-    
+
     private func sendTestNotificationFromMenu() {
         print("GUI menu: Send Test Notification clicked")
 
@@ -129,7 +129,29 @@ struct ShutUpMacMenu: View {
         alert.alertStyle = .warning
         alert.messageText = "Could Not Send Test Notification"
         alert.informativeText = message
+        alert.addButton(withTitle: "Open Notification Settings")
         alert.addButton(withTitle: "OK")
-        alert.runModal()
+
+        let response = alert.runModal()
+
+        guard response == .alertFirstButtonReturn else {
+            return
+        }
+
+        openNotificationSettings()
+    }
+
+    private func openNotificationSettings() {
+        let notificationsPath = "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
+        let bundleID = Bundle.main.bundleIdentifier ?? ""
+
+        if let appSpecificURL = URL(string: "\(notificationsPath)?id=\(bundleID)"),
+           NSWorkspace.shared.open(appSpecificURL) {
+            return
+        }
+
+        if let genericURL = URL(string: notificationsPath) {
+            NSWorkspace.shared.open(genericURL)
+        }
     }
 }
