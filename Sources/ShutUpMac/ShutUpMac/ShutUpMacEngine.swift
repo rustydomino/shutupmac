@@ -12,7 +12,7 @@
  2. Add visible-notification actions that do not open Notification Center:
     - closeTopVisibleNotification(): find the top visible single alert and run Name:Close.
     - clearTopVisibleStack(): find the top visible stack and run Name:Clear All.
-    - clearVisibleNotifications(): repeatedly clear visible singles/stacks until none remain.
+    - clearVisibleNotifications(): repeatedly clear desktop-visible singles/stacks until none remain.
 
  The nuclear path is intentionally separate from the newer targeted actions.
  The targeted actions do not expand stacks and do not open/close Notification Center.
