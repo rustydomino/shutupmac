@@ -12,17 +12,26 @@ struct HotKey: Equatable, Hashable {
         UInt32(optionKey) |
         UInt32(cmdKey)
 
-    static let defaultClear = HotKey(
-        keyCode: UInt32(kVK_ANSI_N),
+    static let defaultClearVisible = HotKey(
+        keyCode: UInt32(kVK_ANSI_V),
         modifiers: standardModifiers,
-        keyName: "N"
+        keyName: "V"
+    )
+
+    static let defaultClearAll = HotKey(
+        keyCode: UInt32(kVK_ANSI_A),
+        modifiers: standardModifiers,
+        keyName: "A"
     )
 
     static let defaultTestNotification = HotKey(
-        keyCode: UInt32(kVK_ANSI_S),
+        keyCode: UInt32(kVK_ANSI_T),
         modifiers: standardModifiers,
-        keyName: "S"
+        keyName: "T"
     )
+
+    // Legacy alias for older call sites.
+    static let defaultClear = defaultClearAll
 
     var encodedString: String {
         "\(keyCode)|\(modifiers)|\(keyName)"

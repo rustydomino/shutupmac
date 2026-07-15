@@ -4,15 +4,17 @@ import Carbon
 final class HotKeyController {
     static let shared = HotKeyController()
 
-    private var clearHotKeyRef: EventHotKeyRef?
+    private var clearVisibleHotKeyRef: EventHotKeyRef?
+    private var clearAllHotKeyRef: EventHotKeyRef?
     private var testNotificationHotKeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
 
     private var isStarted = false
 
     private enum HotKeyID {
-        static let clearNotifications: UInt32 = 1
-        static let sendTestNotification: UInt32 = 2
+        static let clearVisibleNotifications: UInt32 = 1
+        static let clearAllNotifications: UInt32 = 2
+        static let sendTestNotification: UInt32 = 3
     }
 
     private init() {}
@@ -60,32 +62,41 @@ final class HotKeyController {
             return
         }
 
-        let clearHotKey = AppPreferences.clearNotificationsHotKey
-        let testHotKey = AppPreferences.testNotificationHotKey
+        var registeredHotKeys: [HotKey: String] = [:]
 
-        clearHotKeyRef = registerHotKey(
-            clearHotKey,
-            id: HotKeyID.clearNotifications,
-            purpose: "clear notifications"
+        clearVisibleHotKeyRef = registerHotKeyIfUnique(
+            AppPreferences.clearVisibleNotificationsHotKey,
+            id: HotKeyID.clearVisibleNotifications,
+            purpose: "clear visible notifications",
+            registeredHotKeys: &registeredHotKeys
         )
 
-        if testHotKey == clearHotKey {
-            print("Test notification hotkey not registered because it duplicates clear notifications: \(testHotKey.displayString)")
-        } else {
-            testNotificationHotKeyRef = registerHotKey(
-                testHotKey,
-                id: HotKeyID.sendTestNotification,
-                purpose: "send test notification"
-            )
-        }
+        clearAllHotKeyRef = registerHotKeyIfUnique(
+            AppPreferences.clearAllNotificationsHotKey,
+            id: HotKeyID.clearAllNotifications,
+            purpose: "clear all notifications",
+            registeredHotKeys: &registeredHotKeys
+        )
+
+        testNotificationHotKeyRef = registerHotKeyIfUnique(
+            AppPreferences.testNotificationHotKey,
+            id: HotKeyID.sendTestNotification,
+            purpose: "send test notification",
+            registeredHotKeys: &registeredHotKeys
+        )
 
         isStarted = true
     }
 
     func stop() {
-        if let clearHotKeyRef {
-            UnregisterEventHotKey(clearHotKeyRef)
-            self.clearHotKeyRef = nil
+        if let clearVisibleHotKeyRef {
+            UnregisterEventHotKey(clearVisibleHotKeyRef)
+            self.clearVisibleHotKeyRef = nil
+        }
+
+        if let clearAllHotKeyRef {
+            UnregisterEventHotKey(clearAllHotKeyRef)
+            self.clearAllHotKeyRef = nil
         }
 
         if let testNotificationHotKeyRef {
@@ -107,6 +118,30 @@ final class HotKeyController {
         if AppPreferences.enableGlobalHotkeys {
             start()
         }
+    }
+
+    private func registerHotKeyIfUnique(
+        _ hotKey: HotKey,
+        id: UInt32,
+        purpose: String,
+        registeredHotKeys: inout [HotKey: String]
+    ) -> EventHotKeyRef? {
+        if let existingPurpose = registeredHotKeys[hotKey] {
+            print("Not registering \(purpose) hotkey because it duplicates \(existingPurpose): \(hotKey.displayString)")
+            return nil
+        }
+
+        let hotKeyRef = registerHotKey(
+            hotKey,
+            id: id,
+            purpose: purpose
+        )
+
+        if hotKeyRef != nil {
+            registeredHotKeys[hotKey] = purpose
+        }
+
+        return hotKeyRef
     }
 
     private func registerHotKey(
@@ -171,8 +206,11 @@ final class HotKeyController {
 
     private func handleHotKey(id: UInt32) {
         switch id {
-        case HotKeyID.clearNotifications:
-            NotificationClearer.clear()
+        case HotKeyID.clearVisibleNotifications:
+            NotificationClearer.clearVisible()
+
+        case HotKeyID.clearAllNotifications:
+            NotificationClearer.clearAll()
 
         case HotKeyID.sendTestNotification:
             TestNotificationSender.shared.sendTestNotification()

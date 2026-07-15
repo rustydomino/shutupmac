@@ -4,8 +4,13 @@ import AppKit
 enum PreferenceKeys {
     static let hideDockIcon = "hideDockIcon"
     static let enableGlobalHotkeys = "enableGlobalHotkeys"
-    static let clearNotificationsHotKey = "clearNotificationsHotKey"
+
+    static let clearVisibleNotificationsHotKey = "clearVisibleNotificationsHotKey"
+    static let clearAllNotificationsHotKey = "clearAllNotificationsHotKey"
     static let testNotificationHotKey = "testNotificationHotKey"
+
+    // Legacy key from the old single-clear-hotkey design.
+    static let clearNotificationsHotKey = "clearNotificationsHotKey"
 }
 
 enum AppPreferences {
@@ -13,8 +18,12 @@ enum AppPreferences {
         UserDefaults.standard.register(defaults: [
             PreferenceKeys.hideDockIcon: true,
             PreferenceKeys.enableGlobalHotkeys: true,
-            PreferenceKeys.clearNotificationsHotKey: HotKey.defaultClear.encodedString,
-            PreferenceKeys.testNotificationHotKey: HotKey.defaultTestNotification.encodedString
+            PreferenceKeys.clearVisibleNotificationsHotKey: HotKey.defaultClearVisible.encodedString,
+            PreferenceKeys.clearAllNotificationsHotKey: HotKey.defaultClearAll.encodedString,
+            PreferenceKeys.testNotificationHotKey: HotKey.defaultTestNotification.encodedString,
+
+            // Keep a default for older code/preferences. New code should not use this.
+            PreferenceKeys.clearNotificationsHotKey: HotKey.defaultClear.encodedString
         ])
     }
 
@@ -26,14 +35,25 @@ enum AppPreferences {
         UserDefaults.standard.bool(forKey: PreferenceKeys.enableGlobalHotkeys)
     }
 
-    static var clearNotificationsHotKey: HotKey {
-        let storedValue = UserDefaults.standard.string(forKey: PreferenceKeys.clearNotificationsHotKey)
-        return HotKey.decode(storedValue) ?? .defaultClear
+    static var clearVisibleNotificationsHotKey: HotKey {
+        let storedValue = UserDefaults.standard.string(forKey: PreferenceKeys.clearVisibleNotificationsHotKey)
+        return HotKey.decode(storedValue) ?? .defaultClearVisible
+    }
+
+    static var clearAllNotificationsHotKey: HotKey {
+        let storedValue = UserDefaults.standard.string(forKey: PreferenceKeys.clearAllNotificationsHotKey)
+        return HotKey.decode(storedValue) ?? .defaultClearAll
     }
 
     static var testNotificationHotKey: HotKey {
         let storedValue = UserDefaults.standard.string(forKey: PreferenceKeys.testNotificationHotKey)
         return HotKey.decode(storedValue) ?? .defaultTestNotification
+    }
+
+    // Legacy accessor from the old single-clear-hotkey design.
+    static var clearNotificationsHotKey: HotKey {
+        let storedValue = UserDefaults.standard.string(forKey: PreferenceKeys.clearNotificationsHotKey)
+        return HotKey.decode(storedValue) ?? .defaultClear
     }
 }
 

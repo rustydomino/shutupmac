@@ -6,7 +6,7 @@ struct HotKeyRecorderView: View {
     let title: String
     @Binding var encodedHotKey: String
     let defaultHotKey: HotKey
-    let otherEncodedHotKey: String
+    let otherEncodedHotKeys: [String]
     let onChange: () -> Void
     let onRecordingStarted: () -> Void
     let onRecordingEnded: () -> Void
@@ -18,15 +18,15 @@ struct HotKeyRecorderView: View {
         HotKey.decode(encodedHotKey) ?? defaultHotKey
     }
 
-    private var otherHotKey: HotKey? {
-        HotKey.decode(otherEncodedHotKey)
+    private var otherHotKeys: Set<HotKey> {
+        Set(otherEncodedHotKeys.compactMap { HotKey.decode($0) })
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(title)
-                    .frame(width: 170, alignment: .leading)
+                    .frame(width: 220, alignment: .leading)
 
                 HotKeyRecorderButton(
                     displayString: currentHotKey.displayString,
@@ -54,7 +54,7 @@ struct HotKeyRecorderView: View {
                 Text(errorMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .padding(.leading, 170)
+                    .padding(.leading, 220)
             }
         }
     }
@@ -80,7 +80,7 @@ struct HotKeyRecorderView: View {
             return
         }
 
-        if let otherHotKey, candidate == otherHotKey {
+        if otherHotKeys.contains(candidate) {
             errorMessage = "This shortcut is already used by another ShutUpMac action."
             return
         }
