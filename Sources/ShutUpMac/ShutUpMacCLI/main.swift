@@ -5,11 +5,12 @@ import Darwin
 
 private enum CLIAction: Equatable {
     case clearAll
-    case clearVisible
+    case clearDesktop
     case clearSingleNotification
     case clearTopVisibleStack
     case listVisible
     case axDump
+    case version
     case help
 }
 
@@ -40,6 +41,10 @@ case .help:
     print(usage())
     Darwin.exit(0)
 
+case .version:
+    print(appVersionString())
+    Darwin.exit(0)
+
 case .listVisible:
     let lines = ShutUpMac.visibleNotificationSummaries()
     if lines.isEmpty {
@@ -60,7 +65,7 @@ case .axDump:
 case .clearAll:
     finish(with: ShutUpMac.clearNotifications(), quiet: options.quiet)
 
-case .clearVisible:
+case .clearDesktop:
     finish(with: ShutUpMac.clearVisibleNotificationsResult(), quiet: options.quiet)
 
 case .clearSingleNotification:
@@ -88,11 +93,18 @@ private func parse(arguments: [String]) -> (options: CLIOptions?, error: String?
         case "--help", "-h":
             if let error = setAction(.help, from: arg) { return (nil, error) }
 
+        case "--version", "-v":
+            if let error = setAction(.version, from: arg) { return (nil, error) }
+
         case "--clear-all", "-a":
             if let error = setAction(.clearAll, from: arg) { return (nil, error) }
 
-        case "--clear-visible", "-v":
-            if let error = setAction(.clearVisible, from: arg) { return (nil, error) }
+        case "--clear-desktop", "-d":
+            if let error = setAction(.clearDesktop, from: arg) { return (nil, error) }
+
+        case "--clear-visible":
+            // Legacy alias. Prefer --clear-desktop / -d.
+            if let error = setAction(.clearDesktop, from: arg) { return (nil, error) }
 
         case "--clear-single", "-n":
             if let error = setAction(.clearSingleNotification, from: arg) { return (nil, error) }
@@ -143,6 +155,85 @@ private func finish(with result: ClearNotificationsResult, quiet: Bool) -> Never
     Darwin.exit(result.exitCode)
 }
 
+private func appVersionString() -> String {
+    guard let info = appInfoDictionary() else {
+        return "ShutUpMac version unknown"
+    }
+
+    let version = info["CFBundleShortVersionString"] as? String
+    let build = info["CFBundleVersion"] as? String
+
+    switch (version, build) {
+    case let (.some(version), .some(build)):
+        return "ShutUpMac \(version) (\(build))"
+
+    case let (.some(version), .none):
+        return "ShutUpMac \(version)"
+
+    case let (.none, .some(build)):
+        return "ShutUpMac build \(build)"
+
+    case (.none, .none):
+        return "ShutUpMac version unknown"
+    }
+}
+
+private func appInfoDictionary() -> [String: Any]? {
+    containingAppInfoDictionary() ?? Bundle.main.infoDictionary
+}
+
+private func containingAppInfoDictionary() -> [String: Any]? {
+    guard let executablePath = executablePath() else {
+        return nil
+    }
+
+    var currentURL = URL(fileURLWithPath: executablePath)
+        .resolvingSymlinksInPath()
+        .deletingLastPathComponent()
+
+    for _ in 0..<8 {
+        let infoURL = currentURL.appendingPathComponent("Info.plist")
+
+        if FileManager.default.fileExists(atPath: infoURL.path),
+           let dictionary = propertyListDictionary(at: infoURL) {
+            return dictionary
+        }
+
+        currentURL.deleteLastPathComponent()
+    }
+
+    return nil
+}
+
+private func propertyListDictionary(at url: URL) -> [String: Any]? {
+    guard let data = try? Data(contentsOf: url),
+          let object = try? PropertyListSerialization.propertyList(
+            from: data,
+            options: [],
+            format: nil
+          ),
+          let dictionary = object as? [String: Any]
+    else {
+        return nil
+    }
+
+    return dictionary
+}
+
+private func executablePath() -> String? {
+    var size: UInt32 = 0
+
+    _ = _NSGetExecutablePath(nil, &size)
+
+    var buffer = [CChar](repeating: 0, count: Int(size))
+
+    guard _NSGetExecutablePath(&buffer, &size) == 0 else {
+        return nil
+    }
+
+    return String(cString: buffer)
+}
+
 private func usage() -> String {
     """
     Usage:
@@ -154,10 +245,10 @@ private func usage() -> String {
           presses Clear All Notifications, then closes Notification Center.
           This is also the default when no action is provided.
 
-      --clear-visible, -v
-          Clear visible notifications only without opening Notification Center.
+      --clear-desktop, -d
+          Clear desktop notifications without opening Notification Center.
           Repeatedly clears visible single notifications and visible stacks
-          until no actionable visible notification items remain.
+          until no actionable desktop notification items remain.
 
       --clear-single, -n
           Clear the top visible single notification only.
@@ -175,6 +266,9 @@ private func usage() -> String {
           Print suspicious Notification Center Accessibility elements for
           reverse-engineering and diagnostics. Does not clear notifications.
 
+      --version, -v
+          Print the ShutUpMac app version and exit.
+
     Options:
       --probe-menus
           With --ax-dump only, actively perform AXShowMenu on suspicious
@@ -190,10 +284,17 @@ private func usage() -> String {
       --help, -h
           Show this help text.
 
+    Legacy aliases:
+      --clear-visible
+          Same as --clear-desktop. Prefer --clear-desktop or -d.
+
     Examples:
       shutupmac-cli
+      shutupmac-cli --version
+      shutupmac-cli -v
       shutupmac-cli --clear-all --debug
-      shutupmac-cli --clear-visible --debug
+      shutupmac-cli --clear-desktop --debug
+      shutupmac-cli -d
       shutupmac-cli --clear-single
       shutupmac-cli --clear-stack
       shutupmac-cli --list

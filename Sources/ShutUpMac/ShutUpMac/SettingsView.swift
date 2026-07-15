@@ -13,17 +13,28 @@ struct SettingsView: View {
     @State private var cliInstallCommand = CLIInstallCommandBuilder.makeCommand()
     @State private var dockIconChangeNeedsRestart = false
 
+    private var showDockIcon: Binding<Bool> {
+        Binding(
+            get: {
+                !hideDockIcon
+            },
+            set: { newValue in
+                hideDockIcon = !newValue
+            }
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
 
-            Toggle("Hide Dock icon", isOn: $hideDockIcon)
+            Toggle("Show Dock icon", isOn: showDockIcon)
 
-            Text("When enabled, ShutUpMac runs as a menu-bar-only app.")
+            Text("When enabled, ShutUpMac appears in the Dock and app switcher like a regular Mac app. When disabled, it runs as a menu-bar-only utility.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             if dockIconChangeNeedsRestart {
-                Text("The Dock icon will be hidden the next time ShutUpMac launches.")
+                Text("ShutUpMac will return to menu-bar-only mode the next time it launches.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -151,9 +162,9 @@ struct SettingsView: View {
         }
         .onChange(of: hideDockIcon) { _, newValue in
             if newValue {
-                // Going from regular app back to menu-bar-only mode is visually janky
-                // if applied while Settings is open. Save the preference now and apply
-                // it cleanly at next launch from ShutUpMacApp.init().
+                // Turning off "Show Dock icon" moves the app back to menu-bar-only mode.
+                // Applying that while Settings is open is visually janky, so save the
+                // preference now and apply it cleanly at next launch from ShutUpMacApp.init().
                 dockIconChangeNeedsRestart = true
             } else {
                 // Showing the Dock icon is safe to apply immediately.
