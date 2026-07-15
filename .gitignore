@@ -5,3 +5,8 @@ DerivedData/
 .build/
 *.swp
 *.tmp
+
+# Xcode archive/export products
+*.xcarchive/
+Products/
+*.app/
