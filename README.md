@@ -1,173 +1,169 @@
 # ShutUpMac
 
-ShutUpMac is a macOS menu-bar utility and companion CLI for clearing Notification Center notifications without reaching for the mouse.
+ShutUpMac is a small macOS menu bar utility for clearing Notification Center notifications from the keyboard or menu bar.
 
-The project is aimed at people who still want to see notifications, but want a fast keyboard-driven way to get rid of notification clutter.
+It is built around Accessibility automation. The goal is simple: let you keep your hands on the keyboard while clearing notification clutter.
 
 ## Features
 
-- Clear all notifications from Notification Center.
-- Clear currently visible notifications.
-- Clear the top visible single notification.
-- Clear the top visible notification stack.
-- List visible notification candidates from the CLI.
-- Diagnostic Accessibility tree dump for debugging macOS Notification Center behavior.
-- Shared Swift engine used by both the GUI app and CLI helper.
+### Menu bar app
 
-## Requirements
+- Clear visible notifications
+- Clear all notifications
+- Send a test notification
+- Configurable global hotkeys
+- Optional menu-bar-only mode with hidden Dock icon
+- Optional launch at login
+- Built-in command line helper install command
 
-- macOS
-- Xcode
-- Accessibility permission for the app and/or CLI helper
+### Default global hotkeys
 
-ShutUpMac controls Notification Center through macOS Accessibility APIs. The app or CLI must be allowed under:
+| Action | Default shortcut |
+| --- | --- |
+| Clear Visible Notifications | `Control` + `Option` + `Command` + `V` |
+| Clear All Notifications | `Control` + `Option` + `Command` + `A` |
+| Send Test Notification | `Control` + `Option` + `Command` + `T` |
 
-```text
-System Settings > Privacy & Security > Accessibility
+Hotkeys can be changed in Settings.
+
+### Command line helper
+
+The bundled CLI helper can be installed from the Settings window. By default, the helper is named:
+
+```sh
+shutupmac-cli
 ```
+
+You can also symlink it under a shorter name such as:
+
+```sh
+stfu
+```
+
+Supported CLI actions include:
+
+```sh
+shutupmac-cli --clear-all
+shutupmac-cli --clear-visible
+shutupmac-cli --clear-single
+shutupmac-cli --clear-stack
+shutupmac-cli --list-visible
+shutupmac-cli --ax-dump
+```
+
+Common aliases:
+
+```sh
+shutupmac-cli -a   # clear all
+shutupmac-cli -v   # clear visible
+shutupmac-cli -n   # clear single/top visible notification
+shutupmac-cli -s   # clear top visible stack
+shutupmac-cli -l   # list visible notification candidates
+```
+
+Diagnostic options:
+
+```sh
+shutupmac-cli --debug
+shutupmac-cli --ax-dump
+shutupmac-cli --ax-dump --probe-menus
+```
+
+`--ax-dump` and `--probe-menus` are developer diagnostics and are not intended as normal user-facing features.
+
+## Accessibility permission
+
+ShutUpMac needs macOS Accessibility permission to inspect and press Notification Center controls.
+
+To enable it:
+
+1. Open **System Settings**
+2. Go to **Privacy & Security**
+3. Open **Accessibility**
+4. Enable ShutUpMac
+
+If permission is missing, ShutUpMac will prompt macOS to show the Accessibility permission flow.
 
 ## Project layout
 
-```text
-Sources/ShutUpMac/
-  ShutUpMac.xcodeproj
-  ShutUpMac/
-    ShutUpMacEngine.swift
-    AXHelpers.swift
-    NotificationCenterAccess.swift
-    NotificationClearAll.swift
-    VisibleNotifications.swift
-    AXDiagnostics.swift
-  ShutUpMacCLI/
-    main.swift
-```
-
-Core responsibilities:
+The core notification engine is split into focused files:
 
 ```text
 ShutUpMacEngine.swift
-  Shared config, result types, and public-facing wrappers.
+  Shared config, debug utilities, result type, and public wrappers
 
 AXHelpers.swift
-  Generic Accessibility helper functions.
+  Generic Accessibility helper functions
 
 NotificationCenterAccess.swift
-  Finds, opens, and closes Notification Center.
+  Finding, opening, and closing Notification Center
 
 NotificationClearAll.swift
-  Robust clear-all behavior for Notification Center.
+  Robust clear-all behavior
 
 VisibleNotifications.swift
-  Discovery and clearing of visible notifications and stacks.
+  Visible notification and visible stack discovery/actions
 
 AXDiagnostics.swift
-  Diagnostic AX dump and menu probing tools.
-
-ShutUpMacCLI/main.swift
-  Command-line interface.
+  Developer AX dump and menu probing diagnostics
 ```
 
-## CLI usage
-
-The CLI target builds a helper that can be run directly or symlinked as `stfu`.
-
-Common commands:
-
-```bash
-stfu --clear-all
-stfu --clear-visible
-stfu --clear-single
-stfu --clear-stack
-stfu --list-visible
-stfu --help
-```
-
-Debug and diagnostic commands:
-
-```bash
-stfu --clear-all --debug
-stfu --clear-visible --debug
-stfu --ax-dump
-stfu --ax-dump --probe-menus
-```
-
-Short flags are also available for common actions:
-
-```bash
-stfu -a   # clear all
-stfu -v   # clear visible
-stfu -n   # clear top single notification
-stfu -s   # clear top visible stack
-stfu -l   # list visible notifications
-stfu -q   # quiet output
-```
-
-## GUI behavior
-
-The GUI is a macOS menu-bar app. The long-term goal is to expose the most useful actions directly from the menu bar, while keeping diagnostic tooling mostly in the CLI.
-
-Recommended product-level actions:
+GUI and app support files include:
 
 ```text
-Clear Visible Notifications
-Clear All Notifications
-```
+ShutUpMacApp.swift
+  Menu bar app entry point and menu actions
 
-Possible advanced actions:
+SettingsView.swift
+  App preferences, hotkey settings, launch-at-login, and CLI install command
 
-```text
-Clear Top Notification
-Clear Top Stack
-Show Visible Notifications
+AppPreferences.swift
+  UserDefaults preference keys and defaults
+
+HotKey.swift
+  Hotkey model, encoding, decoding, display, and availability checks
+
+HotKeyController.swift
+  Global hotkey registration and dispatch
+
+NotificationClearer.swift
+  GUI-facing wrapper around engine actions and Accessibility permission checks
 ```
 
 ## Building
 
-Open the Xcode project:
-
-```bash
-open Sources/ShutUpMac/ShutUpMac.xcodeproj
-```
-
-Build the GUI app target and the CLI target separately:
+Open the Xcode project and build the app scheme:
 
 ```text
-ShutUpMac
-ShutUpMacCLI
+Scheme: ShutUpMac
+Destination: My Mac
 ```
 
-Make sure shared source files are included in both targets when needed.
+The CLI helper has its own scheme:
 
-## Testing checklist
-
-Useful manual smoke tests:
-
-```bash
-stfu --help
-stfu --list-visible
-stfu --clear-visible --debug
-stfu --clear-single
-stfu --clear-stack
-stfu --clear-all --debug
-stfu --ax-dump
+```text
+Scheme: ShutUpMacCLI
+Destination: My Mac
 ```
 
-Recommended scenarios:
+When changing shared engine files, build both schemes.
 
-- No visible notifications.
-- One visible notification.
-- Multiple visible notifications.
-- One collapsed notification stack.
-- Notification Center closed before running the command.
-- Notification Center already open before running the command.
-- Notification Center filled vertically with many notifications.
+## Development notes
 
-## Notes
+The app and CLI share the same notification engine. The GUI should generally expose only stable, user-friendly actions. More experimental or diagnostic actions should stay CLI-only until their behavior is polished.
 
-Notification Center's Accessibility structure can change across macOS releases. The diagnostic commands exist to inspect what macOS is exposing when behavior changes.
+Current product-facing actions:
 
-`--clear-all` is intended to be the robust/nuclear path. `--clear-visible` is intentionally more targeted and may take longer when many notifications are visible because it waits for UI progress between actions.
+- Clear Visible Notifications
+- Clear All Notifications
+
+CLI-only or advanced actions:
+
+- Clear single/top visible notification
+- Clear top visible stack
+- AX dump
+- Probe menus
 
 ## License
 
-ShutUpMac is licensed under the GNU General Public License version 2.0. See [LICENSE](LICENSE).
+This project is licensed under the GNU General Public License version 2.0. See `LICENSE` for details.
