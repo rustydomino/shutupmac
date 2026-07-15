@@ -1,5 +1,6 @@
 import Foundation
 import UserNotifications
+import AppKit
 
 struct TestNotificationResult {
     let didSchedule: Bool
@@ -136,5 +137,41 @@ final class TestNotificationSender: NSObject, UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         completionHandler([.banner, .sound])
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let handleClick = {
+            if AppPreferences.hideDockIcon {
+                self.repairMenuBarOnlyFocus()
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+                    self.repairMenuBarOnlyFocus()
+                }
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.repairMenuBarOnlyFocus()
+                }
+            }
+
+            completionHandler()
+        }
+
+        if Thread.isMainThread {
+            handleClick()
+        } else {
+            DispatchQueue.main.async {
+                handleClick()
+            }
+        }
+    }
+
+    private func repairMenuBarOnlyFocus() {
+        DockIconController.apply(hideDockIcon: true)
+        NSApplication.shared.deactivate()
+        NSApplication.shared.hide(nil)
     }
 }
