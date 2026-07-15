@@ -1,6 +1,11 @@
 import Foundation
 import UserNotifications
 
+struct TestNotificationResult {
+    let didSchedule: Bool
+    let message: String
+}
+
 final class TestNotificationSender: NSObject, UNUserNotificationCenterDelegate {
     static let shared = TestNotificationSender()
 
@@ -13,6 +18,14 @@ final class TestNotificationSender: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func sendTestNotification() {
+        sendTestNotificationResult { result in
+            print(result.message)
+        }
+    }
+
+    func sendTestNotificationResult(
+        completion: @escaping (TestNotificationResult) -> Void
+    ) {
         let center = UNUserNotificationCenter.current()
 
         center.getNotificationSettings { settings in
@@ -20,31 +33,57 @@ final class TestNotificationSender: NSObject, UNUserNotificationCenterDelegate {
             case .notDetermined:
                 center.requestAuthorization(options: [.alert, .sound]) { granted, error in
                     if let error {
-                        print("Notification permission request failed: \(error)")
+                        self.finish(
+                            TestNotificationResult(
+                                didSchedule: false,
+                                message: "Notification permission request failed: \(error.localizedDescription)"
+                            ),
+                            completion: completion
+                        )
                         return
                     }
 
                     guard granted else {
-                        print("Notification permission not granted")
+                        self.finish(
+                            TestNotificationResult(
+                                didSchedule: false,
+                                message: "Notification permission was not granted. Enable notifications for ShutUpMac in System Settings."
+                            ),
+                            completion: completion
+                        )
                         return
                     }
 
-                    self.postTestNotification()
+                    self.postTestNotification(completion: completion)
                 }
 
             case .authorized, .provisional, .ephemeral:
-                self.postTestNotification()
+                self.postTestNotification(completion: completion)
 
             case .denied:
-                print("Notification permission denied. Enable notifications for ShutUpMac in System Settings.")
+                self.finish(
+                    TestNotificationResult(
+                        didSchedule: false,
+                        message: "Notifications are disabled for ShutUpMac. Enable notifications in System Settings to use test notifications."
+                    ),
+                    completion: completion
+                )
 
             @unknown default:
-                print("Unknown notification authorization status")
+                self.finish(
+                    TestNotificationResult(
+                        didSchedule: false,
+                        message: "Unknown notification authorization status. Check ShutUpMac notification settings in System Settings."
+                    ),
+                    completion: completion
+                )
             }
         }
     }
 
-    private func postTestNotification() {
+    private func postTestNotification(
+        completion: @escaping (TestNotificationResult) -> Void
+    ) {
         let content = UNMutableNotificationContent()
         content.title = "ShutUpMac Test Notification"
         content.body = "This is a test notification for ShutUpMac."
@@ -63,10 +102,31 @@ final class TestNotificationSender: NSObject, UNUserNotificationCenterDelegate {
 
         UNUserNotificationCenter.current().add(request) { error in
             if let error {
-                print("Failed to send test notification: \(error)")
+                self.finish(
+                    TestNotificationResult(
+                        didSchedule: false,
+                        message: "Failed to schedule test notification: \(error.localizedDescription)"
+                    ),
+                    completion: completion
+                )
             } else {
-                print("Sent test notification")
+                self.finish(
+                    TestNotificationResult(
+                        didSchedule: true,
+                        message: "Test notification was scheduled."
+                    ),
+                    completion: completion
+                )
             }
+        }
+    }
+
+    private func finish(
+        _ result: TestNotificationResult,
+        completion: @escaping (TestNotificationResult) -> Void
+    ) {
+        DispatchQueue.main.async {
+            completion(result)
         }
     }
 

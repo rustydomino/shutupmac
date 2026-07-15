@@ -60,8 +60,7 @@ struct ShutUpMacMenu: View {
         Divider()
 
         Button("Send Test Notification") {
-            print("GUI menu: Send Test Notification clicked")
-            TestNotificationSender.shared.sendTestNotification()
+            sendTestNotificationFromMenu()
         }
 
         // MARK: - End Notification Actions Menu
@@ -107,5 +106,30 @@ struct ShutUpMacMenu: View {
         }
 
         // MARK: - End App Menu
+    }
+    
+    private func sendTestNotificationFromMenu() {
+        print("GUI menu: Send Test Notification clicked")
+
+        TestNotificationSender.shared.sendTestNotificationResult { result in
+            print(result.message)
+
+            guard !result.didSchedule else {
+                return
+            }
+
+            showTestNotificationError(message: result.message)
+        }
+    }
+
+    private func showTestNotificationError(message: String) {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Could Not Send Test Notification"
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 }
