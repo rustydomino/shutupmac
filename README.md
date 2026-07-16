@@ -4,6 +4,8 @@ ShutUpMac is a small macOS menu bar utility for clearing Notification Center not
 
 It is built around Accessibility automation. The goal is simple: let you keep your hands on the keyboard while clearing notification clutter.
 
+GitHub page: https://github.com/rustydomino/shutupmac
+
 ## Features
 
 ### Menu bar app
