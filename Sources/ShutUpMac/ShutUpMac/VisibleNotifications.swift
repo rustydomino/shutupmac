@@ -57,6 +57,25 @@ struct VisibleNotificationItem {
         kind.label
     }
 
+    var axSubrole: String {
+        kind.subrole
+    }
+
+    var axIdentifier: String {
+        strAttr(element, kAXIdentifierAttribute) ?? ""
+    }
+
+    var notificationAXKey: NotificationAXKey? {
+        guard !axIdentifier.isEmpty else {
+            return nil
+        }
+
+        return NotificationAXKey(
+            subrole: axSubrole,
+            axIdentifier: axIdentifier
+        )
+    }
+    
     var isActionable: Bool {
         actions(element).contains { actionName in
             actionName.localizedCaseInsensitiveContains(kind.actionNameFragment)
@@ -228,6 +247,20 @@ func clearVisibleNotificationItem(_ item: VisibleNotificationItem) -> Bool {
     performFirstAction(on: item.element, nameContaining: item.kind.actionNameFragment)
 }
 
+func visibleNotificationAXKeyDisplayString(_ item: VisibleNotificationItem) -> String {
+    item.notificationAXKey?.rawValue ?? "<missing AXIdentifier>"
+}
+
+func visibleNotificationItem(
+    matching key: NotificationAXKey,
+    in items: [VisibleNotificationItem]
+) -> VisibleNotificationItem? {
+    items.first { item in
+        item.axSubrole == key.subrole &&
+        item.axIdentifier == key.axIdentifier
+    }
+}
+
 func visibleNotificationStableKey(_ item: VisibleNotificationItem) -> String {
     let id = strAttr(item.element, kAXIdentifierAttribute) ?? ""
     if !id.isEmpty {
@@ -306,7 +339,9 @@ func waitForVisibleNotificationProgress(
 func visibleNotificationSummaryLines() -> [String] {
     visibleNotificationItems().enumerated().map { index, item in
         let actionList = actions(item.element).joined(separator: ", ")
-        return "\(index + 1). \(item.kindLabel) actionable=\(item.isActionable) frame=[\(formatFrame(item.frame))] actions=[\(actionList)] \(describe(item.element))"
+        let key = visibleNotificationAXKeyDisplayString(item)
+
+        return "\(index + 1). \(item.kindLabel) key=\"\(key)\" actionable=\(item.isActionable) frame=[\(formatFrame(item.frame))] actions=[\(actionList)] \(describe(item.element))"
     }
 }
 
@@ -333,6 +368,78 @@ extension ShutUpMac {
     static func closeTopVisibleNotification() -> Bool {
         let result = closeTopVisibleNotificationResult()
         return result.succeeded && result.didClear
+    }
+    
+    /// Dismisses one currently visible notification or notification stack by
+    /// its runtime AX key.
+    ///
+    /// The key format is:
+    ///   <AXSubrole>|<AXIdentifier>
+    ///
+    /// This intentionally does not open Notification Center. The caller is
+    /// expected to pass a key for an element that is currently visible.
+    static func dismissVisibleNotification(matching key: NotificationAXKey) -> Bool {
+        let result = dismissVisibleNotificationResult(matching: key)
+        return result.succeeded && result.didClear
+    }
+
+    /// Result-returning variant for the CLI/logger integration.
+    static func dismissVisibleNotificationResult(
+        matching key: NotificationAXKey
+    ) -> ClearNotificationsResult {
+        debugLog("AX trusted: \(AXIsProcessTrusted())")
+
+        guard VisibleNotificationKind(subrole: key.subrole) != nil else {
+            return .failure(
+                "Invalid notification key: unsupported subrole '\(key.subrole)'"
+            )
+        }
+
+        let items = visibleNotificationItems(debugDump: Debug.isEnabled)
+
+        guard let item = visibleNotificationItem(matching: key, in: items) else {
+            dumpVisibleNotificationCandidates()
+            return .failure("Notification not found for key: \(key.rawValue)")
+        }
+
+        debugLog("DISMISS_KEY: found \(item.kindLabel) key=\(key.rawValue) \(compactDescribe(item.element))")
+
+        guard item.isActionable else {
+            return .failure(
+                "Notification found but not dismissible for key: \(key.rawValue)"
+            )
+        }
+
+        guard clearVisibleNotificationItem(item) else {
+            return .failure(
+                "Notification found but dismiss action failed for key: \(key.rawValue)"
+            )
+        }
+
+        let observedProgress = waitForVisibleNotificationProgress(
+            afterClearing: item,
+            previousItems: items
+        )
+
+        guard observedProgress else {
+            return .failure(
+                "Dismiss action was performed, but no visible progress was observed for key: \(key.rawValue)"
+            )
+        }
+
+        switch item.kind {
+        case .single:
+            return .success(
+                "SUCCESS: dismissed visible notification for key: \(key.rawValue)",
+                didClear: true
+            )
+
+        case .stack:
+            return .success(
+                "SUCCESS: dismissed visible notification stack for key: \(key.rawValue)",
+                didClear: true
+            )
+        }
     }
 
     /// Result-returning variant for the CLI.

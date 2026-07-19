@@ -8,6 +8,7 @@ private enum CLIAction: Equatable {
     case clearDesktop
     case clearSingleNotification
     case clearTopVisibleStack
+    case dismissNotificationKey(NotificationAXKey)
     case listVisible
     case axDump
     case version
@@ -73,6 +74,9 @@ case .clearSingleNotification:
 
 case .clearTopVisibleStack:
     finish(with: ShutUpMac.clearTopVisibleStackResult(), quiet: options.quiet)
+
+case let .dismissNotificationKey(key):
+    finish(with: ShutUpMac.dismissVisibleNotificationResult(matching: key), quiet: options.quiet)
 }
 
 private func parse(arguments: [String]) -> (options: CLIOptions?, error: String?) {
@@ -88,7 +92,15 @@ private func parse(arguments: [String]) -> (options: CLIOptions?, error: String?
         return nil
     }
 
-    for arg in arguments {
+    func parseNotificationKey(_ rawValue: String) -> NotificationAXKey? {
+        NotificationAXKey(rawValue: rawValue)
+    }
+
+    var index = 0
+
+    while index < arguments.count {
+        let arg = arguments[index]
+
         switch arg {
         case "--help", "-h":
             if let error = setAction(.help, from: arg) { return (nil, error) }
@@ -112,6 +124,55 @@ private func parse(arguments: [String]) -> (options: CLIOptions?, error: String?
         case "--clear-stack", "-s":
             if let error = setAction(.clearTopVisibleStack, from: arg) { return (nil, error) }
 
+        case "--dismiss-key", "--dismiss-notification-key":
+            index += 1
+
+            guard index < arguments.count else {
+                return (nil, "Missing value for \(arg)")
+            }
+
+            let rawKey = arguments[index]
+
+            guard let key = parseNotificationKey(rawKey) else {
+                return (
+                    nil,
+                    "Invalid notification key: \(rawKey). Expected '<subrole>|<axIdentifier>'."
+                )
+            }
+
+            if let error = setAction(.dismissNotificationKey(key), from: arg) {
+                return (nil, error)
+            }
+        case let prefixedArg where prefixedArg.hasPrefix("--dismiss-key="):
+            let prefix = "--dismiss-key="
+            let rawKey = String(prefixedArg.dropFirst(prefix.count))
+
+            guard let key = parseNotificationKey(rawKey) else {
+                return (
+                    nil,
+                    "Invalid notification key: \(rawKey). Expected '<subrole>|<axIdentifier>'."
+                )
+            }
+
+            if let error = setAction(.dismissNotificationKey(key), from: "--dismiss-key") {
+                return (nil, error)
+            }
+
+        case let prefixedArg where prefixedArg.hasPrefix("--dismiss-notification-key="):
+            let prefix = "--dismiss-notification-key="
+            let rawKey = String(prefixedArg.dropFirst(prefix.count))
+
+            guard let key = parseNotificationKey(rawKey) else {
+                return (
+                    nil,
+                    "Invalid notification key: \(rawKey). Expected '<subrole>|<axIdentifier>'."
+                )
+            }
+
+            if let error = setAction(.dismissNotificationKey(key), from: "--dismiss-notification-key") {
+                return (nil, error)
+            }
+            
         case "--list", "--list-visible", "-l":
             if let error = setAction(.listVisible, from: arg) { return (nil, error) }
 
@@ -130,6 +191,8 @@ private func parse(arguments: [String]) -> (options: CLIOptions?, error: String?
         default:
             return (nil, "Unknown argument: \(arg)")
         }
+
+        index += 1
     }
 
     if options.probeMenus && options.action != .axDump {
@@ -258,6 +321,16 @@ private func usage() -> String {
           Clear the top visible notification stack only.
           Ignores single notifications.
 
+      --dismiss-key KEY
+          Dismiss one currently visible notification or notification stack
+          matching the runtime Accessibility key.
+
+          KEY format:
+            <AXSubrole>|<AXIdentifier>
+
+          Example:
+            AXNotificationCenterAlert|D52E0071-45AD-440A-AEE3-40DF7D88CDC7
+
       --list, --list-visible, -l
           Print visible notification and stack candidates for testing.
           Does not perform an action.
@@ -287,6 +360,9 @@ private func usage() -> String {
     Legacy aliases:
       --clear-visible
           Same as --clear-desktop. Prefer --clear-desktop or -d.
+    
+    --dismiss-notification-key KEY
+          Same as --dismiss-key. Prefer --dismiss-key.
 
     Examples:
       shutupmac-cli
@@ -297,6 +373,7 @@ private func usage() -> String {
       shutupmac-cli -d
       shutupmac-cli --clear-single
       shutupmac-cli --clear-stack
+      shutupmac-cli --dismiss-key "AXNotificationCenterAlert|D52E0071-45AD-440A-AEE3-40DF7D88CDC7"
       shutupmac-cli --list
       shutupmac-cli --ax-dump
       shutupmac-cli --ax-dump --probe-menus

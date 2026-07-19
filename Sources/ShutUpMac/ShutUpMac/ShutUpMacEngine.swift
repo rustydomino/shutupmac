@@ -115,6 +115,51 @@ struct ClearNotificationsResult {
     }
 }
 
+// MARK: - Notification AX Key
+
+/// Runtime Accessibility identity for a currently visible notification element.
+///
+/// This is intentionally not a permanent notification ID. It identifies an AX
+/// element that is expected to still be visible when the operation runs.
+struct NotificationAXKey: Equatable, Hashable {
+    let subrole: String
+    let axIdentifier: String
+
+    var rawValue: String {
+        "\(subrole)|\(axIdentifier)"
+    }
+
+    init(subrole: String, axIdentifier: String) {
+        self.subrole = subrole
+        self.axIdentifier = axIdentifier
+    }
+
+    init?(rawValue: String) {
+        let parts = rawValue.split(
+            separator: "|",
+            maxSplits: 1,
+            omittingEmptySubsequences: false
+        )
+
+        guard parts.count == 2 else {
+            return nil
+        }
+
+        let subrole = String(parts[0])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let axIdentifier = String(parts[1])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !subrole.isEmpty, !axIdentifier.isEmpty else {
+            return nil
+        }
+
+        self.subrole = subrole
+        self.axIdentifier = axIdentifier
+    }
+}
+
 // MARK: - Callable Engine
 
 /// Public-facing notification engine.
