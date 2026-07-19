@@ -47,12 +47,6 @@ The bundled CLI helper can be installed from the Settings window. By default, th
 shutupmac-cli
 ```
 
-You can also symlink it under a shorter name such as:
-
-```sh
-stfu
-```
-
 Supported CLI actions include:
 
 ```sh
@@ -60,6 +54,7 @@ shutupmac-cli --clear-all
 shutupmac-cli --clear-desktop
 shutupmac-cli --clear-single
 shutupmac-cli --clear-stack
+shutupmac-cli --dismiss-key "AXNotificationCenterAlert|D52E0071-45AD-440A-AEE3-40DF7D88CDC7"
 shutupmac-cli --list-visible
 shutupmac-cli --version
 shutupmac-cli --ax-dump
@@ -76,10 +71,39 @@ shutupmac-cli -l   # list visible notification candidates
 shutupmac-cli -v   # print version
 ```
 
+Targeted automation:
+
+```sh
+shutupmac-cli --dismiss-key "AXNotificationCenterAlert|D52E0071-45AD-440A-AEE3-40DF7D88CDC7"
+```
+
+`--dismiss-key` dismisses one currently visible notification or notification stack by runtime Accessibility key.
+
+Key format:
+
+```text
+<AXSubrole>|<AXIdentifier>
+```
+
+Example:
+
+```text
+AXNotificationCenterAlert|D52E0071-45AD-440A-AEE3-40DF7D88CDC7
+```
+
+This key is not a permanent Apple notification database ID. It identifies a currently visible Accessibility element, so it is intended for immediate automation by tools that observe visible notifications and then ask ShutUpMac to dismiss the matching element.
+
+You can inspect currently visible notification keys with:
+
+```sh
+shutupmac-cli --list-visible
+```
+
 Legacy aliases:
 
 ```sh
-shutupmac-cli --clear-visible   # same as --clear-desktop
+shutupmac-cli --clear-visible                 # same as --clear-desktop
+shutupmac-cli --dismiss-notification-key KEY  # same as --dismiss-key
 ```
 
 Diagnostic options:
@@ -111,7 +135,7 @@ ShutUpMac can send a test notification from the menu bar app. Test notifications
 
 If test notifications are disabled, open ShutUpMac notification settings from the app prompt or manually in System Settings.
 
-For persistent test notifications, set ShutUpMac’s notification style to **Alerts** in System Settings. macOS controls this setting; ShutUpMac cannot force alert-style notifications automatically.
+For persistent test notifications, set ShutUpMac's notification style to **Alerts** in System Settings. macOS controls this setting; ShutUpMac cannot force alert-style notifications automatically.
 
 ## Dock icon setting
 
@@ -130,7 +154,8 @@ The core notification engine is split into focused files:
 
 ```text
 ShutUpMacEngine.swift
-  Shared config, debug utilities, result type, and public wrappers
+  Shared config, debug utilities, result types, notification AX key model,
+  and public wrappers
 
 AXHelpers.swift
   Generic Accessibility helper functions
@@ -142,7 +167,8 @@ NotificationClearAll.swift
   Robust clear-all behavior
 
 VisibleNotifications.swift
-  Visible notification and visible stack discovery/actions
+  Visible notification and visible stack discovery/actions, including
+  targeted dismissal by runtime Accessibility key
 
 AXDiagnostics.swift
   Developer AX dump and menu probing diagnostics
@@ -209,9 +235,12 @@ CLI-only or advanced actions:
 
 - Clear single/top visible notification
 - Clear top visible stack
+- Dismiss by runtime Accessibility key
 - List visible notification candidates
 - AX dump
 - Probe menus
+
+`--dismiss-key` is intended as an automation integration point. ShutUpMac does not need to know which tool generated the key; it only receives a runtime Accessibility key and attempts to dismiss the currently visible matching notification element.
 
 ## Version history
 
