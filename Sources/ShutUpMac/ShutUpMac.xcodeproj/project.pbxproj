@@ -34,13 +34,6 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		27D387023004419B00DC4586 /* Exceptions for "ShutUpMac" folder in "ShutUpMac" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				main.swift,
-			);
-			target = 27D386B03002E8CC00DC4586 /* ShutUpMac */;
-		};
 		27DD8BA93004715C001B042B /* Exceptions for "ShutUpMac" folder in "ShutUpMacCLI" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -59,7 +52,6 @@
 		27D386B33002E8CC00DC4586 /* ShutUpMac */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				27D387023004419B00DC4586 /* Exceptions for "ShutUpMac" folder in "ShutUpMac" target */,
 				27DD8BA93004715C001B042B /* Exceptions for "ShutUpMac" folder in "ShutUpMacCLI" target */,
 			);
 			path = ShutUpMac;
