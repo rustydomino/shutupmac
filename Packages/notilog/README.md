@@ -1,0 +1,583 @@
+# notilog
+
+**notilog** is a macOS notification observation, logging, privacy, and automation framework built on the Accessibility (AX) API.
+
+Rather than depending on Apple's undocumented notification database, Notilog observes notifications as they appear in the Notification Center user interface. It can record notification lifecycle events, evaluate rules, execute actions, verify ShutUpMac dismissals, and operate with configurable logging, console, and redaction policies.
+
+The project currently consists of a reusable Swift library, `NotilogCore`, and a CLI client, `notilog-cli`. A GUI is planned as a future client of the same core engine.
+
+## Current Features
+
+- Observe visible macOS notifications through Accessibility.
+- Extract:
+  - Notification key
+  - AX subrole
+  - AX identifier
+  - Source application
+  - Title
+  - Subtitle
+  - Body
+- Detect `appeared`, `disappeared`, and recovered `disappeared_unobserved` events.
+- Debounce short AX disappearances before emitting lifecycle events.
+- Track active notifications and reconcile state after interrupted watch sessions.
+- Persist notification history, active state, watch sessions, and action results to SQLite.
+- Inspect notification and action history from the CLI.
+- Define multiple JSON automation rules and multiple actions per rule.
+- Match event type, app, title, subtitle, body, or combined notification text.
+- Expand event and notification template variables in action arguments.
+- Preview actions with `--dry-run-actions`.
+- Run direct `exec` actions without invoking a shell.
+- Capture action status, exit code, stdout, and stderr.
+- Use the dedicated `shutupmac_dismiss` action.
+- Track delayed ShutUpMac outcomes as `probably_succeeded` or `definitely_failed`.
+- Run with no database writes using `--no-logging`.
+- Suppress routine watch output using `--quiet`.
+- Redact selected notification fields in Notilog-owned console and database output using `--redact`.
+- Fall back to a safe built-in probe rule when no config exists.
+
+## Requirements
+
+- macOS 13 or later
+- Swift 6.3 toolchain
+- Accessibility permission for the terminal or application running Notilog
+- ShutUpMac installed only when using the `shutupmac_dismiss` action
+
+For command-line development, Accessibility permission normally belongs to the launching application, such as Terminal, Ghostty, iTerm2, or Xcode.
+
+## Building and Testing
+
+From the repository root:
+
+```zsh
+swift build
+```
+
+Show the SwiftPM binary directory:
+
+```zsh
+swift build --show-bin-path
+```
+
+Run the test suite:
+
+```zsh
+swift test
+```
+
+During development, commands can be run through SwiftPM:
+
+```zsh
+swift run notilog-cli help
+```
+
+The remaining examples use `notilog-cli` directly and assume the built executable is available on `PATH`.
+
+## Runtime Files
+
+Notilog creates its runtime directory at:
+
+```text
+~/Library/Application Support/notilog/
+```
+
+Current paths:
+
+```text
+notilog.sqlite   SQLite database
+config.json      Optional automation configuration
+logs/            Reserved runtime log directory
+```
+
+## Quick Start
+
+Check Accessibility permission:
+
+```zsh
+notilog-cli permissions
+```
+
+Request the system permission prompt:
+
+```zsh
+notilog-cli permissions --prompt
+```
+
+Start watching notifications:
+
+```zsh
+notilog-cli watch
+```
+
+Stop the foreground watch process with `Ctrl-C`.
+
+## Commands
+
+### Permissions
+
+```zsh
+notilog-cli permissions
+notilog-cli permissions --prompt
+```
+
+### Watch
+
+Basic watch:
+
+```zsh
+notilog-cli watch
+```
+
+Enable diagnostic output:
+
+```zsh
+notilog-cli watch --debug
+```
+
+Preview matched actions without executing them:
+
+```zsh
+notilog-cli watch --dry-run-actions
+```
+
+Execute matched actions:
+
+```zsh
+notilog-cli watch --run-actions
+```
+
+Use a specific config file:
+
+```zsh
+notilog-cli watch --run-actions --config ./Examples/config.example.json
+```
+
+`--dry-run-actions` and `--run-actions` are mutually exclusive.
+
+### Notification History
+
+```zsh
+notilog-cli history
+notilog-cli history --limit 50
+```
+
+### Action History
+
+```zsh
+notilog-cli action-history
+notilog-cli action-history --limit 50
+```
+
+### Rules
+
+```zsh
+notilog-cli rules
+notilog-cli rules --config ./Examples/config.example.json
+```
+
+### Config Validation
+
+```zsh
+notilog-cli config-check
+notilog-cli config-check --config ./Examples/config.example.json
+```
+
+### Version and Help
+
+```zsh
+notilog-cli --version
+notilog-cli -v
+notilog-cli help
+```
+
+## Privacy and Output Modes
+
+The following watch options control different parts of the pipeline and can be combined.
+
+| Option | Controls | Scanning and actions | SQLite writes | Routine console output |
+|---|---|---:|---:|---:|
+| none | Normal operation | Yes | Yes | Yes |
+| `--no-logging` | Persistence | Yes | No | Yes |
+| `--quiet` | Routine watch output | Yes | Yes | No |
+| `--redact` | Stored/displayed content | Yes | Yes, redacted | Yes, redacted |
+
+### No-Logging Mode
+
+```zsh
+notilog-cli watch --no-logging --run-actions
+```
+
+`--no-logging` does not open or write the SQLite database. Notilog still:
+
+- Scans notifications.
+- Emits events in memory.
+- Matches rules.
+- Executes enabled actions.
+- Tracks pending ShutUpMac verification in memory.
+
+Because there is no database, the session does not recover previously active notification state and action verification results are not persisted.
+
+### Quiet Mode
+
+```zsh
+notilog-cli watch --quiet --run-actions
+```
+
+`--quiet` suppresses routine watch output, including:
+
+- Startup status.
+- Notification event lines.
+- Rule and action reports.
+- Captured child stdout and stderr.
+- Delayed ShutUpMac verification reports.
+- Debug messages, even when `--debug` is also present.
+
+Fatal startup and configuration errors may still be written to standard error. Quiet mode does not disable database writes or action execution.
+
+A silent, non-persistent automation session can combine both policies:
+
+```zsh
+notilog-cli watch --no-logging --quiet --run-actions
+```
+
+### Redaction Mode
+
+Bare `--redact` uses the default field set:
+
+```zsh
+notilog-cli watch --redact
+```
+
+Equivalent explicit alias:
+
+```zsh
+notilog-cli watch --redact default
+```
+
+The default set is:
+
+```text
+title, subtitle, body, attachments
+```
+
+Redact every supported field, including the application name:
+
+```zsh
+notilog-cli watch --redact all
+```
+
+Select individual fields with a comma-separated list:
+
+```zsh
+notilog-cli watch --redact title,body
+notilog-cli watch --redact app,title,subtitle,body
+```
+
+Supported field names:
+
+```text
+app
+title
+subtitle
+body
+attachments
+```
+
+The scanner does not currently capture attachment data; `attachments` reserves the privacy policy for future attachment support.
+
+Selected nonempty values become:
+
+```text
+[REDACTED]
+```
+
+Genuinely empty values remain empty.
+
+Redaction currently protects:
+
+- Notification event console output.
+- Immediate action console reports.
+- Child stdout/stderr displayed or stored by Notilog.
+- `notification_events`.
+- `active_notifications`.
+- `action_runs`, including expanded action details.
+
+Rules and actions still evaluate the original notification in memory. This means an external `exec` action can receive original content when its configured arguments use templates such as `{{notification.body}}`. The external process is outside Notilog's redaction boundary.
+
+Redaction currently does not hide notification keys, AX identifiers, AX subroles, rule names, user-authored config strings, or rows written before redaction was enabled.
+
+Common privacy combination:
+
+```zsh
+notilog-cli watch --redact --quiet --run-actions
+```
+
+## Architecture
+
+```text
+Notification Center AX tree
+          │
+          ▼
+ NotificationScanner
+          │
+          ▼
+ NotificationSnapshot
+          │
+          ▼
+NotificationEventTracker
+          │
+          ├──────────────► AutomationEngine ─► ActionRunner
+          │                                      │
+          │                                      └─► delayed ShutUpMac verification
+          │
+          └──────────────► RedactionPolicy
+                                   │
+                                   ├─► WatchOutput
+                                   └─► NotificationStore
+```
+
+The original event is used for rule matching and configured actions. Redacted copies are created for Notilog-owned output and persistence.
+
+See [`architecture.md`](architecture.md) for component and data-flow details.
+
+## Automation Configuration
+
+The default automation config path is:
+
+```text
+~/Library/Application Support/notilog/config.json
+```
+
+A config contains a `rules` array. Each enabled rule has match criteria and one or more actions.
+
+Example with two rules:
+
+```json
+{
+  "rules": [
+    {
+      "name": "Dismiss Self Service+ Agent notifications",
+      "enabled": true,
+      "match": {
+        "eventTypes": ["appeared"],
+        "appEquals": "Self Service+ Agent",
+        "caseSensitive": false
+      },
+      "actions": [
+        {
+          "type": "shutupmac_dismiss"
+        }
+      ]
+    },
+    {
+      "name": "Record update completion",
+      "enabled": true,
+      "match": {
+        "eventTypes": ["appeared"],
+        "appEquals": "Self Service+",
+        "bodyContains": "Update complete",
+        "caseSensitive": false
+      },
+      "actions": [
+        {
+          "type": "dry_run_log",
+          "message": "Update completion from {{notification.app}}"
+        }
+      ]
+    }
+  ]
+}
+```
+
+If no config file exists, Notilog uses a built-in appeared-notification probe backed by `/usr/bin/true`. Actions still require `--dry-run-actions` or `--run-actions`.
+
+## Rule Matching
+
+Current match fields:
+
+```json
+{
+  "eventTypes": ["appeared"],
+  "appEquals": "Mail",
+  "appContains": "Self Service",
+  "titleContains": "Microsoft Teams",
+  "subtitleContains": "example",
+  "bodyContains": "update is available",
+  "anyTextContains": "search text",
+  "caseSensitive": false
+}
+```
+
+All specified criteria must match.
+
+Matching is case-insensitive by default. Set `caseSensitive` to `true` for exact case behavior.
+
+Current event types:
+
+```text
+appeared
+disappeared
+disappeared_unobserved
+```
+
+`anyTextContains` searches a combined string containing app, title, subtitle, and body.
+
+## Actions
+
+### `exec`
+
+Runs an executable directly with argument-array semantics:
+
+```json
+{
+  "type": "exec",
+  "command": "/usr/bin/true",
+  "arguments": [
+    "--notification-key",
+    "{{notification.key}}"
+  ]
+}
+```
+
+Rules:
+
+- `command` must be an absolute path.
+- `command` is not template-expanded.
+- Each argument is template-expanded.
+- Notilog does not invoke a shell automatically.
+- Exit code, status, stdout, and stderr are captured.
+
+### `dry_run_log`
+
+Expands a message and records what would be logged:
+
+```json
+{
+  "type": "dry_run_log",
+  "message": "Notification from {{notification.app}}: {{notification.title}}"
+}
+```
+
+Both spellings are accepted in config:
+
+```text
+dry_run_log
+dryRunLog
+```
+
+### `shutupmac_dismiss`
+
+Dismisses the matched notification through ShutUpMac using the notification key:
+
+```json
+{
+  "type": "shutupmac_dismiss"
+}
+```
+
+Default helper:
+
+```text
+/Applications/ShutUpMac.app/Contents/Helpers/shutupmac-cli
+```
+
+Override the helper path when needed:
+
+```json
+{
+  "type": "shutupmac_dismiss",
+  "command": "/absolute/path/to/shutupmac-cli"
+}
+```
+
+Notilog schedules a delayed AX check after the dismissal request:
+
+```text
+notification key absent  → probably_succeeded
+notification key present → definitely_failed
+```
+
+An immediate ShutUpMac response that says the action was performed but no visible progress was observed is treated as `uncertain` while awaiting delayed verification.
+
+## Template Variables
+
+Action arguments and dry-run messages can use:
+
+```text
+{{event.type}}
+{{event.timestamp}}
+{{notification.key}}
+{{notification.subrole}}
+{{notification.axIdentifier}}
+{{notification.app}}
+{{notification.title}}
+{{notification.subtitle}}
+{{notification.body}}
+```
+
+Unknown placeholders are left unchanged to make configuration mistakes easier to inspect.
+
+## Action and Verification Status
+
+Action execution status:
+
+```text
+dry_run
+succeeded
+uncertain
+failed
+```
+
+Delayed ShutUpMac verification status:
+
+```text
+pending
+probably_succeeded
+definitely_failed
+```
+
+## SQLite Storage
+
+Current tables:
+
+```text
+notification_events   Historical lifecycle events
+active_notifications  Notifications believed to be visible
+watch_sessions        Observation session records
+action_runs           Action execution and verification results
+```
+
+The schema stores notification identity and content fields separately and uses `PRAGMA user_version` for schema versioning.
+
+Example inspection from the repository root:
+
+```zsh
+sqlite3 -header -column \
+  "$HOME/Library/Application Support/notilog/notilog.sqlite" '
+SELECT
+    id,
+    event_type,
+    app,
+    title,
+    subtitle,
+    body
+FROM notification_events
+ORDER BY id DESC
+LIMIT 10;
+'
+```
+
+
+## Current Boundaries
+
+- Notification observation depends on the shape and availability of macOS Accessibility data.
+- The watch loop currently polls once per second.
+- Actions execute synchronously and can delay the next scan.
+- Attachment data is not currently captured.
+- Raw notification keys and AX identifiers are retained even when content redaction is enabled.
+- Redaction affects new output and writes; it does not sanitize old database rows.
+- External actions may store, transmit, or print data they receive.
+- The CLI is the current primary interface; the GUI is future work.
+
+## License
+
+This project is licensed under the **GNU General Public License v2.0 (GPL-2.0)**. See `LICENSE` for the full license text.

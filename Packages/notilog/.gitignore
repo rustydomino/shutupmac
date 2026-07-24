@@ -1,0 +1,14 @@
+.build/
+.swiftpm/
+
+.DS_Store
+
+*.xcodeproj
+xcuserdata/
+DerivedData/
+
+notilog.sqlite
+*.db
+*.sqlitenotilog.sqlite
+*.sqlite
+*.log
