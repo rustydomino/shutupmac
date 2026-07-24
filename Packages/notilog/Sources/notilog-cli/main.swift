@@ -3,6 +3,8 @@ import NotilogCore
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 
+let runtimePaths = NotilogRuntimePaths.legacyNotilogDefault()
+
 let quietEnabled = arguments.contains("--quiet")
 
 Debug.enabled = arguments.contains("--debug") && !quietEnabled
@@ -275,7 +277,7 @@ func automationConfigURL() -> URL {
         return URL(fileURLWithPath: expandedPath)
     }
 
-    return Paths.config
+    return runtimePaths.config
 }
 
 func printAutomationStartupStatus(
@@ -492,7 +494,7 @@ case "watch":
         exit(1)
     }
 
-    try Paths.ensureRuntimeDirectoriesExist()
+    try runtimePaths.ensureDirectoriesExist()
 
     let scanner = NotificationScanner()
     let tracker = NotificationEventTracker()
@@ -500,7 +502,7 @@ case "watch":
     let store: NotificationStore?
 
     if loggingEnabled {
-        store = try NotificationStore(path: Paths.database.path)
+        store = try NotificationStore(path: runtimePaths.database.path)
     } else {
         store = nil
     }
@@ -547,7 +549,7 @@ case "watch":
     let previouslyActive: [VisibleNotification]
 
     if let store {
-        Debug.log("Database path: \(Paths.database.path)")
+        Debug.log("Database path: \(runtimePaths.database.path)")
     
         try store.startSession(session)
         Debug.log("Started session: \(session.id)")
@@ -671,11 +673,11 @@ case "watch":
 case "history":
     let limit = integerOption("--limit", default: 20)
 
-    try Paths.ensureRuntimeDirectoriesExist()
+    try runtimePaths.ensureDirectoriesExist()
 
-    let store = try NotificationStore(path: Paths.database.path)
+    let store = try NotificationStore(path: runtimePaths.database.path)
 
-    Debug.log("Database path: \(Paths.database.path)")
+    Debug.log("Database path: \(runtimePaths.database.path)")
     Debug.log("History limit: \(limit)")
 
     let records = try store.recentEvents(limit: limit)
@@ -692,11 +694,11 @@ case "history":
 case "action-history":
     let limit = integerOption("--limit", default: 20)
 
-    try Paths.ensureRuntimeDirectoriesExist()
+    try runtimePaths.ensureDirectoriesExist()
 
-    let store = try NotificationStore(path: Paths.database.path)
+    let store = try NotificationStore(path: runtimePaths.database.path)
 
-    Debug.log("Database path: \(Paths.database.path)")
+    Debug.log("Database path: \(runtimePaths.database.path)")
     Debug.log("Action history limit: \(limit)")
 
     let records = try store.recentActionRuns(limit: limit)
@@ -711,7 +713,7 @@ case "action-history":
     }
 
 case "rules":
-    try Paths.ensureRuntimeDirectoriesExist()
+    try runtimePaths.ensureDirectoriesExist()
 
     let engine = try loadAutomationEngine()
     let rules = engine.configuredRules
@@ -728,7 +730,7 @@ case "rules":
     }
 
 case "config-check":
-    try Paths.ensureRuntimeDirectoriesExist()
+    try runtimePaths.ensureDirectoriesExist()
 
     do {
         try validateAutomationConfig()
