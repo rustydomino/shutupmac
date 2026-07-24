@@ -150,7 +150,31 @@ When the Dock icon is hidden, clicking a ShutUpMac test notification should not 
 
 ## Project layout
 
-The core notification engine is split into focused files:
+The repository contains the ShutUpMac application and the Notilog notification-monitoring and automation engine:
+
+```text
+ShutUpMac/
+├── Sources/ShutUpMac/
+│   ├── ShutUpMac.xcodeproj
+│   ├── ShutUpMac/
+│   └── ShutUpMacCLI/
+└── Packages/notilog/
+    ├── Package.swift
+    ├── Sources/
+    │   ├── NotilogCore/
+    │   └── notilog-cli/
+    └── Tests/NotilogCoreTests/
+```
+
+`NotilogCore` is included as a local Swift package dependency of the ShutUpMac app target. It provides reusable notification scanning, lifecycle tracking, rule matching, action coordination, SQLite persistence, and privacy/output policy behavior.
+
+The `notilog-cli` executable remains available for development, diagnostics, scripting, and direct testing.
+
+The ShutUpMac app does not yet start or communicate with the Notilog watcher. The current integration is structural groundwork for future features such as notification history, automatic dismissal rules, dismissal status, rule editing, and creating rules from observed notifications.
+
+### ShutUpMac dismissal engine
+
+The core notification dismissal engine is split into focused files:
 
 ```text
 ShutUpMacEngine.swift
@@ -202,27 +226,77 @@ TestNotificationSender.swift
   Test notification scheduling and notification-click handling
 ```
 
+### Notilog package
+
+The local Swift package contains two products:
+
+```text
+NotilogCore
+  Reusable notification observation, event tracking, rule evaluation,
+  action execution, persistence, and privacy/output policy code
+
+notilog-cli
+  Command-line client for watching notifications, inspecting history,
+  validating rules, running automation, and diagnostics
+```
+
+Notilog tests are located in:
+
+```text
+Packages/notilog/Tests/NotilogCoreTests/
+```
+
 ## Building
+
+### ShutUpMac app
 
 Open the Xcode project and build the app scheme:
 
 ```text
+Project: Sources/ShutUpMac/ShutUpMac.xcodeproj
 Scheme: ShutUpMac
 Destination: My Mac
 ```
 
+The app target links the local `NotilogCore` package product, but does not yet start the Notilog watcher at runtime.
+
+### ShutUpMac CLI
+
 The CLI helper has its own scheme:
 
 ```text
+Project: Sources/ShutUpMac/ShutUpMac.xcodeproj
 Scheme: ShutUpMacCLI
 Destination: My Mac
 ```
 
-When changing shared engine files, build both schemes.
+When changing shared ShutUpMac engine files, build both Xcode schemes.
+
+### Notilog package and CLI
+
+From the repository root, build the Notilog package with:
+
+```zsh
+swift build --package-path Packages/notilog
+```
+
+Run its tests with:
+
+```zsh
+swift test --package-path Packages/notilog
+```
+
+Run the CLI through Swift Package Manager with:
+
+```zsh
+swift run --package-path Packages/notilog notilog-cli --version
+```
+
+Changes to `NotilogCore` should be checked with both `swift test` and an Xcode build of the ShutUpMac app target.
 
 ## Development notes
 
-The app and CLI share the same notification engine. The GUI should generally expose only stable, user-friendly actions. More experimental or diagnostic actions should stay CLI-only until their behavior is polished.
+The app and `shutupmac-cli` share the same notification dismissal engine. The GUI should generally expose only stable, user-friendly actions. More experimental or diagnostic actions should stay CLI-only until their behavior is polished.
 
 Current product-facing actions:
 
@@ -241,6 +315,8 @@ CLI-only or advanced actions:
 - Probe menus
 
 `--dismiss-key` is intended as an automation integration point. ShutUpMac does not need to know which tool generated the key; it only receives a runtime Accessibility key and attempts to dismiss the currently visible matching notification element.
+
+Notilog remains independently usable through `notilog-cli`, but it is now stored in the ShutUpMac repository as the future monitoring and automation subsystem. During the structural-integration phase, preserve current behavior and avoid duplicating notification scanning, persistence, rule matching, or dismissal logic across app and CLI targets.
 
 ## Version history
 
