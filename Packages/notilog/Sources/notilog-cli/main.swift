@@ -535,7 +535,6 @@ case "watch":
     let scanner = NotificationScanner(
         diagnosticHandler: diagnosticHandler 
     )
-    let tracker = NotificationEventTracker()
 
     let store: NotificationStore?
 
@@ -604,7 +603,11 @@ case "watch":
         )
     }
 
-    var didRecoverPreviousState = false
+    let eventProcessor = NotificationEventProcessor(
+        previouslyActive: previouslyActive
+    )
+
+    var didReportPreviousStateRecovery = false
     var pendingActionVerifications: [PendingActionVerification] = []
 
     while true {
@@ -619,24 +622,15 @@ case "watch":
             output: watchOutput
         )
 
-        let snapshot = NotificationSnapshot(
-            timestamp: scanTimestamp,
-            notifications: notifications
+
+        let processingResult = eventProcessor.processScan(
+            notifications: notifications,
+            at: scanTimestamp
         )
 
-        if !didRecoverPreviousState {
-            let currentKeys = Set(notifications.map { $0.key })
+        let recoveredEvents = processingResult.recoveredEvents
 
-            let recoveredEvents = previouslyActive
-                .filter { !currentKeys.contains($0.key) }
-                .map {
-                    NotificationEvent(
-                        type: .disappearedUnobserved,
-                        notification: $0,
-                        timestamp: snapshot.timestamp
-                    )
-                }
-
+        if !recoveredEvents.isEmpty {
             if let store {
                 let storedEvents = recoveredEvents.map {
                     startupConfiguration.redactionPolicy.applying(to: $0)
@@ -666,15 +660,18 @@ case "watch":
                 pendingActionVerifications.append(
                     contentsOf: newVerifications
                 )
-
             }
-
-            diagnosticHandler?("Recovered unobserved disappearances: \(recoveredEvents.count)")
-
-            didRecoverPreviousState = true
         }
 
-        let events = tracker.update(with: snapshot)
+        if !didReportPreviousStateRecovery {
+            diagnosticHandler?(
+                "Recovered unobserved disappearances: \(recoveredEvents.count)"
+            )
+
+            didReportPreviousStateRecovery = true
+        }
+
+        let events = processingResult.events
 
         if let store {
             let storedEvents = events.map {
