@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		278576A23012EB010048BFBD /* NotilogCore in Frameworks */ = {isa = PBXBuildFile; productRef = 278576A13012EB010048BFBD /* NotilogCore */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		27CD5A003004759300DAE353 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -69,6 +73,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				278576A23012EB010048BFBD /* NotilogCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -82,11 +87,19 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		278576A03012EB010048BFBD /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		27D386A83002E8CC00DC4586 = {
 			isa = PBXGroup;
 			children = (
 				27D386B33002E8CC00DC4586 /* ShutUpMac */,
 				27DD8BA030046E06001B042B /* ShutUpMacCLI */,
+				278576A03012EB010048BFBD /* Frameworks */,
 				27D386B23002E8CC00DC4586 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -122,6 +135,7 @@
 			);
 			name = ShutUpMac;
 			packageProductDependencies = (
+				278576A13012EB010048BFBD /* NotilogCore */,
 			);
 			productName = ShutUpMac;
 			productReference = 27D386B13002E8CC00DC4586 /* ShutUpMac.app */;
@@ -176,6 +190,9 @@
 			);
 			mainGroup = 27D386A83002E8CC00DC4586;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				2785769F3012E83D0048BFBD /* XCLocalSwiftPackageReference "../../Packages/notilog" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 27D386B23002E8CC00DC4586 /* Products */;
 			projectDirPath = "";
@@ -501,6 +518,21 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		2785769F3012E83D0048BFBD /* XCLocalSwiftPackageReference "../../Packages/notilog" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../Packages/notilog;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		278576A13012EB010048BFBD /* NotilogCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2785769F3012E83D0048BFBD /* XCLocalSwiftPackageReference "../../Packages/notilog" */;
+			productName = NotilogCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 27D386A93002E8CC00DC4586 /* Project object */;
 }

@@ -1,0 +1,23 @@
+cat > broken.json <<'JSON'
+{
+  "rules": [
+    {
+      "name": "Broken test rule",
+      "enabled": true,
+      "match": {
+        "eventTypes": ["appeared"]
+      },
+      "actions": [
+        {
+          "type": "wat",
+          "command": "/usr/bin/true",
+          "arguments": [
+            "--broken",
+            "{{notification.key}}"
+          ]
+        }
+      ]
+    }
+  ]
+}
+JSON

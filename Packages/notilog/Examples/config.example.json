@@ -1,0 +1,48 @@
+{
+  "rules": [
+    {
+      "name": "Appeared notification probe",
+      "enabled": true,
+      "match": {
+        "eventTypes": ["appeared"]
+      },
+      "actions": [
+        {
+          "type": "dry_run_log",
+          "message": "notification={{notification.app}} title={{notification.title}} key={{notification.key}}"
+        },
+        {
+          "type": "exec",
+          "command": "/usr/bin/true",
+          "arguments": [
+            "--notification-key",
+            "{{notification.key}}",
+            "--app",
+            "{{notification.app}}"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Disabled example: Jamf Teams update",
+      "enabled": false,
+      "match": {
+        "eventTypes": ["appeared"],
+        "appContains": "Self Service",
+        "titleContains": "Microsoft Teams",
+        "bodyContains": "update is available"
+      },
+      "actions": [
+        {
+          "type": "exec",
+          "command": "/usr/local/bin/shutupmac-cli",
+          "arguments": [
+            "dismiss",
+            "--notification-key",
+            "{{notification.key}}"
+          ]
+        }
+      ]
+    }
+  ]
+}

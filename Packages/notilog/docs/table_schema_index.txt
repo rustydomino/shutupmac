@@ -1,0 +1,82 @@
+sqlite> .tables
+action_runs           notification_events
+active_notifications  watch_sessions
+sqlite> .schema
+CREATE TABLE notification_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    notification_key TEXT NOT NULL,
+    app TEXT NOT NULL,
+    title TEXT NOT NULL,
+    subtitle TEXT NOT NULL,
+    body TEXT NOT NULL
+);
+CREATE TABLE sqlite_sequence(name,seq);
+CREATE TABLE active_notifications (
+    notification_key TEXT PRIMARY KEY,
+    app TEXT NOT NULL,
+    title TEXT NOT NULL,
+    subtitle TEXT NOT NULL,
+    body TEXT NOT NULL,
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL
+
+);
+CREATE TABLE watch_sessions (
+    id TEXT PRIMARY KEY,
+    started_at TEXT NOT NULL,
+    ended_at TEXT
+
+);
+CREATE INDEX idx_notification_events_timestamp
+ON notification_events(timestamp);
+CREATE INDEX idx_notification_events_type
+ON notification_events(event_type);
+CREATE INDEX idx_notification_events_app
+ON notification_events(app);
+CREATE INDEX idx_notification_events_key
+ON notification_events(notification_key);
+CREATE INDEX idx_notification_events_session
+ON notification_events(session_id);
+CREATE TABLE action_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    rule_name TEXT NOT NULL,
+    action_summary TEXT NOT NULL,
+    resolved_action_summary TEXT NOT NULL,
+    status TEXT NOT NULL,
+    message TEXT NOT NULL,
+    exit_code INTEGER,
+    stdout TEXT NOT NULL,
+    stderr TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    event_timestamp TEXT NOT NULL,
+    notification_key TEXT NOT NULL,
+    app TEXT NOT NULL,
+    title TEXT NOT NULL,
+    subtitle TEXT NOT NULL,
+    body TEXT NOT NULL
+);
+CREATE INDEX idx_action_runs_created_at
+ON action_runs(created_at);
+CREATE INDEX idx_action_runs_session
+ON action_runs(session_id);
+CREATE INDEX idx_action_runs_status
+ON action_runs(status);
+CREATE INDEX idx_action_runs_notification_key
+ON action_runs(notification_key);
+sqlite> .indexes
+idx_action_runs_created_at
+idx_action_runs_notification_key
+idx_action_runs_session
+idx_action_runs_status
+idx_notification_events_app
+idx_notification_events_key
+idx_notification_events_session
+idx_notification_events_timestamp
+idx_notification_events_type
+sqlite_autoindex_active_notifications_1
+sqlite_autoindex_watch_sessions_1
