@@ -6,9 +6,11 @@ let arguments = Array(CommandLine.arguments.dropFirst())
 let runtimePaths = NotilogRuntimePaths.legacyNotilogDefault()
 
 let quietEnabled = arguments.contains("--quiet")
+let debugEnabled = arguments.contains("--debug") && !quietEnabled
 
-Debug.enabled = arguments.contains("--debug") && !quietEnabled
+Debug.enabled = debugEnabled
 Debug.log("Debug logging enabled")
+
 if arguments.contains("-v") || arguments.contains("--version") {
     print(notilogVersion)
     exit(0)
@@ -19,8 +21,6 @@ let command = arguments.first { !$0.hasPrefix("-") } ?? "help"
 let dryRunActionsEnabled = arguments.contains("--dry-run-actions")
 let runActionsEnabled = arguments.contains("--run-actions")
 let loggingEnabled = !arguments.contains("--no-logging")
-
-let watchOutput = WatchOutput(isQuiet: quietEnabled)
 
 struct PendingActionVerification {
     let actionRunID: Int64?
@@ -33,6 +33,16 @@ let shutUpMacVerificationDelay: TimeInterval = 2.0
 if dryRunActionsEnabled && runActionsEnabled {
     fputs("Use either --dry-run-actions or --run-actions, not both.\n", stderr)
     exit(2)
+}
+
+let actionExecutionMode: CLIActionExecutionMode
+
+if dryRunActionsEnabled {
+    actionExecutionMode = .dryRun
+} else if runActionsEnabled {
+    actionExecutionMode = .runActions
+} else {
+    actionExecutionMode = .disabled
 }
 
 func printEvent(
@@ -138,6 +148,22 @@ if command == "watch" && arguments.contains("--redact") {
     redactionPolicy = .disabled
 }
 
+let startupConfiguration = CLIStartupConfiguration(
+    runtimePaths: runtimePaths,
+    configURL: automationConfigURL(),
+    loggingEnabled: loggingEnabled,
+    redactionPolicy: redactionPolicy,
+    actionExecutionMode: actionExecutionMode,
+    scanInterval: 1.0,
+    dismissalVerificationDelay: shutUpMacVerificationDelay,
+    quietEnabled: quietEnabled,
+    debugEnabled: debugEnabled
+)
+
+let watchOutput = WatchOutput(
+    isQuiet: startupConfiguration.quietEnabled
+)
+
 func printHistoryRecord(_ record: NotificationEventRecord) {
     let event = record.event
     let notification = event.notification
@@ -219,7 +245,7 @@ func printRule(_ rule: NotificationRule) {
 }
 
 func loadAutomationEngine() throws -> AutomationEngine {
-    let configURL = automationConfigURL()
+    let configURL = startupConfiguration.configURL
 
     if FileManager.default.fileExists(atPath: configURL.path) {
         Debug.log("Loading automation config: \(configURL.path)")
@@ -238,7 +264,7 @@ func loadAutomationEngine() throws -> AutomationEngine {
 }
 
 func validateAutomationConfig() throws {
-    let configURL = automationConfigURL()
+    let configURL = startupConfiguration.configURL
 
     if !FileManager.default.fileExists(atPath: configURL.path) {
         print("""
@@ -286,7 +312,7 @@ func printAutomationStartupStatus(
     engine: AutomationEngine,
     output: WatchOutput
 ) {
-    let configURL = automationConfigURL()
+    let configURL = startupConfiguration.configURL
     let ruleCount = engine.configuredRules.count
 
     if dryRunEnabled {
@@ -404,7 +430,7 @@ func runAutomationIfNeeded(
                     actionRunID: actionRunID,
                     notificationKey: notification.key,
                     verifyAfter: Date().addingTimeInterval(
-                        shutUpMacVerificationDelay
+                        startupConfiguration.dismissalVerificationDelay
                     )
                 )
             )
@@ -494,15 +520,17 @@ case "watch":
         exit(1)
     }
 
-    try runtimePaths.ensureDirectoriesExist()
+    try startupConfiguration.runtimePaths.ensureDirectoriesExist()
 
     let scanner = NotificationScanner()
     let tracker = NotificationEventTracker()
 
     let store: NotificationStore?
 
-    if loggingEnabled {
-        store = try NotificationStore(path: runtimePaths.database.path)
+    if startupConfiguration.loggingEnabled {
+        store = try NotificationStore(
+            path: startupConfiguration.runtimePaths.database.path
+        )
     } else {
         store = nil
     }
@@ -517,28 +545,29 @@ case "watch":
 
     watchOutput.routine("Watching notifications...")
     printAutomationStartupStatus(
-        dryRunEnabled: dryRunActionsEnabled,
-        runEnabled: runActionsEnabled,
+        dryRunEnabled: startupConfiguration.actionExecutionMode.dryRunEnabled,
+        runEnabled: startupConfiguration.actionExecutionMode.runActionsEnabled,
         engine: automationEngine,
         output: watchOutput
     )
     
-    if loggingEnabled {
+    if startupConfiguration.loggingEnabled {
         watchOutput.routine("Database logging: ENABLED")
     } else {
         watchOutput.routine(
             "Database logging: DISABLED (--no-logging privacy mode)"
         )
     }
-    
-    if redactionPolicy.isEnabled {
-        let redactedFields = redactionPolicy.fieldNames.joined(
+
+    if startupConfiguration.redactionPolicy.isEnabled {
+    let redactedFields =
+        startupConfiguration.redactionPolicy.fieldNames.joined(
             separator: ", "
         )
     
         watchOutput.routine(
-            "Redaction: ENABLED (\(redactedFields))"
-        )
+        "Redaction: ENABLED (\(redactedFields))"
+    )
     } else {
         watchOutput.routine("Redaction: DISABLED")
     }
@@ -549,7 +578,7 @@ case "watch":
     let previouslyActive: [VisibleNotification]
 
     if let store {
-        Debug.log("Database path: \(runtimePaths.database.path)")
+        Debug.log("Database path: \(startupConfiguration.runtimePaths.database.path)")
     
         try store.startSession(session)
         Debug.log("Started session: \(session.id)")
@@ -598,7 +627,7 @@ case "watch":
 
             if let store {
                 let storedEvents = recoveredEvents.map {
-                    redactionPolicy.applying(to: $0)
+                    startupConfiguration.redactionPolicy.applying(to: $0)
                 }
 
                 try store.insert(storedEvents, session: session)
@@ -608,18 +637,18 @@ case "watch":
                 printEvent(
                     event,
                     output: watchOutput,
-                    redactionPolicy: redactionPolicy
+                    redactionPolicy: startupConfiguration.redactionPolicy
                 )
 
                 let newVerifications = try runAutomationIfNeeded(
                     for: event,
-                    dryRunEnabled: dryRunActionsEnabled,
-                    runEnabled: runActionsEnabled,
+                    dryRunEnabled: startupConfiguration.actionExecutionMode.dryRunEnabled,
+                    runEnabled: startupConfiguration.actionExecutionMode.runActionsEnabled,
                     engine: automationEngine,
                     store: store,
                     session: session,
                     output: watchOutput,
-                    redactionPolicy: redactionPolicy
+                    redactionPolicy: startupConfiguration.redactionPolicy
                 )
 
                 pendingActionVerifications.append(
@@ -637,7 +666,7 @@ case "watch":
 
         if let store {
             let storedEvents = events.map {
-                redactionPolicy.applying(to: $0)
+                startupConfiguration.redactionPolicy.applying(to: $0)
             }
         
             try store.insert(storedEvents, session: session)
@@ -647,18 +676,18 @@ case "watch":
             printEvent(
                 event,
                 output: watchOutput,
-                redactionPolicy: redactionPolicy
+                redactionPolicy: startupConfiguration.redactionPolicy
             )
 
             let newVerifications = try runAutomationIfNeeded(
                 for: event,
-                dryRunEnabled: dryRunActionsEnabled,
-                runEnabled: runActionsEnabled,
+                dryRunEnabled: startupConfiguration.actionExecutionMode.dryRunEnabled,
+                runEnabled: startupConfiguration.actionExecutionMode.runActionsEnabled,
                 engine: automationEngine,
                 store: store,
                 session: session,
                 output: watchOutput,
-                redactionPolicy: redactionPolicy
+                redactionPolicy: startupConfiguration.redactionPolicy
             )
 
             pendingActionVerifications.append(
@@ -667,17 +696,21 @@ case "watch":
 
         }
 
-        Thread.sleep(forTimeInterval: 1.0)
+        Thread.sleep(
+            forTimeInterval: startupConfiguration.scanInterval
+        )
     }
 
 case "history":
     let limit = integerOption("--limit", default: 20)
 
-    try runtimePaths.ensureDirectoriesExist()
+    try startupConfiguration.runtimePaths.ensureDirectoriesExist()
 
-    let store = try NotificationStore(path: runtimePaths.database.path)
+    let store = try NotificationStore(path: startupConfiguration.runtimePaths.database.path)
 
-    Debug.log("Database path: \(runtimePaths.database.path)")
+    Debug.log(
+        "Database path: \(startupConfiguration.runtimePaths.database.path)"
+    )
     Debug.log("History limit: \(limit)")
 
     let records = try store.recentEvents(limit: limit)
@@ -694,11 +727,11 @@ case "history":
 case "action-history":
     let limit = integerOption("--limit", default: 20)
 
-    try runtimePaths.ensureDirectoriesExist()
+    try startupConfiguration.runtimePaths.ensureDirectoriesExist()
 
-    let store = try NotificationStore(path: runtimePaths.database.path)
+    let store = try NotificationStore(path: startupConfiguration.runtimePaths.database.path)
 
-    Debug.log("Database path: \(runtimePaths.database.path)")
+    Debug.log("Database path: \(startupConfiguration.runtimePaths.database.path)")
     Debug.log("Action history limit: \(limit)")
 
     let records = try store.recentActionRuns(limit: limit)
@@ -713,7 +746,7 @@ case "action-history":
     }
 
 case "rules":
-    try runtimePaths.ensureDirectoriesExist()
+    try startupConfiguration.runtimePaths.ensureDirectoriesExist()
 
     let engine = try loadAutomationEngine()
     let rules = engine.configuredRules
@@ -730,7 +763,7 @@ case "rules":
     }
 
 case "config-check":
-    try runtimePaths.ensureDirectoriesExist()
+    try startupConfiguration.runtimePaths.ensureDirectoriesExist()
 
     do {
         try validateAutomationConfig()
