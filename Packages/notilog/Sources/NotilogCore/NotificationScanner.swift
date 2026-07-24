@@ -139,12 +139,15 @@ func appNameFromDescription(_ desc: String) -> String {
 
     return parts.first ?? ""
 }
-
 public final class NotificationScanner {
+    private let diagnosticHandler: DiagnosticHandler?
 
-    public init() {
+    public init(
+        diagnosticHandler: DiagnosticHandler? = nil
+    ) {
+        self.diagnosticHandler = diagnosticHandler
     }
-    
+
     private var dumpedDebugKeys = Set<String>()
     
     public private(set) var debugInfo = ScannerDebugInfo(notificationCenterProcessCount: 0, visitedAXElementCount: 0, candidateNotificationCount: 0)
@@ -202,14 +205,26 @@ public final class NotificationScanner {
                 let notificationID = strAttr(element, kAXIdentifierAttribute) ?? elementKey(element)
                 let notificationKey = "\(subrole)|\(notificationID)"
 
-                if !dumpedDebugKeys.contains(notificationKey) {
-                    dumpedDebugKeys.insert(notificationKey)
+            if let diagnosticHandler,
+            !dumpedDebugKeys.contains(notificationKey) {
+                dumpedDebugKeys.insert(notificationKey)
 
-                    Debug.log("========== AX Notifiication Subtree ==========")
-                    var debugVisited = Set<String>()
-                    dumpAXSubtree(element, visited: &debugVisited)
-                    Debug.log("=============================================")
-                }
+                diagnosticHandler(
+                    "========== AX Notification Subtree =========="
+                )
+
+                var debugVisited = Set<String>()
+
+                dumpAXSubtree(
+                    element,
+                    visited: &debugVisited,
+                    diagnosticHandler: diagnosticHandler
+                )
+
+                diagnosticHandler(
+                    "============================================="
+                )
+            }
 
                 notifications.append(
                     VisibleNotification(

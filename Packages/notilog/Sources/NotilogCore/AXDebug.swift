@@ -4,7 +4,8 @@ func dumpAXSubtree(
     _ element: AXUIElement,
     depth: Int = 0,
     maxDepth: Int = 5,
-    visited: inout Set<String>
+    visited: inout Set<String>,
+    diagnosticHandler: DiagnosticHandler
 ) {
     if depth > maxDepth {
         return
@@ -36,7 +37,9 @@ func dumpAXSubtree(
     if !value.isEmpty { parts.append("value=\"\(value)\"") }
     if !description.isEmpty { parts.append("description=\"\(description)\"") }
 
-    Debug.log("\(indent)\(parts.joined(separator: " "))")
+    diagnosticHandler(
+        "\(indent)\(parts.joined(separator: " "))"
+    )
 
     for childAttribute in [
         kAXChildrenAttribute,
@@ -44,7 +47,13 @@ func dumpAXSubtree(
         "AXChildrenInNavigationOrder"
     ] {
         for child in children(element, childAttribute) {
-            dumpAXSubtree(child, depth: depth + 1, maxDepth: maxDepth, visited: &visited)
+            dumpAXSubtree(
+                child, 
+                depth: depth + 1, 
+                maxDepth: maxDepth,
+                visited: &visited,
+                diagnosticHandler: diagnosticHandler
+            )
         }
     }
 }

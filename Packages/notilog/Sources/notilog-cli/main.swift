@@ -8,8 +8,18 @@ let runtimePaths = NotilogRuntimePaths.legacyNotilogDefault()
 let quietEnabled = arguments.contains("--quiet")
 let debugEnabled = arguments.contains("--debug") && !quietEnabled
 
-Debug.enabled = debugEnabled
-Debug.log("Debug logging enabled")
+let diagnosticHandler: DiagnosticHandler?
+
+if debugEnabled {
+    diagnosticHandler = { message in
+        let data = Data("[debug] \(message)\n".utf8)
+        FileHandle.standardError.write(data)
+    }
+} else {
+    diagnosticHandler = nil
+}
+
+diagnosticHandler?("Debug logging enabled")
 
 if arguments.contains("-v") || arguments.contains("--version") {
     print(notilogVersion)
@@ -248,17 +258,17 @@ func loadAutomationEngine() throws -> AutomationEngine {
     let configURL = startupConfiguration.configURL
 
     if FileManager.default.fileExists(atPath: configURL.path) {
-        Debug.log("Loading automation config: \(configURL.path)")
+        diagnosticHandler?("Loading automation config: \(configURL.path)")
 
         let config = try AutomationConfig.load(from: configURL)
         let rules = try config.notificationRules()
 
-        Debug.log("Loaded automation rules: \(rules.count)")
+        diagnosticHandler?("Loaded automation rules: \(rules.count)")
 
         return AutomationEngine(rules: rules)
     }
 
-    Debug.log("No automation config found at \(configURL.path); using built-in probe rules")
+    diagnosticHandler?("No automation config found at \(configURL.path); using built-in probe rules")
 
     return AutomationEngine.builtInProbe()
 }
@@ -522,7 +532,9 @@ case "watch":
 
     try startupConfiguration.runtimePaths.ensureDirectoriesExist()
 
-    let scanner = NotificationScanner()
+    let scanner = NotificationScanner(
+        diagnosticHandler: diagnosticHandler 
+    )
     let tracker = NotificationEventTracker()
 
     let store: NotificationStore?
@@ -578,16 +590,16 @@ case "watch":
     let previouslyActive: [VisibleNotification]
 
     if let store {
-        Debug.log("Database path: \(startupConfiguration.runtimePaths.database.path)")
+        diagnosticHandler?("Database path: \(startupConfiguration.runtimePaths.database.path)")
     
         try store.startSession(session)
-        Debug.log("Started session: \(session.id)")
+        diagnosticHandler?("Started session: \(session.id)")
     
         previouslyActive = try store.loadActiveNotifications()
-        Debug.log("Previously active notifications: \(previouslyActive.count)")
+        diagnosticHandler?("Previously active notifications: \(previouslyActive.count)")
     } else {
         previouslyActive = []
-        Debug.log(
+        diagnosticHandler?(
             "Database logging disabled; no session or previous state loaded"
         )
     }
@@ -657,7 +669,7 @@ case "watch":
 
             }
 
-            Debug.log("Recovered unobserved disappearances: \(recoveredEvents.count)")
+            diagnosticHandler?("Recovered unobserved disappearances: \(recoveredEvents.count)")
 
             didRecoverPreviousState = true
         }
@@ -708,10 +720,10 @@ case "history":
 
     let store = try NotificationStore(path: startupConfiguration.runtimePaths.database.path)
 
-    Debug.log(
+    diagnosticHandler?(
         "Database path: \(startupConfiguration.runtimePaths.database.path)"
     )
-    Debug.log("History limit: \(limit)")
+    diagnosticHandler?("History limit: \(limit)")
 
     let records = try store.recentEvents(limit: limit)
 
@@ -731,8 +743,8 @@ case "action-history":
 
     let store = try NotificationStore(path: startupConfiguration.runtimePaths.database.path)
 
-    Debug.log("Database path: \(startupConfiguration.runtimePaths.database.path)")
-    Debug.log("Action history limit: \(limit)")
+    diagnosticHandler?("Database path: \(startupConfiguration.runtimePaths.database.path)")
+    diagnosticHandler?("Action history limit: \(limit)")
 
     let records = try store.recentActionRuns(limit: limit)
 
