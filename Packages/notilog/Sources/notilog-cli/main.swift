@@ -335,81 +335,67 @@ func printAutomationStartupStatus(
     }
 }
 
-func runAutomationIfNeeded(
-    for event: NotificationEvent,
+func printActionResult(
+    _ result: ActionRunResult,
     mode: AutomationExecutionMode,
-    processor: NotificationAutomationProcessor,
-    coordinator: ActionResultCoordinator,
     output: WatchOutput,
     redactionPolicy: RedactionPolicy
-) throws {
-    let results = processor.process(
-        event: event,
-        mode: mode
+) {
+    let notification = result.event.notification
+    let outputNotification = redactionPolicy.applying(
+        to: notification
     )
 
-    for result in results {
-        let notification = result.event.notification
-        let outputNotification = redactionPolicy.applying(
-            to: notification
-        )
+    let prefix = mode == .dryRun
+        ? "[dry-run]"
+        : "[action]"
 
-        let prefix = mode == .dryRun
-            ? "[dry-run]"
-            : "[action]"
+    let outputMessage: String
 
-        let outputMessage: String
-
-        if redactionPolicy.isEnabled {
-            if let exitCode = result.exitCode {
-                outputMessage =
-                    "status: \(result.status.rawValue), exit code: \(exitCode)"
-            } else {
-                outputMessage = "status: \(result.status.rawValue)"
-            }
+    if redactionPolicy.isEnabled {
+        if let exitCode = result.exitCode {
+            outputMessage =
+                "status: \(result.status.rawValue), exit code: \(exitCode)"
         } else {
-            outputMessage = result.message
+            outputMessage = "status: \(result.status.rawValue)"
         }
+    } else {
+        outputMessage = result.message
+    }
 
-        output.routineError("""
-        \(prefix) matched rule: \(result.ruleName)
-          \(outputMessage)
-          app: \(outputNotification.app)
-          title: \(outputNotification.title)
-          subrole: \(outputNotification.subrole)
-          axIdentifier: \(outputNotification.axIdentifier)
-          key: \(outputNotification.key)
+    output.routineError("""
+    \(prefix) matched rule: \(result.ruleName)
+      \(outputMessage)
+      app: \(outputNotification.app)
+      title: \(outputNotification.title)
+      subrole: \(outputNotification.subrole)
+      axIdentifier: \(outputNotification.axIdentifier)
+      key: \(outputNotification.key)
 
-        """)
+    """)
 
-        if !result.stdout.isEmpty {
-            if redactionPolicy.isEnabled {
-                output.routineError(
-                    "  stdout: [SUPPRESSED BY REDACTION]\n"
-                )
-            } else {
-                output.routineError(
-                    "  stdout: \(result.stdout)\n"
-                )
-            }
+    if !result.stdout.isEmpty {
+        if redactionPolicy.isEnabled {
+            output.routineError(
+                "  stdout: [SUPPRESSED BY REDACTION]\n"
+            )
+        } else {
+            output.routineError(
+                "  stdout: \(result.stdout)\n"
+            )
         }
+    }
 
-        if !result.stderr.isEmpty {
-            if redactionPolicy.isEnabled {
-                output.routineError(
-                    "  stderr: [SUPPRESSED BY REDACTION]\n"
-                )
-            } else {
-                output.routineError(
-                    "  stderr: \(result.stderr)\n"
-                )
-            }
+    if !result.stderr.isEmpty {
+        if redactionPolicy.isEnabled {
+            output.routineError(
+                "  stderr: [SUPPRESSED BY REDACTION]\n"
+            )
+        } else {
+            output.routineError(
+                "  stderr: \(result.stderr)\n"
+            )
         }
-
-        _ = try coordinator.process(
-            [result],
-            at: Date()
-        )
     }
 }
 
@@ -587,6 +573,13 @@ case "watch":
             redactionPolicy: startupConfiguration.redactionPolicy
         )
 
+    let notificationEventCoordinator =
+        NotificationEventCoordinator(
+            persistenceCoordinator: eventPersistenceCoordinator,
+            automationProcessor: automationProcessor,
+            actionResultCoordinator: actionResultCoordinator
+        )
+
     var didReportPreviousStateRecovery = false
 
     while true {
@@ -607,26 +600,30 @@ case "watch":
         let recoveredEvents = cycleResult.recoveredEvents
 
         if !recoveredEvents.isEmpty {
-            try eventPersistenceCoordinator.persist(
-                recoveredEvents
+            _ = try notificationEventCoordinator.process(
+                recoveredEvents,
+                automationMode: automationExecutionMode,
+                actionTimestampProvider: {
+                    Date()
+                },
+                beforeAutomation: { event in
+                    printEvent(
+                        event,
+                        output: watchOutput,
+                        redactionPolicy:
+                        startupConfiguration.redactionPolicy
+                    )
+                },
+                beforeActionResultCoordination: { result in
+                    printActionResult(
+                        result,
+                        mode: automationExecutionMode,
+                        output: watchOutput,
+                        redactionPolicy:
+                        startupConfiguration.redactionPolicy
+                    )
+                }
             )
-
-            for event in recoveredEvents {
-                printEvent(
-                    event,
-                    output: watchOutput,
-                    redactionPolicy: startupConfiguration.redactionPolicy
-                )
-
-                try runAutomationIfNeeded(
-                    for: event,
-                    mode: automationExecutionMode,
-                    processor: automationProcessor,
-                    coordinator: actionResultCoordinator,
-                    output: watchOutput,
-                    redactionPolicy: startupConfiguration.redactionPolicy
-                )
-            }
         }
 
         if !didReportPreviousStateRecovery {
@@ -639,24 +636,30 @@ case "watch":
 
         let events = cycleResult.events
 
-        try eventPersistenceCoordinator.persist(events)
-
-        for event in events {
-            printEvent(
-                event,
-                output: watchOutput,
-                redactionPolicy: startupConfiguration.redactionPolicy
-            )
-
-            try runAutomationIfNeeded(
-                for: event,
-                mode: automationExecutionMode,
-                processor: automationProcessor,
-                coordinator: actionResultCoordinator,
-                output: watchOutput,
-                redactionPolicy: startupConfiguration.redactionPolicy
-            )
-        }
+        _ = try notificationEventCoordinator.process(
+            events,
+            automationMode: automationExecutionMode,
+            actionTimestampProvider: {
+                Date()
+            },
+            beforeAutomation: { event in
+                printEvent(
+                    event,
+                    output: watchOutput,
+                    redactionPolicy:
+                    startupConfiguration.redactionPolicy
+                )
+            },
+            beforeActionResultCoordination: { result in
+                printActionResult(
+                    result,
+                    mode: automationExecutionMode,
+                    output: watchOutput,
+                    redactionPolicy:
+                    startupConfiguration.redactionPolicy
+                )
+            }
+        )
 
         Thread.sleep(
             forTimeInterval: startupConfiguration.scanInterval
