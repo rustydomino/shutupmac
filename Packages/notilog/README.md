@@ -4,7 +4,7 @@
 
 Rather than depending on Apple's undocumented notification database, Notilog observes notifications as they appear in the Notification Center user interface. It can record notification lifecycle events, evaluate rules, execute actions, verify ShutUpMac dismissals, and operate with configurable logging, console, and redaction policies.
 
-The project currently consists of a reusable Swift library, `NotilogCore`, and a CLI client, `notilog-cli`. A GUI is planned as a future client of the same core engine.
+The project consists of a reusable Swift library, `NotilogCore`, and a CLI host, `notilog-cli`. `NotificationMonitor` exposes one complete, nonblocking monitoring cycle so the ShutUpMac app or another GUI can reuse the same event, automation, persistence, and verification behavior without launching or duplicating the CLI.
 
 ## Current Features
 
@@ -34,6 +34,9 @@ The project currently consists of a reusable Swift library, `NotilogCore`, and a
 - Suppress routine watch output using `--quiet`.
 - Redact selected notification fields in Notilog-owned console and database output using `--redact`.
 - Fall back to a safe built-in probe rule when no config exists.
+- Use host-configurable runtime paths and diagnostic callbacks.
+- Process one explicit notification scan through the reusable `NotificationMonitor` facade.
+- Keep lifecycle, timestamps, and presentation under host control.
 
 ## Requirements
 
@@ -46,47 +49,57 @@ For command-line development, Accessibility permission normally belongs to the l
 
 ## Building and Testing
 
-From the repository root:
+From the ShutUpMac repository root:
 
 ```zsh
-swift build
+swift build --package-path Packages/notilog
 ```
 
 Show the SwiftPM binary directory:
 
 ```zsh
-swift build --show-bin-path
+swift build \
+  --package-path Packages/notilog \
+  --show-bin-path
 ```
 
 Run the test suite:
 
 ```zsh
-swift test
+swift test --package-path Packages/notilog
 ```
 
 During development, commands can be run through SwiftPM:
 
 ```zsh
-swift run notilog-cli help
+swift run \
+  --package-path Packages/notilog \
+  notilog-cli help
 ```
 
-The remaining examples use `notilog-cli` directly and assume the built executable is available on `PATH`.
+The remaining examples use `notilog-cli` directly and assume the built executable is available on `PATH`. From the repository root, the debug binary is normally available at:
+
+```text
+Packages/notilog/.build/debug/notilog-cli
+```
 
 ## Runtime Files
 
-Notilog creates its runtime directory at:
+Runtime paths are host-configurable through `NotilogRuntimePaths`. The CLI preserves the legacy default directory:
 
 ```text
 ~/Library/Application Support/notilog/
 ```
 
-Current paths:
+Current CLI paths:
 
 ```text
 notilog.sqlite   SQLite database
 config.json      Optional automation configuration
 logs/            Reserved runtime log directory
 ```
+
+An embedding host may supply a different application-support root or fully explicit config, database, and logs URLs.
 
 ## Quick Start
 
@@ -317,27 +330,46 @@ notilog-cli watch --redact --quiet --run-actions
 Notification Center AX tree
           │
           ▼
- NotificationScanner
+ NotificationScanner                    host-owned
           │
           ▼
- NotificationSnapshot
+ [VisibleNotification]
           │
           ▼
-NotificationEventTracker
+ NotificationMonitor                    one reusable cycle
           │
-          ├──────────────► AutomationEngine ─► ActionRunner
-          │                                      │
-          │                                      └─► delayed ShutUpMac verification
-          │
-          └──────────────► RedactionPolicy
-                                   │
-                                   ├─► WatchOutput
-                                   └─► NotificationStore
+    ┌─────┴──────────────────────────────────────────┐
+    ▼                                                ▼
+MonitoringCycleProcessor                   NotificationEventCoordinator
+    │                                                │
+    ├─ event recovery/tracking                       ├─ persistence
+    └─ due verification evaluation                   ├─ automation
+                                                     └─ action coordination
 ```
+
+The host supplies scans and timestamps, receives typed results through `NotificationMonitor`, and chooses how to render them. `notilog-cli` owns the AX polling loop, sleeping, argument parsing, and terminal output; `NotilogCore` owns reusable event, action, persistence, and verification coordination.
 
 The original event is used for rule matching and configured actions. Redacted copies are created for Notilog-owned output and persistence.
 
-See [`architecture.md`](architecture.md) for component and data-flow details.
+See [`architecture.md`](architecture.md) for the processor/coordinator breakdown and data-flow details.
+
+### Embedding `NotilogCore`
+
+A host assembles the scanner and runtime dependencies, then repeatedly calls the monitor with one scan:
+
+```swift
+let result = try monitor.processScan(
+    notifications: scanner.scan(),
+    at: Date(),
+    actionTimestampProvider: { Date() },
+    afterCompletedActionVerifications: renderVerifications,
+    beforeAutomation: renderEvent,
+    beforeActionResultCoordination: renderAction,
+    afterRecoveredEvents: reportRecovery
+)
+```
+
+The monitor does not call `Date()`, scan Accessibility, sleep, or create an infinite task. Those lifecycle choices remain with the host.
 
 ## Automation Configuration
 
@@ -570,13 +602,15 @@ LIMIT 10;
 ## Current Boundaries
 
 - Notification observation depends on the shape and availability of macOS Accessibility data.
-- The watch loop currently polls once per second.
-- Actions execute synchronously and can delay the next scan.
+- The CLI polls once per second; `NotilogCore` itself has no fixed cadence.
+- The reusable monitor processes one supplied scan synchronously.
+- Actions execute synchronously and can delay the next host-scheduled scan.
 - Attachment data is not currently captured.
 - Raw notification keys and AX identifiers are retained even when content redaction is enabled.
 - Redaction affects new output and writes; it does not sanitize old database rows.
 - External actions may store, transmit, or print data they receive.
-- The CLI is the current primary interface; the GUI is future work.
+- Pending dismissal verification is in memory and is not resumed after process restart.
+- The CLI remains the current operational interface; direct ShutUpMac app hosting and GUI views are future work.
 
 ## License
 

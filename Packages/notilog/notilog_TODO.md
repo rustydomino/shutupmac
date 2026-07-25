@@ -1,50 +1,59 @@
 # Notilog TODO
 
-_Last updated: 2026-07-21_
+_Last updated: 2026-07-24_
+
+## Completed foundations
+
+- [x] Integrate Notilog as a local Swift package inside the ShutUpMac repository.
+- [x] Keep `NotilogCore` as a reusable library product and `notilog-cli` as a host executable.
+- [x] Add host-configurable runtime paths through `NotilogRuntimePaths` while preserving the CLI's legacy default location.
+- [x] Add explicit CLI startup configuration for paths, logging, redaction, action mode, timing, quiet mode, and debug mode.
+- [x] Replace process-global debug state with a host-supplied `DiagnosticHandler`.
+- [x] Implement `--no-logging` while preserving event detection, actions, and delayed verification in memory.
+- [x] Implement global `--redact` at Notilog-owned console and persistence boundaries.
+- [x] Add the dedicated `shutupmac_dismiss` action and delayed verification states.
+- [x] Complete the Phase 4 library-first watch-session refactor.
+- [x] Add `NotificationMonitor.processScan(...)` as the reusable one-cycle facade.
+- [x] Move event tracking, recovery, automation, persistence coordination, and verification state out of `main.swift`.
+- [x] Keep the CLI responsible for AX scanning, timestamps, terminal rendering, looping, and sleeping.
+- [x] Reject malformed positive-integer CLI values instead of silently using defaults.
+- [x] Reject a missing `--config` value.
 
 ## Immediate next steps
 
-- [ ] Commit the current ShutUpMac uncertainty-handling work.
-  - Suggested commit message: `Handle uncertain ShutUpMac dismiss results`
-- [ ] Verify the working tree is clean with `git status --short`.
-- [ ] Update the current source archive after the commit so future edits use the latest baseline.
+- [ ] Merge the refactor branch into `main` and run the package tests on the merged branch.
+- [ ] Refresh the shared source archive or project upload after the merge.
+- [ ] Decide the next product milestone: direct ShutUpMac app hosting or the read-only Activity viewer.
+- [ ] Add process-level tests for CLI option parsing and exit codes so malformed-option behavior is automated.
+
+## Library and host integration
+
+- [ ] Integrate `NotificationMonitor` into the ShutUpMac app when the app is ready to own watcher lifecycle.
+- [ ] Add a cancellable app-host lifecycle without adding an infinite loop to `NotilogCore`.
+- [ ] Decide whether the app and CLI should share a factory/builder for monitor dependency assembly.
+- [ ] Preserve the CLI as a supported debugging and operational host.
+- [ ] Add structured host events only if callback-based presentation becomes awkward in the GUI.
 
 ## Privacy mode
 
 ### Global no-persistence mode
 
-- [ ] Add `watch --no-logging`.
-- [ ] Define it precisely in help text:
-  - Do not open or write the SQLite database.
-  - Continue normal console output.
-  - Continue scanning, matching rules, running actions, and delayed ShutUpMac verification in memory.
-  - Disable session history and restart recovery.
-- [ ] Refactor `NotificationStore` usage so the watch loop can operate with no store.
-- [ ] Make `PendingActionVerification.actionRunID` optional so verification can run without a database row.
-- [ ] Ensure these combinations work:
+- [x] `watch --no-logging` does not open or write SQLite.
+- [x] Continue scanning, matching rules, running actions, and delayed verification in memory.
+- [x] Disable session history and restart recovery when no store is present.
+- [x] Support:
   - `watch --no-logging`
   - `watch --no-logging --dry-run-actions`
   - `watch --no-logging --run-actions`
 
 ### Global redaction
 
-- [ ] Add `watch --redact`.
-- [ ] Match rules and expand action templates using the original notification in memory.
-- [ ] Redact only at output boundaries:
-  - SQLite persistence
-  - normal console output
-  - debug output
-  - action stdout/stderr where sensitive content could be echoed
-- [ ] Preserve non-content metadata where useful:
-  - timestamp
-  - event type
-  - app
-  - AX subrole
-  - AX identifier/key
-  - rule name
-  - action status
-  - verification status
-- [ ] Replace title, subtitle, and body with a consistent marker such as `[REDACTED]`.
+- [x] Add `watch --redact` with default, `all`, and explicit field selections.
+- [x] Match rules and expand action templates using the original notification in memory.
+- [x] Apply redaction to Notilog-owned event/action console output and SQLite writes.
+- [x] Suppress captured action stdout/stderr when redaction is enabled.
+- [x] Preserve operational metadata needed for diagnostics and verification.
+- [x] Leave genuinely empty selected fields empty.
 
 ### Global truncation
 
@@ -55,19 +64,16 @@ _Last updated: 2026-07-21_
 - [ ] Define `--truncate 0` behavior.
 - [ ] Reject negative or invalid lengths with a clear error.
 - [ ] Decide and document precedence: `--redact` overrides `--truncate`.
+- [ ] Warn that truncation is not strong privacy protection.
 
 ### Privacy preset
 
-- [ ] Consider adding `watch --privacy` after the individual options are stable.
-- [ ] Decide whether it should mean:
-  - `--no-logging`
-  - `--redact`
-  - or a combination/preset
+- [ ] Consider adding `watch --privacy` after truncation and retention semantics are stable.
+- [ ] Decide whether it means `--no-logging`, `--redact`, or a documented combination.
 - [ ] Avoid adding the preset until its promise is unambiguous.
 
 ### Per-rule retention policy
 
-- [ ] Add only after the global privacy pipeline exists.
 - [ ] Consider a rule schema such as:
 
 ```json
@@ -76,76 +82,55 @@ _Last updated: 2026-07-21_
 }
 ```
 
-- [ ] Candidate modes:
-  - `inherit`
-  - `full`
-  - `truncate`
-  - `redact`
-  - `none`
-- [ ] For truncation, support a per-rule length.
-- [ ] Evaluate rule criteria against full notification content before persistence.
-- [ ] Define deterministic precedence when multiple rules match:
-  - `none` > `redact` > `truncate` > `full`
-- [ ] Decide whether storage policy belongs inside automation rules or in a separate retention-rules system.
+- [ ] Candidate modes: `inherit`, `full`, `truncate`, `redact`, and `none`.
+- [ ] Evaluate criteria and action templates against full in-memory content before persistence policy is applied.
+- [ ] Define deterministic precedence when multiple rules match: `none` > `redact` > `truncate` > `full`.
+- [ ] Decide whether retention belongs inside automation rules or in a separate retention-rules system.
 
-## Watch-loop architecture cleanup
+## Monitoring lifecycle
 
-- [ ] Separate the watch pipeline into explicit stages:
-  1. scan full notifications
-  2. derive events
-  3. evaluate rules using full data
-  4. run actions using full data
-  5. apply privacy policy to console/database copies
-  6. optionally persist
-- [ ] Avoid scattering `if !noLogging` checks throughout `main.swift`.
-- [ ] Introduce a central options model, for example:
-
-```swift
-struct PrivacyOptions {
-    let persistenceEnabled: Bool
-    let redactText: Bool
-    let truncateLength: Int?
-}
-```
-
-- [ ] Consider a persistence abstraction so the watch loop does not depend directly on SQLite.
-- [ ] Ensure observation and automation remain fully functional without persistence.
+- [x] Separate the watch pipeline into explicit scan, event, automation, persistence, and verification stages.
+- [x] Support one testable monitoring cycle without AX access.
+- [x] Accept explicit scan and action timestamps in reusable core APIs.
+- [x] Return typed monitoring results rather than printing inside the core.
+- [x] Preserve recovered-event-before-current-event ordering.
+- [x] Keep verification functional when logging is disabled.
+- [ ] Decide how stale `pending` action rows should be handled when Notilog exits before verification.
+- [ ] Candidate final state: `verification_interrupted` or `unknown`.
+- [ ] On startup, decide whether to mark stale rows interrupted, recheck recent rows, or leave them pending with an explanation.
+- [ ] Consider asynchronous action execution only if synchronous actions cause practical scan delays.
 
 ## ShutUpMac integration cleanup
 
-- [ ] Change ShutUpMac to return machine-readable outcome distinctions.
+- [ ] Change ShutUpMac to return clearer machine-readable outcome distinctions.
 - [ ] Prefer distinct exit codes over parsing English stderr text, for example:
   - `0`: immediate progress observed
   - `1`: dismissal could not be performed
   - `2`: action performed, immediate outcome uncertain
-- [ ] Update Notilog to use those exit codes once ShutUpMac supports them.
+- [ ] Update Notilog to use the improved contract once ShutUpMac supports it.
 - [ ] Remove stderr substring matching after the new CLI contract is available.
 - [ ] Consider a future ShutUpMac `--json` result mode if richer diagnostics become useful.
-- [ ] Document the division of responsibility:
+- [x] Document the current division of responsibility:
   - Notilog observes, matches, schedules, verifies, and records.
   - ShutUpMac performs AX dismissal.
 
 ## Verification lifecycle
 
-- [ ] Document valid action/verification combinations.
+- [x] Document valid action and verification combinations.
 
 | Action status | Verification status | Meaning |
 |---|---|---|
 | `dry_run` | `nil` | No action executed |
-| `succeeded` | `pending` | SUM reported immediate success; delayed check required |
-| `uncertain` | `pending` | SUM acted but saw no immediate progress |
-| `failed` | `nil` | SUM could not perform the action |
+| `succeeded` | `pending` | ShutUpMac reported immediate success; delayed check required |
+| `uncertain` | `pending` | ShutUpMac acted but saw no immediate progress |
+| `failed` | `nil` | ShutUpMac could not perform the action |
 | `succeeded` or `uncertain` | `probably_succeeded` | Exact key later disappeared |
 | `succeeded` or `uncertain` | `definitely_failed` | Exact key remained visible |
 
-- [ ] Decide what happens to `pending` rows when Notilog exits before verification.
-- [ ] Candidate final state: `verification_interrupted` or `unknown`.
-- [ ] On startup, decide whether to:
-  - mark stale pending rows interrupted,
-  - recheck only very recent rows,
-  - or leave them pending with a clear explanation.
-- [ ] Avoid claiming definite success when an AX key disappears, because stacking can hide it.
-- [ ] Preserve “definitely failed” when the exact key remains visible after the grace period.
+- [x] Avoid claiming definite success when an AX key disappears.
+- [x] Preserve `definitely_failed` when the exact key remains visible after the delay.
+- [ ] Define restart behavior for pending verifications.
+- [ ] Consider storing verification-request and completion timestamps explicitly.
 
 ## Database and data model cleanup
 
@@ -153,44 +138,31 @@ struct PrivacyOptions {
 - [ ] Store both stable rule ID and execution-time rule name in `action_runs`.
 - [ ] Add structured `action_type` to `action_runs`.
 - [ ] Avoid making future UI code parse human-readable action summaries.
-- [ ] Consider explicit fields for:
-  - action type
-  - executable
-  - notification key
-  - verification timing
-  - verification completion timestamp
-- [ ] Add a migration/versioning strategy that is easy to test and inspect.
+- [ ] Consider explicit fields for executable, notification key, verification timing, and completion timestamp.
 - [ ] Decide whether redacted/truncated records should store the applied privacy mode.
-- [ ] Consider recording that an event was intentionally not persisted, without retaining its content.
+- [ ] Consider recording that an event was intentionally not persisted without retaining its content.
 
 ## Tests
 
-### Privacy tests
+### Completed reusable-core coverage
 
-- [ ] `--no-logging` does not create or modify the database.
-- [ ] `--no-logging --run-actions` still runs actions.
-- [ ] `--no-logging --run-actions` still performs delayed verification.
-- [ ] `--redact` does not change rule matching.
-- [ ] `--redact` does not change action template expansion.
-- [ ] `--redact` protects SQLite, console, and debug output.
-- [ ] `--truncate N` handles Unicode correctly.
-- [ ] `--redact` overrides `--truncate`.
-- [ ] Per-rule retention precedence is deterministic when multiple rules match.
+- [x] Event recovery and appeared/disappeared grace behavior.
+- [x] Pending-verification scheduling, due checks, success/failure evaluation, and queue order.
+- [x] One-cycle monitoring result separation and ordering.
+- [x] Automation disabled/dry-run/real modes and rule/action order.
+- [x] Event persistence with optional store, redaction, session identity, and order.
+- [x] Action-result persistence, redaction, optional IDs, and verification scheduling.
+- [x] Completed verification-status persistence.
+- [x] Full `NotificationMonitor` callback and result ordering.
+- [x] Temporary-database tests avoid the user's real Application Support directory.
 
-### Store and migration tests
+### Remaining tests
 
-- [ ] Opening a version-3 database adds `verification_status` correctly.
-- [ ] Opening an already migrated database is harmless.
-- [ ] Updating a nonexistent action-run ID fails predictably.
-- [ ] Redacted/truncated persistence round-trips correctly.
-
-### Verification tests
-
-- [ ] Multiple pending verifications are processed correctly.
-- [ ] Checks that are not yet due remain queued.
-- [ ] Due checks are removed after evaluation.
-- [ ] One database-update failure does not silently discard unrelated queued checks.
-- [ ] Pending verification behavior across restart is covered.
+- [ ] Add process-level tests for missing and malformed CLI option values.
+- [ ] Add explicit process tests proving `--quiet` suppresses all routine watch output.
+- [ ] Add restart tests for stale/pending verification behavior after that policy is defined.
+- [ ] Add Unicode truncation and precedence tests when `--truncate` is implemented.
+- [ ] Add per-rule retention precedence tests if retention policy is added.
 
 ## First GUI milestone: Activity viewer
 
@@ -202,72 +174,46 @@ struct PrivacyOptions {
   - immediate action result
   - delayed verification result
   - notification disappeared
-- [ ] Add filters for:
-  - app
-  - rule
-  - event type
-  - action status
-  - verification status
-  - time range
+- [ ] Add filters for app, rule, event type, action status, verification status, and time range.
 - [ ] Clearly display privacy state for redacted/truncated records.
 - [ ] Add a details view for the original stored event/action fields.
 
 ## Rules UX
 
 - [ ] Start with a read-only Rules viewer.
-- [ ] Show:
-  - enabled state
-  - match conditions
-  - actions
-  - storage/retention policy
-  - recent match count
-  - most recent execution result
+- [ ] Show enabled state, match conditions, actions, storage policy, recent match count, and most recent result.
 - [ ] Add enable/disable control.
 - [ ] Add raw JSON editing as an escape hatch.
-- [ ] Add duplicate and delete.
-- [ ] Add validation before saving.
+- [ ] Add duplicate, delete, and validation before saving.
 
 ## Rule builder
 
 - [ ] Prefer “Create rule from this notification” over an empty generic form.
 - [ ] Let the user choose which observed fields become match criteria.
-- [ ] Offer candidate criteria such as:
-  - app equals
-  - title equals/contains
-  - subtitle equals/contains
-  - body contains
-  - event type
-- [ ] Show a historical match preview:
-  - “This rule would have matched N prior notifications.”
-- [ ] Let the user inspect those matching notifications before enabling the rule.
-- [ ] Include storage policy in the builder after per-rule retention exists.
+- [ ] Show a historical match preview and allow inspection before enabling the rule.
+- [ ] Include storage policy after per-rule retention exists.
 - [ ] Eventually suggest automation for repeatedly dismissed notifications.
 
 ## Documentation and CLI help
 
-- [ ] Update README for `shutupmac_dismiss`.
-- [ ] Document `succeeded`, `uncertain`, and `failed`.
-- [ ] Document `pending`, `probably_succeeded`, and `definitely_failed`.
-- [ ] Explain that disappearance is only probable success because of macOS stacking.
-- [ ] Add privacy-option help and examples.
-- [ ] State clearly whether console output is retained by the user’s terminal/shell environment.
-- [ ] Warn that `--truncate` is not strong privacy protection.
-- [ ] Document all option-precedence rules.
+- [x] Document `shutupmac_dismiss`.
+- [x] Document action and delayed-verification statuses.
+- [x] Explain that key disappearance is only probable success.
+- [x] Document `--no-logging`, `--quiet`, and `--redact` with examples.
+- [x] Document the library-first monitoring architecture and host/core boundary.
+- [ ] State clearly whether console output may be retained by the user's terminal or shell environment.
+- [ ] Document truncation and all option-precedence rules when truncation is added.
 
 ## Suggested implementation order
 
-1. [ ] Commit current ShutUpMac uncertainty handling.
-2. [ ] Improve ShutUpMac’s machine-readable exit contract.
-3. [ ] Implement `--no-logging` with full in-memory automation and verification.
-4. [ ] Create one centralized privacy transformation policy.
-5. [ ] Add `--redact`.
-6. [ ] Add `--truncate <length>`.
-7. [ ] Audit debug output and action stdout/stderr for privacy leaks.
+1. [x] Implement global no-logging and redaction policies.
+2. [x] Make runtime paths, startup configuration, and diagnostics host-configurable.
+3. [x] Complete the library-first watch-session refactor and one-cycle monitor facade.
+4. [x] Update architecture, README, and roadmap documentation.
+5. [ ] Merge and refresh the shared source baseline.
+6. [ ] Choose direct ShutUpMac app hosting or the Activity viewer as the next milestone.
+7. [ ] Add `--truncate <length>` if stronger display/storage minimization is still desired.
 8. [ ] Add stable rule IDs and structured action identity.
 9. [ ] Resolve stale/pending verification behavior across restart.
-10. [ ] Build the read-only Activity viewer.
-11. [ ] Build the Rules viewer and enable/disable controls.
-12. [ ] Add “Create rule from notification.”
-13. [ ] Add historical match preview.
-14. [ ] Add per-rule retention policies.
-15. [ ] Consider a documented `--privacy` preset.
+10. [ ] Build the Activity viewer, then Rules viewer and rule-builder workflows.
+11. [ ] Add per-rule retention policies only after the global privacy pipeline remains stable.

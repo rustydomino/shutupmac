@@ -21,39 +21,33 @@ The live Accessibility tree is the runtime source of truth. Apple's internal not
 macOS Notification Center AX tree
               │
               ▼
-     NotificationScanner
+     NotificationScanner                 host-owned
               │
               ▼
     [VisibleNotification]
               │
               ▼
-    NotificationSnapshot
+      NotificationMonitor                reusable one-cycle facade
               │
-              ▼
- NotificationEventTracker
-              │
-              ▼
-     [NotificationEvent]
-              │
-        ┌─────┴───────────────────────┐
-        │                             │
-        ▼                             ▼
-AutomationEngine              Persistence/output copy
-        │                             │
-        ▼                             ▼
-   ActionRunner                RedactionPolicy
-        │                             │
-        ├── exec                     ├── console event output
-        ├── dry_run_log              ├── notification_events
-        └── shutupmac_dismiss        ├── active_notifications
-                │                    └── action_runs
-                ▼
- ActionVerificationEvaluator
+       ┌──────┼───────────────────────────────────────┐
+       │      │                                       │
+       ▼      ▼                                       ▼
+MonitoringCycleProcessor                 NotificationEventCoordinator
+       │                                          │
+       ├── NotificationEventProcessor             ├── event persistence
+       │      ├── startup recovery                 ├── rule evaluation
+       │      └── appeared/disappeared tracking    ├── action execution
+       │                                          └── action-result persistence
+       └── ActionVerificationProcessor
+              └── due verification evaluation
+
+CompletedActionVerificationCoordinator
+              └── persisted verification-status updates
 ```
 
-The original in-memory notification remains available to rule matching and configured actions. Redaction is applied to copies that cross Notilog-owned output and persistence boundaries.
+A host supplies one visible-notification scan and an explicit timestamp to `NotificationMonitor.processScan(...)`. The monitor coordinates one complete, nonblocking cycle and returns typed results. It does not scan Accessibility, call `Date()`, print output, sleep, or own an infinite loop.
 
----
+The original in-memory notification remains available to rule matching and configured actions. Redaction is applied to copies that cross Notilog-owned output and persistence boundaries.
 
 ## Design Principles
 
@@ -76,20 +70,38 @@ Sources/
 ├── NotilogCore/
 │   ├── Accessibility and AX helpers
 │   ├── Notification scanner and models
-│   ├── Event tracker
-│   ├── SQLite store and records
+│   ├── Event and verification processors
+│   ├── Monitoring-cycle and monitor facades
+│   ├── Persistence coordinators and SQLite store
 │   ├── Automation config, rules, and matching
 │   ├── Template expansion and action execution
-│   ├── ShutUpMac verification
+│   ├── Runtime paths and diagnostic handler
 │   └── Redaction policy
 └── notilog-cli/
-    ├── Command dispatch and watch loop
-    └── Watch output policy
+    ├── Startup configuration and command dispatch
+    ├── Host-owned AX scan/sleep loop
+    └── Terminal output formatting
 Tests/
 └── NotilogCoreTests/
 ```
 
----
+### Reusable Monitoring Types
+
+The Phase 4 library-first refactor introduced focused, composable types:
+
+| Type | Responsibility |
+|---|---|
+| `NotificationEventProcessor` | First-scan recovery plus appeared/disappeared event derivation |
+| `ActionVerificationProcessor` | In-memory scheduling and evaluation of delayed dismiss checks |
+| `MonitoringCycleProcessor` | Combines event derivation and due verification evaluation for one scan |
+| `NotificationAutomationProcessor` | Rule evaluation and action execution in disabled, dry-run, or real mode |
+| `NotificationEventPersistenceCoordinator` | Redacted, optional persistence of notification events |
+| `ActionResultCoordinator` | Redacted action-result persistence and verification scheduling |
+| `CompletedActionVerificationCoordinator` | Persistence of completed verification status |
+| `NotificationEventCoordinator` | Ordered event persistence, host callbacks, automation, and action-result coordination |
+| `NotificationMonitor` | Public facade that coordinates one complete monitoring cycle |
+
+The smaller processors and coordinators remain public so hosts and tests can use the lowest useful abstraction. Most application hosts should begin with `NotificationMonitor`.
 
 ## Core Notification Model
 
@@ -161,7 +173,11 @@ The tracker compares successive snapshots and emits lifecycle events.
 
 A notification must be absent for two consecutive scans by default before a `disappeared` event is emitted. This debounce protects against short-lived AX churn.
 
-The CLI currently performs one scan per second.
+### `NotificationEventProcessor`
+
+`NotificationEventProcessor` owns a tracker plus first-scan recovery state. Given `[VisibleNotification]` and an explicit timestamp, it returns recovered `disappeared_unobserved` events separately from ordinary current-session events. This preserves the established recovered-before-current processing order.
+
+`MonitoringCycleProcessor` combines this event processing with due dismissal-verification evaluation. The CLI currently supplies one AX scan per second, but the core does not own that cadence.
 
 ---
 
@@ -202,6 +218,14 @@ When database logging is enabled, watch startup:
 
 When `--no-logging` is active, the database is not opened, no session is written, and prior active state is not loaded.
 
+Persistence is coordinated by reusable core types rather than the CLI watch loop:
+
+- `NotificationEventPersistenceCoordinator` applies redaction and optionally inserts event batches.
+- `ActionResultCoordinator` applies redaction, optionally inserts action results, and schedules delayed verification with the resulting action-run ID.
+- `CompletedActionVerificationCoordinator` updates stored action rows when delayed verification completes.
+
+Each coordinator accepts an optional `NotificationStore`, allowing the same monitoring pipeline to operate when persistence is disabled.
+
 ---
 
 ## Automation
@@ -236,6 +260,8 @@ caseSensitive
 ```
 
 One matching rule can produce multiple `AutomationMatch` values when it defines multiple actions.
+
+`NotificationAutomationProcessor` combines rule evaluation with execution-mode selection. It preserves rule-array and action-array order and returns `[ActionRunResult]` without printing or persisting them.
 
 ### Template Expansion
 
@@ -302,7 +328,9 @@ key present → definitely_failed
 
 This is intentionally conservative. AX observation can establish that a key remained visible, but absence is treated as probable rather than absolute proof of the cause.
 
-When logging is enabled, the verifier updates the corresponding `action_runs.verification_status` row. Under `--no-logging`, the pending check still exists in memory and the result can still be reported to the console.
+`ActionVerificationProcessor` owns pending verification state and evaluates checks that are due during a later scan. `CompletedActionVerificationCoordinator` optionally updates the corresponding `action_runs.verification_status` row.
+
+Under `--no-logging`, the pending check still exists in memory with a `nil` action-run ID, and the result can still be returned to the host and reported to the console.
 
 ---
 
@@ -374,24 +402,32 @@ These are intentional current boundaries, not guarantees that those fields can n
 
 ---
 
-## CLI Responsibilities
+## Host and CLI Responsibilities
 
-`notilog-cli` currently owns:
+`notilog-cli` is now a host of `NotilogCore`, not the owner of monitoring behavior.
+
+The CLI owns:
 
 - Command and option parsing.
-- Accessibility preflight checks.
-- Runtime path initialization.
-- Database and automation-engine construction.
-- The one-second watch loop.
-- Startup recovery coordination.
-- Routing original events to automation.
-- Routing redacted copies to persistence and presentation.
-- Maintaining pending delayed action verifications.
-- Human-readable history, rule, validation, and status output.
+- `CLIStartupConfiguration` and legacy-default runtime-path selection.
+- Accessibility permission checks and `NotificationScanner` construction.
+- Database, session, automation-engine, and monitor assembly.
+- Choosing scan and action timestamps.
+- The foreground `while true` loop and `Thread.sleep(...)` cadence.
+- Terminal-specific rendering through callbacks.
+- Human-readable history, rule, validation, and status commands.
 
-The core scanner, tracker, store, matcher, template expander, action runner, verification evaluator, and redaction policy remain reusable outside the CLI.
+`NotificationMonitor` and its lower-level processors/coordinators own:
 
----
+- Previous-session disappearance recovery.
+- Appeared/disappeared event tracking and grace scans.
+- Rule matching and action execution.
+- Event and action-result persistence.
+- Pending dismissal-verification state and evaluation.
+- Verification-status persistence.
+- The ordering of recovered events, current events, actions, and verification results.
+
+This boundary allows the ShutUpMac app or another GUI to host the same monitor while choosing a different lifecycle and presentation layer.
 
 ## Error and Execution Model
 
@@ -409,47 +445,54 @@ This model is simple and predictable, but high-latency external actions can dela
 
 ## Testing
 
-`NotilogCoreTests` currently covers major reusable components, including:
+`NotilogCoreTests` covers the reusable monitoring pipeline without requiring live AX access. Tests use explicit timestamps, in-memory notifications, and temporary SQLite databases.
 
-- Notification matching.
-- Automation config conversion and validation.
-- Automation engine behavior.
-- Template expansion.
-- Action execution and resolution.
-- ShutUpMac verification evaluation.
+Coverage includes:
+
+- Notification matching, config conversion, and validation.
+- Template expansion and action execution.
+- Event recovery, appeared/disappeared tracking, and grace scans.
+- Pending dismissal scheduling and due verification evaluation.
+- One-cycle result ordering.
+- Automation execution modes and rule/action order.
+- Event and action-result persistence with redaction and `--no-logging` behavior.
+- Completed verification-status persistence.
+- Full `NotificationMonitor` callback ordering and typed results.
 - SQLite persistence and migrations.
 
-CLI-level output and option interactions should continue to be tested with integration or process-level tests as the command surface grows.
-
----
+CLI-level output and option interactions are still validated with process-level smoke tests. The CLI now rejects malformed positive-integer options and missing `--config` values instead of silently falling back.
 
 ## Future GUI
 
-A future GUI should depend on `NotilogCore`:
+A future GUI, including the ShutUpMac app, can host `NotilogCore` directly:
 
 ```text
-        ┌─────────────┐
-        │ Notilog.app │
-        └──────┬──────┘
-               │
-               ▼
-         NotilogCore
+      ┌───────────────────────────┐
+      │ ShutUpMac.app / other UI │
+      └─────────────┬─────────────┘
+                    │ scans, timestamps, callbacks
+                    ▼
+            NotificationMonitor
+                    │
+                    ▼
+               NotilogCore
 ```
 
-The GUI may provide rule construction, history browsing, aggregate notification analytics, privacy controls, and action diagnostics, but it should not duplicate scanning, matching, persistence, or redaction logic.
+The GUI may provide rule construction, history browsing, aggregate notification analytics, privacy controls, and action diagnostics. It should not duplicate event derivation, matching, action execution, persistence coordination, or dismissal verification.
 
----
+The current monitor API is synchronous and nonblocking only in the lifecycle sense: it processes one supplied scan and returns. A host remains responsible for scheduling repeated scans and deciding how cancellation should work.
 
 ## Current Boundaries and Likely Next Work
 
+- Integrate `NotificationMonitor` into the ShutUpMac app when the app is ready to own watcher lifecycle.
+- Add a cancellable app-host lifecycle without changing the one-cycle core API.
+- Build a read-only Activity viewer before a full rule editor.
+- Decide how stale `pending` verifications should be handled across process restart.
 - Audit whether raw notification keys and AX identifiers require hashing or optional redaction.
 - Add attachment extraction only with an explicit persistence and privacy policy.
 - Add richer history filtering and structured output formats.
-- Add graceful session shutdown handling.
-- Consider asynchronous action execution if blocking actions become a practical problem.
-- Build GUI clients on the existing core rather than moving logic into presentation code.
-
----
+- Consider asynchronous action execution only if blocking actions become a practical problem.
+- Keep the CLI as a supported host and debugging surface rather than removing it.
 
 ## Guiding Philosophy
 
