@@ -34,7 +34,7 @@ let loggingEnabled = !arguments.contains("--no-logging")
 
 let shutUpMacVerificationDelay: TimeInterval = 2.0
 
-if dryRunActionsEnabled && runActionsEnabled {
+if dryRunActionsEnabled, runActionsEnabled {
     fputs("Use either --dry-run-actions or --run-actions, not both.\n", stderr)
     exit(2)
 }
@@ -54,7 +54,7 @@ func printEvent(
     output: WatchOutput,
     redactionPolicy: RedactionPolicy
 ) {
-    let outputEvent = redactionPolicy.applying(to:event)
+    let outputEvent = redactionPolicy.applying(to: event)
     let notification = outputEvent.notification
     let timestamp = ISO8601DateFormatter().string(
         from: outputEvent.timestamp
@@ -64,24 +64,24 @@ func printEvent(
     case .appeared:
         output.routine(
             "\(timestamp) event=appeared app=\(notification.app) " +
-            "title=\(notification.title) " +
-            "subtitle=\(notification.subtitle) " +
-            "body=\(notification.body)"
+                "title=\(notification.title) " +
+                "subtitle=\(notification.subtitle) " +
+                "body=\(notification.body)"
         )
 
     case .disappeared:
         output.routine(
             "\(timestamp) event=disappeared app=\(notification.app) " +
-            "title=\(notification.title) " +
-            "subtitle=\(notification.subtitle)"
+                "title=\(notification.title) " +
+                "subtitle=\(notification.subtitle)"
         )
 
     case .disappearedUnobserved:
         output.routine(
             "\(timestamp) event=disappeared_unobserved " +
-            "app=\(notification.app) " +
-            "title=\(notification.title) " +
-            "subtitle=\(notification.subtitle)"
+                "app=\(notification.app) " +
+                "title=\(notification.title) " +
+                "subtitle=\(notification.subtitle)"
         )
     }
 }
@@ -136,7 +136,7 @@ func optionalStringOption(_ name: String) -> String? {
 
 let redactionPolicy: RedactionPolicy
 
-if command == "watch" && arguments.contains("--redact") {
+if command == "watch", arguments.contains("--redact") {
     do {
         redactionPolicy = try RedactionPolicy.parse(
             optionalStringOption("--redact")
@@ -190,10 +190,10 @@ func printActionHistoryRecord(_ record: ActionRunRecord) {
 
     print(
         "\(record.id)\t\(createdAt)\t\(record.status.rawValue)" +
-        "\texit=\(exitCodeText)" +
-        "\tverification=\(verificationText)" +
-        "\t\(record.ruleName)" +
-        "\t\(record.message)"
+            "\texit=\(exitCodeText)" +
+            "\tverification=\(verificationText)" +
+            "\t\(record.ruleName)" +
+            "\t\(record.message)"
     )
 }
 
@@ -334,39 +334,34 @@ func printAutomationStartupStatus(
         )
     }
 }
+
 func runAutomationIfNeeded(
     for event: NotificationEvent,
-    dryRunEnabled: Bool,
-    runEnabled: Bool,
-    engine: AutomationEngine,
+    mode: AutomationExecutionMode,
+    processor: NotificationAutomationProcessor,
     store: NotificationStore?,
     session: ObservationSession,
     output: WatchOutput,
     redactionPolicy: RedactionPolicy,
     cycleProcessor: MonitoringCycleProcessor
 ) throws {
-    guard dryRunEnabled || runEnabled else {
-        return
-    }
+    let results = processor.process(
+        event: event,
+        mode: mode
+    )
 
-    let matches = engine.evaluate(event)
-
-    let runner = ActionRunner()
-    
-    for match in matches {
-        let result = dryRunEnabled
-            ? runner.runDryRun(match)
-            : runner.run(match)
-
+    for result in results {
         let notification = result.event.notification
         let outputNotification = redactionPolicy.applying(
             to: notification
         )
-        
-        let prefix = dryRunEnabled ? "[dry-run]" : "[action]"
-        
+
+        let prefix = mode == .dryRun
+            ? "[dry-run]"
+            : "[action]"
+
         let outputMessage: String
-        
+
         if redactionPolicy.isEnabled {
             if let exitCode = result.exitCode {
                 outputMessage =
@@ -377,7 +372,7 @@ func runAutomationIfNeeded(
         } else {
             outputMessage = result.message
         }
-        
+
         output.routineError("""
         \(prefix) matched rule: \(result.ruleName)
           \(outputMessage)
@@ -386,9 +381,9 @@ func runAutomationIfNeeded(
           subrole: \(outputNotification.subrole)
           axIdentifier: \(outputNotification.axIdentifier)
           key: \(outputNotification.key)
-        
+
         """)
-        
+
         if !result.stdout.isEmpty {
             if redactionPolicy.isEnabled {
                 output.routineError(
@@ -419,7 +414,7 @@ func runAutomationIfNeeded(
             let storedResult = redactionPolicy.applying(
                 to: result
             )
-        
+
             actionRunID = try store.insert(
                 storedResult,
                 session: session
@@ -429,16 +424,14 @@ func runAutomationIfNeeded(
         }
 
         if result.verificationStatus == .pending {
-        cycleProcessor.scheduleActionVerification(
-            actionRunID: actionRunID,
-            notificationKey: notification.key,
-            requestedAt: Date(),
-            delay: startupConfiguration.dismissalVerificationDelay
-        )
-
+            cycleProcessor.scheduleActionVerification(
+                actionRunID: actionRunID,
+                notificationKey: notification.key,
+                requestedAt: Date(),
+                delay: startupConfiguration.dismissalVerificationDelay
+            )
         }
     }
-
 }
 
 func processCompletedActionVerifications(
@@ -508,7 +501,7 @@ case "watch":
     try startupConfiguration.runtimePaths.ensureDirectoriesExist()
 
     let scanner = NotificationScanner(
-        diagnosticHandler: diagnosticHandler 
+        diagnosticHandler: diagnosticHandler
     )
 
     let store: NotificationStore?
@@ -529,6 +522,23 @@ case "watch":
         printConfigErrorAndExit(error)
     }
 
+    let automationProcessor = NotificationAutomationProcessor(
+        engine: automationEngine
+    )
+
+    let automationExecutionMode: AutomationExecutionMode
+
+    switch startupConfiguration.actionExecutionMode {
+    case .disabled:
+        automationExecutionMode = .disabled
+
+    case .dryRun:
+        automationExecutionMode = .dryRun
+
+    case .runActions:
+        automationExecutionMode = .runActions
+    }
+
     watchOutput.routine("Watching notifications...")
     printAutomationStartupStatus(
         dryRunEnabled: startupConfiguration.actionExecutionMode.dryRunEnabled,
@@ -536,7 +546,7 @@ case "watch":
         engine: automationEngine,
         output: watchOutput
     )
-    
+
     if startupConfiguration.loggingEnabled {
         watchOutput.routine("Database logging: ENABLED")
     } else {
@@ -546,18 +556,18 @@ case "watch":
     }
 
     if startupConfiguration.redactionPolicy.isEnabled {
-    let redactedFields =
-        startupConfiguration.redactionPolicy.fieldNames.joined(
-            separator: ", "
-        )
-    
+        let redactedFields =
+            startupConfiguration.redactionPolicy.fieldNames.joined(
+                separator: ", "
+            )
+
         watchOutput.routine(
-        "Redaction: ENABLED (\(redactedFields))"
-    )
+            "Redaction: ENABLED (\(redactedFields))"
+        )
     } else {
         watchOutput.routine("Redaction: DISABLED")
     }
-    
+
     watchOutput.routine("Press Ctrl-C to stop.")
 
     let session = ObservationSession()
@@ -565,10 +575,10 @@ case "watch":
 
     if let store {
         diagnosticHandler?("Database path: \(startupConfiguration.runtimePaths.database.path)")
-    
+
         try store.startSession(session)
         diagnosticHandler?("Started session: \(session.id)")
-    
+
         previouslyActive = try store.loadActiveNotifications()
         diagnosticHandler?("Previously active notifications: \(previouslyActive.count)")
     } else {
@@ -602,8 +612,7 @@ case "watch":
         let recoveredEvents = cycleResult.recoveredEvents
 
         if !recoveredEvents.isEmpty {
-
-           if let store {
+            if let store {
                 let storedEvents = recoveredEvents.map {
                     startupConfiguration.redactionPolicy.applying(to: $0)
                 }
@@ -620,9 +629,8 @@ case "watch":
 
                 try runAutomationIfNeeded(
                     for: event,
-                    dryRunEnabled: startupConfiguration.actionExecutionMode.dryRunEnabled,
-                    runEnabled: startupConfiguration.actionExecutionMode.runActionsEnabled,
-                    engine: automationEngine,
+                    mode: automationExecutionMode,
+                    processor: automationProcessor,
                     store: store,
                     session: session,
                     output: watchOutput,
@@ -640,9 +648,8 @@ case "watch":
             didReportPreviousStateRecovery = true
         }
 
-
         let events = cycleResult.events
-        
+
         if let store {
             let storedEvents = events.map {
                 startupConfiguration.redactionPolicy.applying(to: $0)
@@ -660,9 +667,8 @@ case "watch":
 
             try runAutomationIfNeeded(
                 for: event,
-                dryRunEnabled: startupConfiguration.actionExecutionMode.dryRunEnabled,
-                runEnabled: startupConfiguration.actionExecutionMode.runActionsEnabled,
-                engine: automationEngine,
+                mode: automationExecutionMode,
+                processor: automationProcessor,
                 store: store,
                 session: session,
                 output: watchOutput,
@@ -677,7 +683,6 @@ case "watch":
     }
 
 case "history":
-
     let limit = integerOption("--limit", default: 20)
 
     try startupConfiguration.runtimePaths.ensureDirectoriesExist()
