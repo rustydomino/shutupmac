@@ -343,7 +343,7 @@ func runAutomationIfNeeded(
     session: ObservationSession,
     output: WatchOutput,
     redactionPolicy: RedactionPolicy,
-    verificationProcessor: ActionVerificationProcessor
+    cycleProcessor: MonitoringCycleProcessor
 ) throws {
     guard dryRunEnabled || runEnabled else {
         return
@@ -429,29 +429,23 @@ func runAutomationIfNeeded(
         }
 
         if result.verificationStatus == .pending {
-            verificationProcessor.schedule(
-                actionRunID: actionRunID,
-                notificationKey: notification.key,
-                requestedAt: Date(),
-                delay: startupConfiguration.dismissalVerificationDelay
-            )
+        cycleProcessor.scheduleActionVerification(
+            actionRunID: actionRunID,
+            notificationKey: notification.key,
+            requestedAt: Date(),
+            delay: startupConfiguration.dismissalVerificationDelay
+        )
+
         }
     }
 
 }
 
-func processDueActionVerifications(
-    _ verificationProcessor: ActionVerificationProcessor,
-    visibleNotifications: [VisibleNotification],
-    now: Date,
+func processCompletedActionVerifications(
+    _ completedVerifications: [CompletedActionVerification],
     store: NotificationStore?,
     output: WatchOutput
 ) throws {
-    let completedVerifications = verificationProcessor.processDue(
-        visibleNotifications: visibleNotifications,
-        at: now
-    )
-
     for verification in completedVerifications {
         if let store, let actionRunID = verification.actionRunID {
             try store.updateActionVerificationStatus(
@@ -584,36 +578,32 @@ case "watch":
         )
     }
 
-    let eventProcessor = NotificationEventProcessor(
+    let cycleProcessor = MonitoringCycleProcessor(
         previouslyActive: previouslyActive
     )
-    
-    let actionVerificationProcessor = ActionVerificationProcessor()
-    
+
     var didReportPreviousStateRecovery = false
 
     while true {
-        let notifications = scanner.scan()
         let scanTimestamp = Date()
+        let notifications = scanner.scan()
 
-        try processDueActionVerifications(
-            actionVerificationProcessor,
-            visibleNotifications: notifications,
-            now: scanTimestamp,
-            store: store,
-            output: watchOutput
-        )
-
-
-        let processingResult = eventProcessor.processScan(
+        let cycleResult = cycleProcessor.processScan(
             notifications: notifications,
             at: scanTimestamp
         )
 
-        let recoveredEvents = processingResult.recoveredEvents
+        try processCompletedActionVerifications(
+            cycleResult.completedActionVerifications,
+            store: store,
+            output: watchOutput
+        )
+
+        let recoveredEvents = cycleResult.recoveredEvents
 
         if !recoveredEvents.isEmpty {
-            if let store {
+
+           if let store {
                 let storedEvents = recoveredEvents.map {
                     startupConfiguration.redactionPolicy.applying(to: $0)
                 }
@@ -637,7 +627,7 @@ case "watch":
                     session: session,
                     output: watchOutput,
                     redactionPolicy: startupConfiguration.redactionPolicy,
-                    verificationProcessor: actionVerificationProcessor
+                    cycleProcessor: cycleProcessor
                 )
             }
         }
@@ -650,8 +640,9 @@ case "watch":
             didReportPreviousStateRecovery = true
         }
 
-        let events = processingResult.events
 
+        let events = cycleResult.events
+        
         if let store {
             let storedEvents = events.map {
                 startupConfiguration.redactionPolicy.applying(to: $0)
@@ -676,7 +667,7 @@ case "watch":
                 session: session,
                 output: watchOutput,
                 redactionPolicy: startupConfiguration.redactionPolicy,
-                verificationProcessor: actionVerificationProcessor
+                cycleProcessor: cycleProcessor
             )
         }
 
