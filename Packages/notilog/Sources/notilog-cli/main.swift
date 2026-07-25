@@ -580,6 +580,13 @@ case "watch":
         startupConfiguration.dismissalVerificationDelay
     )
 
+    let eventPersistenceCoordinator =
+        NotificationEventPersistenceCoordinator(
+            store: store,
+            session: session,
+            redactionPolicy: startupConfiguration.redactionPolicy
+        )
+
     var didReportPreviousStateRecovery = false
 
     while true {
@@ -600,13 +607,9 @@ case "watch":
         let recoveredEvents = cycleResult.recoveredEvents
 
         if !recoveredEvents.isEmpty {
-            if let store {
-                let storedEvents = recoveredEvents.map {
-                    startupConfiguration.redactionPolicy.applying(to: $0)
-                }
-
-                try store.insert(storedEvents, session: session)
-            }
+            try eventPersistenceCoordinator.persist(
+                recoveredEvents
+            )
 
             for event in recoveredEvents {
                 printEvent(
@@ -621,7 +624,7 @@ case "watch":
                     processor: automationProcessor,
                     coordinator: actionResultCoordinator,
                     output: watchOutput,
-                    redactionPolicy: startupConfiguration.redactionPolicy,
+                    redactionPolicy: startupConfiguration.redactionPolicy
                 )
             }
         }
@@ -636,13 +639,7 @@ case "watch":
 
         let events = cycleResult.events
 
-        if let store {
-            let storedEvents = events.map {
-                startupConfiguration.redactionPolicy.applying(to: $0)
-            }
-
-            try store.insert(storedEvents, session: session)
-        }
+        try eventPersistenceCoordinator.persist(events)
 
         for event in events {
             printEvent(
@@ -657,7 +654,7 @@ case "watch":
                 processor: automationProcessor,
                 coordinator: actionResultCoordinator,
                 output: watchOutput,
-                redactionPolicy: startupConfiguration.redactionPolicy,
+                redactionPolicy: startupConfiguration.redactionPolicy
             )
         }
 
