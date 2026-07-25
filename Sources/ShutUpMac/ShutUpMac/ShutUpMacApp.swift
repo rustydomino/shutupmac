@@ -25,6 +25,13 @@ struct ShutUpMacApp: App {
         }
         .menuBarExtraStyle(.menu)
 
+        Window("ShutUpMac Activity", id: "activity") {
+            ActivityView(
+                store: applicationDelegate.activityStore
+            )
+        }
+        .defaultSize(width: 760, height: 500)
+        
         Window("ShutUpMac Settings", id: "settings") {
             SettingsView()
         }
@@ -127,6 +134,11 @@ struct ShutUpMacMenu: View {
 
         Divider()
 
+        Button("Activity…") {
+            showActivityWindow()
+        }
+        .keyboardShortcut("1", modifiers: [.command])
+        
         Button("Settings…") {
             showSettingsWindow()
         }
@@ -144,6 +156,26 @@ struct ShutUpMacMenu: View {
         .keyboardShortcut("q", modifiers: [.command])
     }
 
+    private func showActivityWindow() {
+        openWindow(id: "activity")
+
+        DispatchQueue.main.async {
+            NSApplication.shared.activate(
+                ignoringOtherApps: true
+            )
+
+            if let activityWindow =
+                NSApplication.shared.windows.first(
+                    where: { window in
+                        window.title == "ShutUpMac Activity"
+                    }
+                ) {
+                activityWindow.makeKeyAndOrderFront(nil)
+                activityWindow.orderFrontRegardless()
+            }
+        }
+    }
+    
     private func showSettingsWindow() {
         openWindow(id: "settings")
 

@@ -2,12 +2,32 @@ import AppKit
 
 @MainActor
 final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
-    private let notilogMonitoringController =
-        NotilogMonitoringController()
+    let activityStore = ActivityStore()
+
+    private lazy var notilogMonitoringController =
+        NotilogMonitoringController { [weak self] activityItems in
+            self?.activityStore.append(activityItems)
+        }
 
     func applicationDidFinishLaunching(
         _ notification: Notification
     ) {
+        let isAccessibilityTrusted =
+            AccessibilityPermission.isTrusted(prompt: true)
+
+        print(
+            "Notilog monitoring Accessibility trusted: "
+            + "\(isAccessibilityTrusted)"
+        )
+
+        guard isAccessibilityTrusted else {
+            print(
+                "Notilog monitoring was not started because "
+                + "Accessibility permission is unavailable."
+            )
+            return
+        }
+
         notilogMonitoringController.start()
     }
 

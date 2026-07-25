@@ -11,13 +11,21 @@ nonisolated final class NotilogMonitoringController: @unchecked Sendable {
     )
 
     private let interval: TimeInterval
-
+    
+    private let onActivityItems:
+        @MainActor @Sendable ([ActivityItem]) -> Void
+    
     private var timer: DispatchSourceTimer?
     private var runtime: NotilogMonitoringRuntime?
     private var isStarted = false
 
-    init(interval: TimeInterval = 1.0) {
+    init(
+        interval: TimeInterval = 1.0,
+        onActivityItems: @escaping
+            @MainActor @Sendable ([ActivityItem]) -> Void
+    ) {
         self.interval = interval
+        self.onActivityItems = onActivityItems
     }
 
     func start() {
@@ -79,22 +87,28 @@ nonisolated final class NotilogMonitoringController: @unchecked Sendable {
         }
 
         do {
+            let timestamp = Date()
+
             let result = try runtime.processOneCycle(
-                at: Date()
+                at: timestamp
             )
 
-            let activityCount =
-                result.completedActionVerifications.count
-                + result.recoveredEvents.count
-                + result.events.count
+            let activityItems = ActivityItemFactory.makeItems(
+                from: result,
+                verificationTimestamp: timestamp
+            )
 
-            guard activityCount > 0 else {
+            guard !activityItems.isEmpty else {
                 return
+            }
+
+            Task { @MainActor [onActivityItems, activityItems] in
+                onActivityItems(activityItems)
             }
 
             print(
                 "Notilog monitoring cycle produced "
-                + "\(activityCount) activity item(s)"
+                + "\(activityItems.count) activity item(s)"
             )
         } catch {
             print(
