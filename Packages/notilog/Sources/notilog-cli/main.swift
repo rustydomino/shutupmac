@@ -552,7 +552,7 @@ case "watch":
     let completedVerificationCoordinator =
         CompletedActionVerificationCoordinator(
             store: store
-    )
+        )
 
     let actionResultCoordinator = ActionResultCoordinator(
         store: store,
@@ -577,71 +577,32 @@ case "watch":
             actionResultCoordinator: actionResultCoordinator
         )
 
+    let monitor = NotificationMonitor(
+        cycleProcessor: cycleProcessor,
+        completedVerificationCoordinator:
+        completedVerificationCoordinator,
+        eventCoordinator: notificationEventCoordinator,
+        automationMode: automationExecutionMode
+    )
+
     var didReportPreviousStateRecovery = false
 
     while true {
         let scanTimestamp = Date()
         let notifications = scanner.scan()
 
-        let cycleResult = cycleProcessor.processScan(
+        _ = try monitor.processScan(
             notifications: notifications,
-            at: scanTimestamp
-        )
-
-    let completedVerifications =
-        try completedVerificationCoordinator.process(
-            cycleResult.completedActionVerifications
-        )
-
-    printCompletedActionVerifications(
-        completedVerifications,
-        output: watchOutput
-    )
-
-        let recoveredEvents = cycleResult.recoveredEvents
-
-        if !recoveredEvents.isEmpty {
-            _ = try notificationEventCoordinator.process(
-                recoveredEvents,
-                automationMode: automationExecutionMode,
-                actionTimestampProvider: {
-                    Date()
-                },
-                beforeAutomation: { event in
-                    printEvent(
-                        event,
-                        output: watchOutput,
-                        redactionPolicy:
-                        startupConfiguration.redactionPolicy
-                    )
-                },
-                beforeActionResultCoordination: { result in
-                    printActionResult(
-                        result,
-                        mode: automationExecutionMode,
-                        output: watchOutput,
-                        redactionPolicy:
-                        startupConfiguration.redactionPolicy
-                    )
-                }
-            )
-        }
-
-        if !didReportPreviousStateRecovery {
-            diagnosticHandler?(
-                "Recovered unobserved disappearances: \(recoveredEvents.count)"
-            )
-
-            didReportPreviousStateRecovery = true
-        }
-
-        let events = cycleResult.events
-
-        _ = try notificationEventCoordinator.process(
-            events,
-            automationMode: automationExecutionMode,
+            at: scanTimestamp,
             actionTimestampProvider: {
                 Date()
+            },
+            afterCompletedActionVerifications: {
+                completedVerifications in
+                printCompletedActionVerifications(
+                    completedVerifications,
+                    output: watchOutput
+                )
             },
             beforeAutomation: { event in
                 printEvent(
@@ -659,6 +620,15 @@ case "watch":
                     redactionPolicy:
                     startupConfiguration.redactionPolicy
                 )
+            },
+            afterRecoveredEvents: { recoveredEvents in
+                if !didReportPreviousStateRecovery {
+                    diagnosticHandler?(
+                        "Recovered unobserved disappearances: \(recoveredEvents.count)"
+                    )
+
+                    didReportPreviousStateRecovery = true
+                }
             }
         )
 
