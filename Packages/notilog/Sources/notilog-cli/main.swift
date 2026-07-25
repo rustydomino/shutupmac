@@ -94,10 +94,22 @@ func integerOption(_ name: String, default defaultValue: Int) -> Int {
     let valueIndex = arguments.index(after: index)
 
     guard valueIndex < arguments.endIndex else {
-        return defaultValue
+        fputs("Missing value for \(name).\n", stderr)
+        exit(2)
     }
 
-    return Int(arguments[valueIndex]) ?? defaultValue
+    let rawValue = arguments[valueIndex]
+
+    guard let value = Int(rawValue), value > 0 else {
+        fputs(
+            "Invalid value for \(name): \(rawValue). " +
+            "Expected a positive integer.\n",
+            stderr
+        )
+        exit(2)
+    }
+
+    return value
 }
 
 func stringOption(_ name: String) -> String? {
