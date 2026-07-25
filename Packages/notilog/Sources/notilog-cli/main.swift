@@ -32,12 +32,6 @@ let dryRunActionsEnabled = arguments.contains("--dry-run-actions")
 let runActionsEnabled = arguments.contains("--run-actions")
 let loggingEnabled = !arguments.contains("--no-logging")
 
-struct PendingActionVerification {
-    let actionRunID: Int64?
-    let notificationKey: String
-    let verifyAfter: Date
-}
-
 let shutUpMacVerificationDelay: TimeInterval = 2.0
 
 if dryRunActionsEnabled && runActionsEnabled {
@@ -348,17 +342,17 @@ func runAutomationIfNeeded(
     store: NotificationStore?,
     session: ObservationSession,
     output: WatchOutput,
-    redactionPolicy: RedactionPolicy
-) throws -> [PendingActionVerification]{
+    redactionPolicy: RedactionPolicy,
+    verificationProcessor: ActionVerificationProcessor
+) throws {
     guard dryRunEnabled || runEnabled else {
-        return []
+        return
     }
 
     let matches = engine.evaluate(event)
 
     let runner = ActionRunner()
-    var pendingVerifications: [PendingActionVerification] = []
-
+    
     for match in matches {
         let result = dryRunEnabled
             ? runner.runDryRun(match)
@@ -435,44 +429,33 @@ func runAutomationIfNeeded(
         }
 
         if result.verificationStatus == .pending {
-            pendingVerifications.append(
-                PendingActionVerification(
-                    actionRunID: actionRunID,
-                    notificationKey: notification.key,
-                    verifyAfter: Date().addingTimeInterval(
-                        startupConfiguration.dismissalVerificationDelay
-                    )
-                )
+            verificationProcessor.schedule(
+                actionRunID: actionRunID,
+                notificationKey: notification.key,
+                requestedAt: Date(),
+                delay: startupConfiguration.dismissalVerificationDelay
             )
         }
     }
 
-    return pendingVerifications
 }
 
 func processDueActionVerifications(
-    _ pendingVerifications: inout [PendingActionVerification],
+    _ verificationProcessor: ActionVerificationProcessor,
     visibleNotifications: [VisibleNotification],
     now: Date,
     store: NotificationStore?,
     output: WatchOutput
 ) throws {
-    var remainingVerifications: [PendingActionVerification] = []
+    let completedVerifications = verificationProcessor.processDue(
+        visibleNotifications: visibleNotifications,
+        at: now
+    )
 
-    for verification in pendingVerifications {
-        guard verification.verifyAfter <= now else {
-            remainingVerifications.append(verification)
-            continue
-        }
-
-        let status = ActionVerificationEvaluator.evaluate(
-            notificationKey: verification.notificationKey,
-            visibleNotifications: visibleNotifications
-        )
-
-                if let store, let actionRunID = verification.actionRunID {
+    for verification in completedVerifications {
+        if let store, let actionRunID = verification.actionRunID {
             try store.updateActionVerificationStatus(
-                status,
+                verification.status,
                 forActionRunID: actionRunID
             )
         }
@@ -481,14 +464,12 @@ func processDueActionVerifications(
             verification.actionRunID.map { String($0) } ?? "not logged"
 
         output.routineError("""
-        [action verification] \(status.rawValue)
+        [action verification] \(verification.status.rawValue)
           action run id: \(actionRunDescription)
           key: \(verification.notificationKey)
-        
+
         """)
     }
-
-    pendingVerifications = remainingVerifications
 }
 
 switch command {
@@ -606,16 +587,17 @@ case "watch":
     let eventProcessor = NotificationEventProcessor(
         previouslyActive: previouslyActive
     )
-
+    
+    let actionVerificationProcessor = ActionVerificationProcessor()
+    
     var didReportPreviousStateRecovery = false
-    var pendingActionVerifications: [PendingActionVerification] = []
 
     while true {
         let notifications = scanner.scan()
         let scanTimestamp = Date()
 
         try processDueActionVerifications(
-            &pendingActionVerifications,
+            actionVerificationProcessor,
             visibleNotifications: notifications,
             now: scanTimestamp,
             store: store,
@@ -646,7 +628,7 @@ case "watch":
                     redactionPolicy: startupConfiguration.redactionPolicy
                 )
 
-                let newVerifications = try runAutomationIfNeeded(
+                try runAutomationIfNeeded(
                     for: event,
                     dryRunEnabled: startupConfiguration.actionExecutionMode.dryRunEnabled,
                     runEnabled: startupConfiguration.actionExecutionMode.runActionsEnabled,
@@ -654,11 +636,8 @@ case "watch":
                     store: store,
                     session: session,
                     output: watchOutput,
-                    redactionPolicy: startupConfiguration.redactionPolicy
-                )
-
-                pendingActionVerifications.append(
-                    contentsOf: newVerifications
+                    redactionPolicy: startupConfiguration.redactionPolicy,
+                    verificationProcessor: actionVerificationProcessor
                 )
             }
         }
@@ -677,10 +656,10 @@ case "watch":
             let storedEvents = events.map {
                 startupConfiguration.redactionPolicy.applying(to: $0)
             }
-        
+
             try store.insert(storedEvents, session: session)
         }
-        
+
         for event in events {
             printEvent(
                 event,
@@ -688,7 +667,7 @@ case "watch":
                 redactionPolicy: startupConfiguration.redactionPolicy
             )
 
-            let newVerifications = try runAutomationIfNeeded(
+            try runAutomationIfNeeded(
                 for: event,
                 dryRunEnabled: startupConfiguration.actionExecutionMode.dryRunEnabled,
                 runEnabled: startupConfiguration.actionExecutionMode.runActionsEnabled,
@@ -696,13 +675,9 @@ case "watch":
                 store: store,
                 session: session,
                 output: watchOutput,
-                redactionPolicy: startupConfiguration.redactionPolicy
+                redactionPolicy: startupConfiguration.redactionPolicy,
+                verificationProcessor: actionVerificationProcessor
             )
-
-            pendingActionVerifications.append(
-                contentsOf: newVerifications
-            )
-
         }
 
         Thread.sleep(
@@ -711,6 +686,7 @@ case "watch":
     }
 
 case "history":
+
     let limit = integerOption("--limit", default: 20)
 
     try startupConfiguration.runtimePaths.ensureDirectoriesExist()
