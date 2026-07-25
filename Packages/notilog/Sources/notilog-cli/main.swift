@@ -399,19 +399,11 @@ func printActionResult(
     }
 }
 
-func processCompletedActionVerifications(
+func printCompletedActionVerifications(
     _ completedVerifications: [CompletedActionVerification],
-    store: NotificationStore?,
     output: WatchOutput
-) throws {
+) {
     for verification in completedVerifications {
-        if let store, let actionRunID = verification.actionRunID {
-            try store.updateActionVerificationStatus(
-                verification.status,
-                forActionRunID: actionRunID
-            )
-        }
-
         let actionRunDescription =
             verification.actionRunID.map { String($0) } ?? "not logged"
 
@@ -557,6 +549,11 @@ case "watch":
         previouslyActive: previouslyActive
     )
 
+    let completedVerificationCoordinator =
+        CompletedActionVerificationCoordinator(
+            store: store
+    )
+
     let actionResultCoordinator = ActionResultCoordinator(
         store: store,
         session: session,
@@ -591,11 +588,15 @@ case "watch":
             at: scanTimestamp
         )
 
-        try processCompletedActionVerifications(
-            cycleResult.completedActionVerifications,
-            store: store,
-            output: watchOutput
+    let completedVerifications =
+        try completedVerificationCoordinator.process(
+            cycleResult.completedActionVerifications
         )
+
+    printCompletedActionVerifications(
+        completedVerifications,
+        output: watchOutput
+    )
 
         let recoveredEvents = cycleResult.recoveredEvents
 
