@@ -339,11 +339,9 @@ func runAutomationIfNeeded(
     for event: NotificationEvent,
     mode: AutomationExecutionMode,
     processor: NotificationAutomationProcessor,
-    store: NotificationStore?,
-    session: ObservationSession,
+    coordinator: ActionResultCoordinator,
     output: WatchOutput,
-    redactionPolicy: RedactionPolicy,
-    cycleProcessor: MonitoringCycleProcessor
+    redactionPolicy: RedactionPolicy
 ) throws {
     let results = processor.process(
         event: event,
@@ -408,29 +406,10 @@ func runAutomationIfNeeded(
             }
         }
 
-        let actionRunID: Int64?
-
-        if let store {
-            let storedResult = redactionPolicy.applying(
-                to: result
-            )
-
-            actionRunID = try store.insert(
-                storedResult,
-                session: session
-            )
-        } else {
-            actionRunID = nil
-        }
-
-        if result.verificationStatus == .pending {
-            cycleProcessor.scheduleActionVerification(
-                actionRunID: actionRunID,
-                notificationKey: notification.key,
-                requestedAt: Date(),
-                delay: startupConfiguration.dismissalVerificationDelay
-            )
-        }
+        _ = try coordinator.process(
+            [result],
+            at: Date()
+        )
     }
 }
 
@@ -592,6 +571,15 @@ case "watch":
         previouslyActive: previouslyActive
     )
 
+    let actionResultCoordinator = ActionResultCoordinator(
+        store: store,
+        session: session,
+        redactionPolicy: startupConfiguration.redactionPolicy,
+        cycleProcessor: cycleProcessor,
+        dismissalVerificationDelay:
+        startupConfiguration.dismissalVerificationDelay
+    )
+
     var didReportPreviousStateRecovery = false
 
     while true {
@@ -631,11 +619,9 @@ case "watch":
                     for: event,
                     mode: automationExecutionMode,
                     processor: automationProcessor,
-                    store: store,
-                    session: session,
+                    coordinator: actionResultCoordinator,
                     output: watchOutput,
                     redactionPolicy: startupConfiguration.redactionPolicy,
-                    cycleProcessor: cycleProcessor
                 )
             }
         }
@@ -669,11 +655,9 @@ case "watch":
                 for: event,
                 mode: automationExecutionMode,
                 processor: automationProcessor,
-                store: store,
-                session: session,
+                coordinator: actionResultCoordinator,
                 output: watchOutput,
                 redactionPolicy: startupConfiguration.redactionPolicy,
-                cycleProcessor: cycleProcessor
             )
         }
 
