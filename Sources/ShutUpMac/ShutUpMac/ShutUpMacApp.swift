@@ -3,6 +3,11 @@ import AppKit
 
 @main
 struct ShutUpMacApp: App {
+    @NSApplicationDelegateAdaptor(
+        ShutUpMacApplicationDelegate.self
+    )
+    private var applicationDelegate
+
     init() {
         AppPreferences.registerDefaults()
         DockIconController.apply(hideDockIcon: AppPreferences.hideDockIcon)
