@@ -120,10 +120,18 @@ func stringOption(_ name: String) -> String? {
     let valueIndex = arguments.index(after: index)
 
     guard valueIndex < arguments.endIndex else {
-        return nil
+        fputs("Missing value for \(name).\n", stderr)
+        exit(2)
     }
 
-    return arguments[valueIndex]
+    let value = String(arguments[valueIndex])
+
+    guard !value.hasPrefix("--") else {
+        fputs("Missing value for \(name).\n", stderr)
+        exit(2)
+    }
+
+    return value
 }
 
 func optionalStringOption(_ name: String) -> String? {
