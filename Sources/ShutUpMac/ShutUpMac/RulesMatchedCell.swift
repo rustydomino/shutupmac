@@ -2,12 +2,13 @@ import SwiftUI
 
 struct RulesMatchedCell: View {
     let matchedRules: [MatchedRuleSnapshot]
+    let displayText: String
 
     @State private var isShowingDetails = false
 
     var body: some View {
         if matchedRules.isEmpty {
-            Text("—")
+            Text(displayText)
                 .foregroundStyle(.secondary)
         } else {
             Button(countLabel) {

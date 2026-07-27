@@ -5,9 +5,18 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
     let activityStore = ActivityStore()
 
     private lazy var notilogMonitoringController =
-        NotilogMonitoringController { [weak self] activityItems in
-            self?.activityStore.append(activityItems)
-        }
+        NotilogMonitoringController(
+            onHistoricalRecords: { [weak self] records in
+                self?.activityStore.loadHistoricalRecords(
+                    records
+                )
+            },
+            onActivityItems: { [weak self] activityItems in
+                self?.activityStore.append(
+                    activityItems
+                )
+            }
+        )
 
     func applicationDidFinishLaunching(
         _ notification: Notification

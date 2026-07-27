@@ -46,6 +46,20 @@ final class ActivityStore: ObservableObject {
         
     }
 
+    func loadHistoricalRecords(
+        _ historicalRecords: [NotificationActivityRecord]
+    ) {
+        records = Array(
+            historicalRecords
+                .sorted {
+                    $0.appearedAt < $1.appearedAt
+                }
+                .suffix(maximumItemCount)
+        )
+
+        items = []
+    }
+
     func removeAll() {
         items.removeAll()
         records.removeAll()

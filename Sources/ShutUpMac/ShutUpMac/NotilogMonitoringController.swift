@@ -15,16 +15,26 @@ nonisolated final class NotilogMonitoringController: @unchecked Sendable {
     private let onActivityItems:
         @MainActor @Sendable ([ActivityItem]) -> Void
     
+    private let onHistoricalRecords:
+        @MainActor @Sendable (
+            [NotificationActivityRecord]
+        ) -> Void
+
     private var timer: DispatchSourceTimer?
     private var runtime: NotilogMonitoringRuntime?
     private var isStarted = false
 
     init(
         interval: TimeInterval = 1.0,
+        onHistoricalRecords: @escaping
+            @MainActor @Sendable (
+                [NotificationActivityRecord]
+            ) -> Void,
         onActivityItems: @escaping
             @MainActor @Sendable ([ActivityItem]) -> Void
     ) {
         self.interval = interval
+        self.onHistoricalRecords = onHistoricalRecords
         self.onActivityItems = onActivityItems
     }
 
@@ -36,6 +46,37 @@ nonisolated final class NotilogMonitoringController: @unchecked Sendable {
 
             do {
                 let runtime = try NotilogMonitoringRuntime()
+
+                let historicalEvents =
+                    try runtime.recentAppearanceEvents(
+                        limit: 1_000
+                    )
+
+                let historicalRecords =
+                    historicalEvents.map { record in
+                        let notification = record.event.notification
+
+                        return NotificationActivityRecord(
+                            historicalNotification:
+                                ActivityNotificationSnapshot(
+                                    key: notification.key,
+                                    app: notification.app,
+                                    title: notification.title,
+                                    subtitle: notification.subtitle,
+                                    body: notification.body
+                                ),
+                            appearedAt: record.event.timestamp
+                        )
+                    }
+
+                Task {
+                    @MainActor [
+                        onHistoricalRecords,
+                        historicalRecords
+                    ] in
+                        onHistoricalRecords(historicalRecords)
+                }
+
                 let timer = DispatchSource.makeTimerSource(
                     queue: self.queue
                 )

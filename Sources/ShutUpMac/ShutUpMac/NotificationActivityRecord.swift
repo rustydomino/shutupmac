@@ -44,6 +44,19 @@ nonisolated struct NotificationActivityRecord:
         append(item)
     }
 
+    init(
+        historicalNotification notification:
+            ActivityNotificationSnapshot,
+        appearedAt: Date
+    ) {
+        self.id = notification.key
+        self.notification = notification
+        self.appearedAt = appearedAt
+        self.matchedRules = []
+        self.activityItems = []
+        self.ruleMatchState = .notRecorded
+    }
+
     mutating func append(_ item: ActivityItem) {
         if let notification = item.notification {
             self.notification = notification
@@ -52,6 +65,8 @@ nonisolated struct NotificationActivityRecord:
         activityItems.append(item)
 
         if item.kind == .notificationAppeared {
+            ruleMatchState = .recorded
+
             appearedAt = min(
                 appearedAt,
                 item.timestamp

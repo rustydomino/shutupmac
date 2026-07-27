@@ -449,6 +449,110 @@ public final class NotificationStore {
         return records
     }
 
+    public func recentAppearanceEvents(
+        limit: Int = 20
+    ) throws -> [NotificationEventRecord] {
+        let safeLimit = max(1, min(limit, 1_000))
+
+        let sql = """
+        SELECT
+            id,
+            session_id,
+            timestamp,
+            event_type,
+            notification_key,
+            subrole,
+            ax_identifier,
+            app,
+            title,
+            subtitle,
+            body
+        FROM (
+            SELECT
+                id,
+                session_id,
+                timestamp,
+                event_type,
+                notification_key,
+                subrole,
+                ax_identifier,
+                app,
+                title,
+                subtitle,
+                body
+            FROM notification_events
+            WHERE event_type = 'appeared'
+            ORDER BY id DESC
+            LIMIT \(safeLimit)
+        )
+        ORDER BY id ASC;
+        """
+
+        var statement: OpaquePointer?
+
+        guard sqlite3_prepare_v2(
+            db,
+            sql,
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else {
+            throw StoreError.prepareFailed(
+                message: lastErrorMessage
+            )
+        }
+
+        defer {
+            sqlite3_finalize(statement)
+        }
+
+        let formatter = ISO8601DateFormatter()
+        var records: [NotificationEventRecord] = []
+
+        while sqlite3_step(statement) == SQLITE_ROW {
+            let id = sqlite3_column_int64(statement, 0)
+            let sessionID = columnText(
+                statement,
+                index: 1
+            )
+
+            let timestampString = columnText(
+                statement,
+                index: 2
+            )
+
+            let timestamp =
+                formatter.date(from: timestampString)
+                ?? Date(timeIntervalSince1970: 0)
+
+            let notification = VisibleNotification(
+                key: columnText(statement, index: 4),
+                subrole: columnText(statement, index: 5),
+                axIdentifier: columnText(statement, index: 6),
+                app: columnText(statement, index: 7),
+                title: columnText(statement, index: 8),
+                subtitle: columnText(statement, index: 9),
+                body: columnText(statement, index: 10)
+            )
+
+            let event = NotificationEvent(
+                type: .appeared,
+                notification: notification,
+                timestamp: timestamp
+            )
+
+            records.append(
+                NotificationEventRecord(
+                    id: id,
+                    sessionID: sessionID,
+                    event: event
+                )
+            )
+        }
+
+        return records
+    }
+
     public func recentActionRuns(limit: Int = 20) throws -> [ActionRunRecord] {
         let safeLimit = max(1, min(limit, 1000))
 

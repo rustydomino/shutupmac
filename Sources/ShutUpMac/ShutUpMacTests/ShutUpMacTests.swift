@@ -214,4 +214,39 @@ final class ShutUpMacTests: XCTestCase {
 
         XCTAssertEqual(record.rulesMatchedDisplay, "—")
     }
+    
+    func testLiveAppearanceReplacesNotRecordedRuleState() {
+        let notification = ActivityNotificationSnapshot(
+            key: "notification-key",
+            app: "Mail",
+            title: "Historical message",
+            subtitle: "",
+            body: "Hello"
+        )
+
+        var record = NotificationActivityRecord(
+            historicalNotification: notification,
+            appearedAt: Date(timeIntervalSince1970: 100)
+        )
+
+        XCTAssertEqual(
+            record.rulesMatchedDisplay,
+            "Not recorded"
+        )
+
+        let liveItem = ActivityItem(
+            timestamp: Date(timeIntervalSince1970: 200),
+            kind: .notificationAppeared,
+            summary: "Notification appeared",
+            notification: notification,
+            matchedRules: []
+        )
+
+        record.append(liveItem)
+
+        XCTAssertEqual(
+            record.rulesMatchedDisplay,
+            "—"
+        )
+    }
 }

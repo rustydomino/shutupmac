@@ -109,6 +109,18 @@ nonisolated final class NotilogMonitoringRuntime {
         )
     }
 
+    /// Loads the most recent persisted notification appearances.
+    ///
+    /// Results are returned oldest-to-newest so ActivityStore can rebuild
+    /// its normal rolling history in chronological order.
+    func recentAppearanceEvents(
+        limit: Int = 1_000
+    ) throws -> [NotificationEventRecord] {
+        try store.recentAppearanceEvents(
+            limit: limit
+        )
+    }
+
     private static func loadAutomationEngine(
         configURL: URL
     ) throws -> AutomationEngine {

@@ -139,7 +139,8 @@ struct ActivityView: View {
                                     \NotificationActivityRecord.matchedRuleCount
                             ) { record in
                                 RulesMatchedCell(
-                                    matchedRules: record.matchedRules
+                                    matchedRules: record.matchedRules,
+                                    displayText: record.rulesMatchedDisplay
                                 )
                             }
                             .width(
