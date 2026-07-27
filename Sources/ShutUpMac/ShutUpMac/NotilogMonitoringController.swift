@@ -47,34 +47,44 @@ nonisolated final class NotilogMonitoringController: @unchecked Sendable {
             do {
                 let runtime = try NotilogMonitoringRuntime()
 
-                let historicalEvents =
-                    try runtime.recentAppearanceEvents(
-                        limit: 1_000
-                    )
-
-                let historicalRecords =
-                    historicalEvents.map { record in
-                        let notification = record.event.notification
-
-                        return NotificationActivityRecord(
-                            historicalNotification:
-                                ActivityNotificationSnapshot(
-                                    key: notification.key,
-                                    app: notification.app,
-                                    title: notification.title,
-                                    subtitle: notification.subtitle,
-                                    body: notification.body
-                                ),
-                            appearedAt: record.event.timestamp
+                do {
+                    let historicalEvents =
+                        try runtime.recentAppearanceEvents(
+                            limit: 1_000
                         )
-                    }
 
-                Task {
-                    @MainActor [
-                        onHistoricalRecords,
-                        historicalRecords
-                    ] in
-                        onHistoricalRecords(historicalRecords)
+                    let historicalRecords =
+                        historicalEvents.map { record in
+                            let notification =
+                                record.event.notification
+
+                            return NotificationActivityRecord(
+                                historicalNotification:
+                                    ActivityNotificationSnapshot(
+                                        key: notification.key,
+                                        app: notification.app,
+                                        title: notification.title,
+                                        subtitle: notification.subtitle,
+                                        body: notification.body
+                                    ),
+                                appearedAt: record.event.timestamp
+                            )
+                        }
+
+                    Task {
+                        @MainActor [
+                            onHistoricalRecords,
+                            historicalRecords
+                        ] in
+                            onHistoricalRecords(
+                                historicalRecords
+                            )
+                    }
+                } catch {
+                    print(
+                        "Could not load Notilog activity history: "
+                        + "\(error)"
+                    )
                 }
 
                 let timer = DispatchSource.makeTimerSource(

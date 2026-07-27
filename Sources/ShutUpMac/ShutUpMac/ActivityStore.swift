@@ -53,15 +53,30 @@ final class ActivityStore: ObservableObject {
     func loadHistoricalRecords(
         _ historicalRecords: [NotificationActivityRecord]
     ) {
-        records = Array(
-            historicalRecords
-                .sorted {
-                    $0.appearedAt < $1.appearedAt
-                }
-                .suffix(maximumItemCount)
+        var recordsByID = Dictionary(
+            uniqueKeysWithValues: records.map {
+                ($0.id, $0)
+            }
         )
 
-        items = []
+        for historicalRecord in historicalRecords {
+            guard recordsByID[historicalRecord.id] == nil else {
+                continue
+            }
+
+            recordsByID[historicalRecord.id] =
+                historicalRecord
+        }
+
+        records = recordsByID.values.sorted {
+            $0.appearedAt < $1.appearedAt
+        }
+
+        if records.count > maximumItemCount {
+            records.removeFirst(
+                records.count - maximumItemCount
+            )
+        }
     }
 
     func removeAll() {
