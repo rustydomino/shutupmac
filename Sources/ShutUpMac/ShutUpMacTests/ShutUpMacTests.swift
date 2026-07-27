@@ -190,4 +190,28 @@ final class ShutUpMacTests: XCTestCase {
         XCTAssertNil(record.displaySubtitle)
         XCTAssertEqual(record.body, "New message")
     }
+    
+    func testRecordedZeroMatchesDisplaysDash() throws {
+        let notification = ActivityNotificationSnapshot(
+            key: "notification-key",
+            app: "Mail",
+            title: "New message",
+            subtitle: "",
+            body: "Hello"
+        )
+
+        let item = ActivityItem(
+            timestamp: Date(),
+            kind: .notificationAppeared,
+            summary: "Notification appeared",
+            notification: notification,
+            matchedRules: []
+        )
+
+        let record = try XCTUnwrap(
+            NotificationActivityRecord(from: item)
+        )
+
+        XCTAssertEqual(record.rulesMatchedDisplay, "—")
+    }
 }

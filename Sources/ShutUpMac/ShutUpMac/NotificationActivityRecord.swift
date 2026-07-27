@@ -4,6 +4,12 @@ import Foundation
 ///
 /// The table displays one record per notification appearance. Related
 /// activity items are retained for the future diagnostics inspector.
+
+enum RuleMatchState {
+    case recorded
+    case notRecorded
+}
+
 nonisolated struct NotificationActivityRecord:
     Identifiable,
     Sendable
@@ -17,6 +23,8 @@ nonisolated struct NotificationActivityRecord:
 
     private(set) var matchedRules:
         [MatchedRuleSnapshot]
+
+    var ruleMatchState: RuleMatchState = .recorded
 
     private(set) var activityItems:
         [ActivityItem]
@@ -122,6 +130,14 @@ nonisolated struct NotificationActivityRecord:
     }
 
     var rulesMatchedDisplay: String {
+        switch ruleMatchState {
+        case .notRecorded:
+            return "Not recorded"
+
+        case .recorded:
+            break
+        }
+
         switch matchedRuleCount {
         case 0:
             return "—"
@@ -133,7 +149,7 @@ nonisolated struct NotificationActivityRecord:
             return "\(matchedRuleCount) rules matched"
         }
     }
-    
+
     func matchesSearch(_ searchText: String) -> Bool {
         let searchableValues = [
             app,
