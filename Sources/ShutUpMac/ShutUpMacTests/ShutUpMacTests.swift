@@ -275,6 +275,7 @@ final class ShutUpMacTests: XCTestCase {
         store.loadHistoricalRecords(records)
 
         XCTAssertEqual(store.records.count, 1_000)
+        XCTAssertTrue(store.isAtRecordCapacity)
         XCTAssertEqual(
             store.records.first?.id,
             "notification-2"
@@ -288,5 +289,26 @@ final class ShutUpMacTests: XCTestCase {
                 $0.rulesMatchedDisplay == "Not recorded"
             }
         )
+    }
+    
+    @MainActor
+    func testActivityStoreBelowCapacityIsNotAtCapacity() {
+        let notification = ActivityNotificationSnapshot(
+            key: "notification-1",
+            app: "Test App",
+            title: "Test",
+            subtitle: "",
+            body: "Body"
+        )
+
+        let record = NotificationActivityRecord(
+            historicalNotification: notification,
+            appearedAt: Date()
+        )
+
+        let store = ActivityStore()
+        store.loadHistoricalRecords([record])
+
+        XCTAssertFalse(store.isAtRecordCapacity)
     }
 }

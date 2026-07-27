@@ -7,6 +7,10 @@ final class ActivityStore: ObservableObject {
     @Published private(set) var items: [ActivityItem] = []
     @Published private(set) var records: [NotificationActivityRecord] = []
 
+    var isAtRecordCapacity: Bool {
+        records.count >= maximumItemCount
+    }
+
     private let maximumItemCount: Int
 
     init(maximumItemCount: Int = 1_000) {

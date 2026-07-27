@@ -50,13 +50,23 @@ struct ActivityView: View {
         count == 1 ? "notification" : "notifications"
         
         let prefix: String
-        
+
         if trimmedSearchText.isEmpty {
-            prefix = "\(count) \(notificationWord)"
+            if store.isAtRecordCapacity {
+                prefix = "Latest \(count) \(notificationWord)"
+            } else {
+                prefix = "\(count) \(notificationWord)"
+            }
         } else {
-            prefix = "\(count) matching \(notificationWord)"
-        }
-        
+            if store.isAtRecordCapacity {
+                prefix =
+                    "\(count) matching \(notificationWord) "
+                    + "in latest \(store.records.count)"
+            } else {
+                prefix = "\(count) matching \(notificationWord)"
+            }
+        }       
+
         return prefix
         + " since "
         + oldestRetainedDate.formatted(
