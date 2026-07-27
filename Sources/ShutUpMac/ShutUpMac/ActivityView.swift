@@ -2,27 +2,23 @@ import SwiftUI
 
 struct ActivityView: View {
     @ObservedObject var store: ActivityStore
-
+    
     @State private var searchText = ""
     
     @State private var selectedRecordID:
-        NotificationActivityRecord.ID?
-
+    NotificationActivityRecord.ID?
+    
     @State private var sortOrder:
-        [KeyPathComparator<NotificationActivityRecord>] = [
-            KeyPathComparator(
-                \NotificationActivityRecord.appearedAt,
-                order: .reverse
-            )
-        ]
-
-    private var displayedRecords: [NotificationActivityRecord] {
-        let trimmedSearchText = searchText.trimmingCharacters(
-            in: .whitespacesAndNewlines
+    [KeyPathComparator<NotificationActivityRecord>] = [
+        KeyPathComparator(
+            \NotificationActivityRecord.appearedAt,
+             order: .reverse
         )
-
+    ]
+    
+    private var displayedRecords: [NotificationActivityRecord] {
         let filteredRecords: [NotificationActivityRecord]
-
+        
         if trimmedSearchText.isEmpty {
             filteredRecords = store.records
         } else {
@@ -30,10 +26,45 @@ struct ActivityView: View {
                 record.matchesSearch(trimmedSearchText)
             }
         }
-
+        
         return filteredRecords.sorted(using: sortOrder)
     }
-
+    
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+    }
+    
+    private var oldestRetainedDate: Date? {
+        store.records.map(\.appearedAt).min()
+    }
+    
+    private var activityStatusText: String? {
+        guard let oldestRetainedDate else {
+            return nil
+        }
+        
+        let count = displayedRecords.count
+        let notificationWord =
+        count == 1 ? "notification" : "notifications"
+        
+        let prefix: String
+        
+        if trimmedSearchText.isEmpty {
+            prefix = "\(count) \(notificationWord)"
+        } else {
+            prefix = "\(count) matching \(notificationWord)"
+        }
+        
+        return prefix
+        + " since "
+        + oldestRetainedDate.formatted(
+            date: .abbreviated,
+            time: .omitted
+        )
+    }
+    
     var body: some View {
         Group {
             if store.records.isEmpty {
@@ -46,97 +77,114 @@ struct ActivityView: View {
                     )
                 )
             } else {
-                Table(
-                    displayedRecords,
-                    selection: $selectedRecordID,
-                    sortOrder: $sortOrder
-                ) {
-                    TableColumn(
-                        "App",
-                        value: \NotificationActivityRecord.app
-                    ) { record in
-                        Text(displayValue(record.app))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .help(displayValue(record.app))
-                    }
-                    .width(
-                        min: 90,
-                        ideal: 130,
-                        max: 220
-                    )
-
-                    TableColumn("Notification") { record in
-                        VStack(
-                            alignment: .leading,
-                            spacing: 2
-                        ) {
-                            if let displayTitle = record.displayTitle {
-                                Text(previewValue(displayTitle))
-                                    .fontWeight(.medium)
-                                    .lineLimit(1)
-                            }
-
-                            if let displaySubtitle = record.displaySubtitle {
-                                Text(previewValue(displaySubtitle))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-
-                            if !record.body.isEmpty {
-                                Text(previewValue(record.body))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
+                VStack(spacing: 0) {
+                    Table(
+                        displayedRecords,
+                        selection: $selectedRecordID,
+                        sortOrder: $sortOrder
+                    ) {
+                        TableColumn(
+                            "App",
+                            value: \NotificationActivityRecord.app
+                        ) { record in
+                            Text(displayValue(record.app))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .help(displayValue(record.app))
                         }
-                        .help(
-                            [record.title, record.subtitle, record.body]
-                                .filter { !$0.isEmpty }
-                                .joined(separator: "\n")
+                        .width(
+                            min: 90,
+                            ideal: 130,
+                            max: 220
+                        )
+                        
+                        TableColumn("Notification") { record in
+                            VStack(
+                                alignment: .leading,
+                                spacing: 2
+                            ) {
+                                if let displayTitle = record.displayTitle {
+                                    Text(previewValue(displayTitle))
+                                        .fontWeight(.medium)
+                                        .lineLimit(1)
+                                }
+                                
+                                if let displaySubtitle = record.displaySubtitle {
+                                    Text(previewValue(displaySubtitle))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                
+                                if !record.body.isEmpty {
+                                    Text(previewValue(record.body))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .help(
+                                [record.title, record.subtitle, record.body]
+                                    .filter { !$0.isEmpty }
+                                    .joined(separator: "\n")
+                            )
+                        }
+                        .width(
+                            min: 240,
+                            ideal: 250
+                        )
+                        
+                        TableColumn(
+                            "Rules matched",
+                            value:
+                                \NotificationActivityRecord.matchedRuleCount
+                        ) { record in
+                            RulesMatchedCell(
+                                matchedRules: record.matchedRules
+                            )
+                        }
+                        .width(
+                            min: 120,
+                            ideal: 160,
+                            max: 220
+                        )
+                        
+                        TableColumn(
+                            "Appeared",
+                            value:
+                                \NotificationActivityRecord.appearedAt
+                        ) { record in
+                            Text(
+                                record.appearedAt,
+                                format: .dateTime
+                                    .month(.abbreviated)
+                                    .day()
+                                    .hour()
+                                    .minute()
+                                    .second()
+                            )
+                            .lineLimit(1)
+                        }
+                        .width(
+                            min: 145,
+                            ideal: 165,
+                            max: 210
                         )
                     }
-                    .width(
-                        min: 240,
-                        ideal: 250
-                    )
+                
+                    Divider()
 
-                    TableColumn(
-                        "Rules matched",
-                        value:
-                            \NotificationActivityRecord.matchedRuleCount
-                    ) { record in
-                        RulesMatchedCell(
-                            matchedRules: record.matchedRules
-                        )
-                    }
-                    .width(
-                        min: 120,
-                        ideal: 160,
-                        max: 220
-                    )
+                    HStack {
+                        if let activityStatusText {
+                            Text(activityStatusText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
 
-                    TableColumn(
-                        "Appeared",
-                        value:
-                            \NotificationActivityRecord.appearedAt
-                    ) { record in
-                        Text(
-                            record.appearedAt,
-                            format: .dateTime
-                                .month(.abbreviated)
-                                .day()
-                                .hour()
-                                .minute()
-                                .second()
-                        )
-                        .lineLimit(1)
+                        Spacer()
+
                     }
-                    .width(
-                        min: 145,
-                        ideal: 165,
-                        max: 210
-                    )
-                }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                }    
                 .searchable(
                     text: $searchText,
                     placement: .toolbar,
@@ -144,7 +192,7 @@ struct ActivityView: View {
                 )
             }
             
-        
+            
         }
         .frame(
             minWidth: 960,
@@ -160,14 +208,14 @@ struct ActivityView: View {
             }
         }
     }
-
+    
     private func displayValue(
         _ value: String
     ) -> String {
         let trimmed = value.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
-
+        
         return trimmed.isEmpty ? "—" : trimmed
     }
     
@@ -178,21 +226,21 @@ struct ActivityView: View {
         let trimmed = value.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
-
+        
         guard trimmed.count > maximumLength else {
             return trimmed
         }
-
+        
         return String(
             trimmed.prefix(maximumLength - 1)
         ) + "…"
     }
-
+    
 }
 
 private struct ActivityDetailView: View {
     let item: ActivityItem
-
+    
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -206,12 +254,12 @@ private struct ActivityDetailView: View {
                         )
                     )
                     detailRow("Summary", item.summary)
-
+                    
                     if let detail = nonempty(item.detail) {
                         detailRow("Detail", detail)
                     }
                 }
-
+                
                 if let notification = item.notification {
                     detailSection("Notification") {
                         detailRow("Application", notification.app)
@@ -221,7 +269,7 @@ private struct ActivityDetailView: View {
                         detailRow("Key", notification.key)
                     }
                 }
-
+                
                 if item.ruleName != nil
                     || item.actionRunID != nil
                     || item.status != nil {
@@ -229,14 +277,14 @@ private struct ActivityDetailView: View {
                         if let ruleName = nonempty(item.ruleName) {
                             detailRow("Rule", ruleName)
                         }
-
+                        
                         if let actionRunID = item.actionRunID {
                             detailRow(
                                 "Action run ID",
                                 String(actionRunID)
                             )
                         }
-
+                        
                         if let status = nonempty(item.status) {
                             detailRow("Status", status)
                         }
@@ -250,7 +298,7 @@ private struct ActivityDetailView: View {
             .padding()
         }
     }
-
+    
     @ViewBuilder
     private func detailSection<Content: View>(
         _ title: String,
@@ -259,11 +307,11 @@ private struct ActivityDetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.headline)
-
+            
             content()
         }
     }
-
+    
     @ViewBuilder
     private func detailRow(
         _ label: String,
@@ -273,7 +321,7 @@ private struct ActivityDetailView: View {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-
+            
             Text(value.isEmpty ? "—" : value)
                 .textSelection(.enabled)
                 .frame(
@@ -282,35 +330,35 @@ private struct ActivityDetailView: View {
                 )
         }
     }
-
+    
     private func nonempty(
         _ value: String?
     ) -> String? {
         guard let value else {
             return nil
         }
-
+        
         let trimmed = value.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
-
+        
         return trimmed.isEmpty ? nil : trimmed
     }
-
+    
     private var kindLabel: String {
         switch item.kind {
         case .notificationAppeared:
             return "Notification appeared"
-
+            
         case .notificationDisappeared:
             return "Notification disappeared"
-
+            
         case .notificationDisappearedUnobserved:
             return "Recovered disappearance"
-
+            
         case .actionRun:
             return "Action executed"
-
+            
         case .actionVerification:
             return "Action verification"
         }
