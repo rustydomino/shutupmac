@@ -249,4 +249,44 @@ final class ShutUpMacTests: XCTestCase {
             "—"
         )
     }
+    
+    @MainActor
+    func testLoadingHistoricalRecordsKeepsNewestOneThousand() {
+        let records = (1...1_001).map { index in
+            let notification = ActivityNotificationSnapshot(
+                key: "notification-\(index)",
+                app: "Test App",
+                title: "Notification \(index)",
+                subtitle: "",
+                body: "Body \(index)"
+            )
+
+            return NotificationActivityRecord(
+                historicalNotification: notification,
+                appearedAt: Date(
+                    timeIntervalSince1970:
+                        TimeInterval(index)
+                )
+            )
+        }
+
+        let store = ActivityStore()
+
+        store.loadHistoricalRecords(records)
+
+        XCTAssertEqual(store.records.count, 1_000)
+        XCTAssertEqual(
+            store.records.first?.id,
+            "notification-2"
+        )
+        XCTAssertEqual(
+            store.records.last?.id,
+            "notification-1001"
+        )
+        XCTAssertTrue(
+            store.records.allSatisfy {
+                $0.rulesMatchedDisplay == "Not recorded"
+            }
+        )
+    }
 }

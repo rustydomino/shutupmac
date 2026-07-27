@@ -211,15 +211,6 @@ struct ActivityView: View {
             minWidth: 960,
             minHeight: 420
         )
-        .toolbar {
-            ToolbarItem {
-                Button("Clear") {
-                    selectedRecordID = nil
-                    store.removeAll()
-                }
-                .disabled(store.records.isEmpty)
-            }
-        }
     }
     
     private func displayValue(
