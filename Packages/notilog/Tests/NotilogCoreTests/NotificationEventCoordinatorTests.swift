@@ -388,6 +388,7 @@ final class NotificationEventCoordinatorTests: XCTestCase {
         actions: [NotificationAction]
     ) -> NotificationRule {
         NotificationRule(
+            id: UUID(),
             name: name,
             criteria: NotificationMatchCriteria(
                 eventTypes: [.appeared]

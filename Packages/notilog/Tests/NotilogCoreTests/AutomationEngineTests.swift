@@ -10,6 +10,7 @@ final class AutomationEngineTests: XCTestCase {
         )
 
         let rule = NotificationRule(
+            id: UUID(),
             name: "Teams update",
             criteria: NotificationMatchCriteria(
                 eventTypes: [.appeared],
@@ -37,6 +38,7 @@ final class AutomationEngineTests: XCTestCase {
         )
 
         let rule = NotificationRule(
+            id: UUID(),
             name: "Teams update",
             criteria: NotificationMatchCriteria(
                 appContains: "Self Service",
@@ -61,6 +63,7 @@ final class AutomationEngineTests: XCTestCase {
         )
 
         let rule = NotificationRule(
+            id: UUID(),
             name: "Disabled rule",
             enabled: false,
             criteria: NotificationMatchCriteria(
@@ -81,6 +84,7 @@ final class AutomationEngineTests: XCTestCase {
         let event = sampleEvent(type: .appeared)
 
         let rule = NotificationRule(
+            id: UUID(),
             name: "Multiple actions",
             criteria: NotificationMatchCriteria(
                 eventTypes: [.appeared]

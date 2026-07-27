@@ -7,6 +7,7 @@ final class AutomationConfigTests: XCTestCase {
         {
           "rules": [
             {
+              "id": "00000000-0000-0000-0000-000000000001",
               "name": "Appeared notification probe",
               "enabled": true,
               "match": {
@@ -31,6 +32,12 @@ final class AutomationConfigTests: XCTestCase {
         let rules = try config.notificationRules()
 
         XCTAssertEqual(rules.count, 1)
+        XCTAssertEqual(
+            rules[0].id,
+            UUID(
+                uuidString: "00000000-0000-0000-0000-000000000001"
+            )!
+        )
         XCTAssertEqual(rules[0].name, "Appeared notification probe")
         XCTAssertTrue(rules[0].enabled)
         XCTAssertEqual(
@@ -47,6 +54,7 @@ final class AutomationConfigTests: XCTestCase {
         {
           "rules": [
             {
+              "id": "00000000-0000-0000-0000-000000000002",
               "name": "Disabled rule",
               "enabled": false,
               "match": {
@@ -75,6 +83,7 @@ final class AutomationConfigTests: XCTestCase {
         {
           "rules": [
             {
+              "id": "00000000-0000-0000-0000-000000000003",
               "name": "Log title",
               "match": {
                 "eventTypes": ["appeared"]
@@ -101,6 +110,7 @@ final class AutomationConfigTests: XCTestCase {
         {
           "rules": [
             {
+              "id": "00000000-0000-0000-0000-000000000004",
               "name": "Bad action",
               "match": {},
               "actions": [
@@ -128,6 +138,7 @@ final class AutomationConfigTests: XCTestCase {
         {
           "rules": [
             {
+              "id": "00000000-0000-0000-0000-000000000005",  
               "name": "Missing command",
               "match": {},
               "actions": [
@@ -155,6 +166,7 @@ final class AutomationConfigTests: XCTestCase {
         {
           "rules": [
             {
+              "id": "00000000-0000-0000-0000-000000000005",
               "name": "Dismiss notification",
               "match": {
                 "eventTypes": ["appeared"]

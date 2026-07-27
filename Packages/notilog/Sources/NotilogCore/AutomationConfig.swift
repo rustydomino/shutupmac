@@ -18,6 +18,7 @@ public struct AutomationConfig: Codable {
 }
 
 public struct AutomationRuleConfig: Codable {
+    public let id: UUID
     public let name: String
     public let enabled: Bool?
     public let match: NotificationMatchConfig
@@ -25,6 +26,7 @@ public struct AutomationRuleConfig: Codable {
 
     public func notificationRule() throws -> NotificationRule {
         NotificationRule(
+            id: id,
             name: name,
             enabled: enabled ?? true,
             criteria: match.criteria(),

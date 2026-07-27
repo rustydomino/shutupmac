@@ -25,6 +25,7 @@ final class NotificationAutomationProcessorTests: XCTestCase {
 
     func testNonmatchingRuleReturnsNoResults() {
         let rule = NotificationRule(
+            id: UUID(),
             name: "Mail only",
             criteria: NotificationMatchCriteria(
                 appEquals: "Mail"
@@ -160,6 +161,7 @@ final class NotificationAutomationProcessorTests: XCTestCase {
 
     func testDisabledRulesDoNotProduceResults() {
         let disabledRule = NotificationRule(
+            id: UUID(),
             name: "Disabled rule",
             enabled: false,
             criteria: NotificationMatchCriteria(
@@ -195,6 +197,7 @@ final class NotificationAutomationProcessorTests: XCTestCase {
         actions: [NotificationAction]
     ) -> NotificationRule {
         NotificationRule(
+            id: UUID(),
             name: name,
             criteria: NotificationMatchCriteria(
                 eventTypes: [.appeared]
