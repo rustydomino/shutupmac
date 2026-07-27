@@ -72,22 +72,21 @@ struct ActivityView: View {
                             spacing: 2
                         ) {
                             if let displayTitle = record.displayTitle {
-                                Text(displayTitle)
+                                Text(previewValue(displayTitle))
                                     .fontWeight(.medium)
                                     .lineLimit(1)
                             }
 
                             if let displaySubtitle = record.displaySubtitle {
-                                Text(displaySubtitle)
+                                Text(previewValue(displaySubtitle))
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
 
                             if !record.body.isEmpty {
-                                Text(record.body)
+                                Text(previewValue(record.body))
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
-                                    .truncationMode(.tail)
                             }
                         }
                         .help(
@@ -98,7 +97,7 @@ struct ActivityView: View {
                     }
                     .width(
                         min: 240,
-                        ideal: 360
+                        ideal: 250
                     )
 
                     TableColumn(
@@ -170,6 +169,23 @@ struct ActivityView: View {
         )
 
         return trimmed.isEmpty ? "—" : trimmed
+    }
+    
+    private func previewValue(
+        _ value: String,
+        maximumLength: Int = 40
+    ) -> String {
+        let trimmed = value.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        guard trimmed.count > maximumLength else {
+            return trimmed
+        }
+
+        return String(
+            trimmed.prefix(maximumLength - 1)
+        ) + "…"
     }
 
 }
