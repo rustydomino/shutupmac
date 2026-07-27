@@ -139,4 +139,55 @@ final class ShutUpMacTests: XCTestCase {
             "Diagnostic log"
         )
     }
+    
+    func testDisplayTitleIsHiddenWhenItMatchesAppName() throws {
+        let notification = ActivityNotificationSnapshot(
+            key: "notification-key",
+            app: "Mail",
+            title: "  mail  ",
+            subtitle: "Inbox",
+            body: "New message"
+        )
+
+        let item = ActivityItem(
+            timestamp: Date(),
+            kind: .notificationAppeared,
+            summary: "Notification appeared",
+            notification: notification,
+            matchedRules: []
+        )
+
+        let record = try XCTUnwrap(
+            NotificationActivityRecord(from: item)
+        )
+
+        XCTAssertNil(record.displayTitle)
+        XCTAssertEqual(record.displaySubtitle, "Inbox")
+    }
+    
+    func testBlankDisplayFieldsAreOmitted() throws {
+        let notification = ActivityNotificationSnapshot(
+            key: "notification-key",
+            app: "Mail",
+            title: "   ",
+            subtitle: "\n\t",
+            body: "New message"
+        )
+
+        let item = ActivityItem(
+            timestamp: Date(),
+            kind: .notificationAppeared,
+            summary: "Notification appeared",
+            notification: notification,
+            matchedRules: []
+        )
+
+        let record = try XCTUnwrap(
+            NotificationActivityRecord(from: item)
+        )
+
+        XCTAssertNil(record.displayTitle)
+        XCTAssertNil(record.displaySubtitle)
+        XCTAssertEqual(record.body, "New message")
+    }
 }

@@ -3,6 +3,8 @@ import SwiftUI
 struct ActivityView: View {
     @ObservedObject var store: ActivityStore
 
+    @State private var searchText = ""
+    
     @State private var selectedRecordID:
         NotificationActivityRecord.ID?
 
@@ -14,8 +16,22 @@ struct ActivityView: View {
             )
         ]
 
-    private var sortedRecords: [NotificationActivityRecord] {
-        store.records.sorted(using: sortOrder)
+    private var displayedRecords: [NotificationActivityRecord] {
+        let trimmedSearchText = searchText.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        let filteredRecords: [NotificationActivityRecord]
+
+        if trimmedSearchText.isEmpty {
+            filteredRecords = store.records
+        } else {
+            filteredRecords = store.records.filter { record in
+                record.matchesSearch(trimmedSearchText)
+            }
+        }
+
+        return filteredRecords.sorted(using: sortOrder)
     }
 
     var body: some View {
@@ -31,7 +47,7 @@ struct ActivityView: View {
                 )
             } else {
                 Table(
-                    sortedRecords,
+                    displayedRecords,
                     selection: $selectedRecordID,
                     sortOrder: $sortOrder
                 ) {
@@ -50,49 +66,39 @@ struct ActivityView: View {
                         max: 220
                     )
 
-                    TableColumn(
-                        "Title",
-                        value: \NotificationActivityRecord.title
-                    ) { record in
-                        Text(displayValue(record.title))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .help(displayValue(record.title))
-                    }
-                    .width(
-                        min: 120,
-                        ideal: 190,
-                        max: 400
-                    )
+                    TableColumn("Notification") { record in
+                        VStack(
+                            alignment: .leading,
+                            spacing: 2
+                        ) {
+                            if let displayTitle = record.displayTitle {
+                                Text(displayTitle)
+                                    .fontWeight(.medium)
+                                    .lineLimit(1)
+                            }
 
-                    TableColumn(
-                        "Subtitle",
-                        value: \NotificationActivityRecord.subtitle
-                    ) { record in
-                        Text(displayValue(record.subtitle))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .help(displayValue(record.subtitle))
-                    }
-                    .width(
-                        min: 120,
-                        ideal: 190,
-                        max: 400
-                    )
+                            if let displaySubtitle = record.displaySubtitle {
+                                Text(displaySubtitle)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
 
-                    TableColumn(
-                        "Body",
-                        value: \NotificationActivityRecord.body
-                    ) { record in
-                        Text(displayValue(record.body))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .help(displayValue(record.body))
+                            if !record.body.isEmpty {
+                                Text(record.body)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                            }
+                        }
+                        .help(
+                            [record.title, record.subtitle, record.body]
+                                .filter { !$0.isEmpty }
+                                .joined(separator: "\n")
+                        )
                     }
                     .width(
-                        min: 180,
-                        ideal: 320,
-                        max: 700
+                        min: 240,
+                        ideal: 360
                     )
 
                     TableColumn(
@@ -132,7 +138,14 @@ struct ActivityView: View {
                         max: 210
                     )
                 }
+                .searchable(
+                    text: $searchText,
+                    placement: .toolbar,
+                    prompt: "Search notifications"
+                )
             }
+            
+        
         }
         .frame(
             minWidth: 960,

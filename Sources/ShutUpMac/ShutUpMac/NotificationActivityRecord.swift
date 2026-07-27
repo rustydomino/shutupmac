@@ -84,6 +84,38 @@ nonisolated struct NotificationActivityRecord:
     var body: String {
         notification.body
     }
+    
+    var displayTitle: String? {
+        let trimmedTitle = title.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        guard !trimmedTitle.isEmpty else {
+            return nil
+        }
+
+        let trimmedApp = app.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        guard trimmedTitle.localizedCaseInsensitiveCompare(
+            trimmedApp
+        ) != .orderedSame else {
+            return nil
+        }
+
+        return trimmedTitle
+    }
+
+    var displaySubtitle: String? {
+        let trimmedSubtitle = subtitle.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        return trimmedSubtitle.isEmpty
+            ? nil
+            : trimmedSubtitle
+    }
 
     var matchedRuleCount: Int {
         matchedRules.count
@@ -99,6 +131,21 @@ nonisolated struct NotificationActivityRecord:
 
         default:
             return "\(matchedRuleCount) rules matched"
+        }
+    }
+    
+    func matchesSearch(_ searchText: String) -> Bool {
+        let searchableValues = [
+            app,
+            title,
+            subtitle,
+            body
+        ] + matchedRules.map(\.name)
+
+        return searchableValues.contains { value in
+            value.localizedCaseInsensitiveContains(
+                searchText
+            )
         }
     }
 }
