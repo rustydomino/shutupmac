@@ -66,7 +66,7 @@ final class NotificationEventCoordinatorTests: XCTestCase {
                 ),
                 .dryRunLog(
                     message: "second {{notification.key}}"
-                )
+                ),
             ]
         )
 
@@ -105,7 +105,7 @@ final class NotificationEventCoordinatorTests: XCTestCase {
                 "action:alert-A:would log: second alert-A",
                 "event:alert-B",
                 "action:alert-B:would log: first alert-B",
-                "action:alert-B:would log: second alert-B"
+                "action:alert-B:would log: second alert-B",
             ]
         )
 
@@ -129,7 +129,7 @@ final class NotificationEventCoordinatorTests: XCTestCase {
             },
             [
                 "would log: first alert-A",
-                "would log: second alert-A"
+                "would log: second alert-A",
             ]
         )
     }
@@ -152,7 +152,7 @@ final class NotificationEventCoordinatorTests: XCTestCase {
         let rule = matchingRule(
             name: "Log action",
             actions: [
-                .dryRunLog(message: "handled")
+                .dryRunLog(message: "handled"),
             ]
         )
 
@@ -204,9 +204,9 @@ final class NotificationEventCoordinatorTests: XCTestCase {
                     actions: [
                         .shutUpMacDismiss(
                             command: "/usr/bin/true"
-                        )
+                        ),
                     ]
-                )
+                ),
             ],
             dismissalVerificationDelay: 2
         )
@@ -257,7 +257,7 @@ final class NotificationEventCoordinatorTests: XCTestCase {
                     actionRunID: nil,
                     notificationKey: "alert-A",
                     status: .probablySucceeded
-                )
+                ),
             ]
         )
     }
@@ -282,7 +282,7 @@ final class NotificationEventCoordinatorTests: XCTestCase {
         let rule = matchingRule(
             name: "Should not run",
             actions: [
-                .dryRunLog(message: "should not run")
+                .dryRunLog(message: "should not run"),
             ]
         )
 
@@ -296,7 +296,7 @@ final class NotificationEventCoordinatorTests: XCTestCase {
         let results = try coordinator.process(
             [
                 sampleEvent(key: "alert-A"),
-                sampleEvent(key: "alert-B")
+                sampleEvent(key: "alert-B"),
             ],
             automationMode: .disabled,
             actionTimestampProvider: {
@@ -320,6 +320,27 @@ final class NotificationEventCoordinatorTests: XCTestCase {
         )
 
         XCTAssertEqual(results.count, 2)
+
+        XCTAssertEqual(
+            results[0].matchedRules.map(\.ruleID),
+            [rule.id]
+        )
+
+        XCTAssertEqual(
+            results[1].matchedRules.map(\.ruleID),
+            [rule.id]
+        )
+
+        XCTAssertEqual(
+            results[0].matchedRules.map(\.ruleName),
+            ["Should not run"]
+        )
+
+        XCTAssertEqual(
+            results[1].matchedRules.map(\.ruleName),
+            ["Should not run"]
+        )
+
         XCTAssertTrue(results[0].actionResults.isEmpty)
         XCTAssertTrue(results[1].actionResults.isEmpty)
 
@@ -368,7 +389,7 @@ final class NotificationEventCoordinatorTests: XCTestCase {
                 redactionPolicy: .disabled,
                 cycleProcessor: cycleProcessor,
                 dismissalVerificationDelay:
-                    dismissalVerificationDelay
+                dismissalVerificationDelay
             )
 
         let coordinator = NotificationEventCoordinator(

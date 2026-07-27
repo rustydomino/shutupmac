@@ -4,13 +4,22 @@ import Foundation
 ///
 /// The table displays one record per notification appearance. Related
 /// activity items are retained for the future diagnostics inspector.
-nonisolated struct NotificationActivityRecord: Identifiable, Sendable {
+nonisolated struct NotificationActivityRecord:
+    Identifiable,
+    Sendable
+{
     let id: String
 
-    private(set) var notification: ActivityNotificationSnapshot
+    private(set) var notification:
+        ActivityNotificationSnapshot
+
     private(set) var appearedAt: Date
-    private(set) var ruleNames: [String]
-    private(set) var activityItems: [ActivityItem]
+
+    private(set) var matchedRules:
+        [MatchedRuleSnapshot]
+
+    private(set) var activityItems:
+        [ActivityItem]
 
     init?(from item: ActivityItem) {
         guard item.kind == .notificationAppeared,
@@ -21,7 +30,7 @@ nonisolated struct NotificationActivityRecord: Identifiable, Sendable {
         self.id = notification.key
         self.notification = notification
         self.appearedAt = item.timestamp
-        self.ruleNames = []
+        self.matchedRules = []
         self.activityItems = []
 
         append(item)
@@ -35,13 +44,28 @@ nonisolated struct NotificationActivityRecord: Identifiable, Sendable {
         activityItems.append(item)
 
         if item.kind == .notificationAppeared {
-            appearedAt = min(appearedAt, item.timestamp)
+            appearedAt = min(
+                appearedAt,
+                item.timestamp
+            )
         }
 
-        if let ruleName = normalized(item.ruleName),
-           !ruleNames.contains(ruleName) {
-            ruleNames.append(ruleName)
-            ruleNames.sort()
+        for matchedRule in item.matchedRules {
+            let alreadyPresent = matchedRules.contains {
+                $0.id == matchedRule.id
+            }
+
+            guard !alreadyPresent else {
+                continue
+            }
+
+            matchedRules.append(matchedRule)
+        }
+
+        matchedRules.sort {
+            $0.name.localizedCaseInsensitiveCompare(
+                $1.name
+            ) == .orderedAscending
         }
     }
 
@@ -61,23 +85,20 @@ nonisolated struct NotificationActivityRecord: Identifiable, Sendable {
         notification.body
     }
 
-    var rulesMatchedDisplay: String {
-        ruleNames.isEmpty
-            ? "—"
-            : ruleNames.joined(separator: ", ")
+    var matchedRuleCount: Int {
+        matchedRules.count
     }
 
-    private func normalized(
-        _ value: String?
-    ) -> String? {
-        guard let value else {
-            return nil
+    var rulesMatchedDisplay: String {
+        switch matchedRuleCount {
+        case 0:
+            return "—"
+
+        case 1:
+            return "1 rule matched"
+
+        default:
+            return "\(matchedRuleCount) rules matched"
         }
-
-        let trimmed = value.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-
-        return trimmed.isEmpty ? nil : trimmed
     }
 }

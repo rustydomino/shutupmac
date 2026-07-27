@@ -2,13 +2,16 @@ import Foundation
 
 public struct CoordinatedNotificationEvent {
     public let event: NotificationEvent
+    public let matchedRules: [MatchedAutomationRule]
     public let actionResults: [CoordinatedActionResult]
 
     public init(
         event: NotificationEvent,
+        matchedRules: [MatchedAutomationRule],
         actionResults: [CoordinatedActionResult]
     ) {
         self.event = event
+        self.matchedRules = matchedRules
         self.actionResults = actionResults
     }
 }
@@ -48,7 +51,8 @@ public final class NotificationEventCoordinator {
         return try events.map { event in
             beforeAutomation(event)
 
-            let actionResults = automationProcessor.process(
+            let automationResult =
+            automationProcessor.processDetailed(
                 event: event,
                 mode: automationMode
             )
@@ -56,7 +60,7 @@ public final class NotificationEventCoordinator {
             var coordinatedActionResults:
                 [CoordinatedActionResult] = []
 
-            for actionResult in actionResults {
+            for actionResult in automationResult.actionResults {
                 beforeActionResultCoordination(actionResult)
 
                 let coordinatedResults =
@@ -72,6 +76,7 @@ public final class NotificationEventCoordinator {
 
             return CoordinatedNotificationEvent(
                 event: event,
+                matchedRules: automationResult.matchedRules,
                 actionResults: coordinatedActionResults
             )
         }

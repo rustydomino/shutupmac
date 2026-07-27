@@ -34,7 +34,8 @@ nonisolated enum ActivityItemFactory {
         from coordinatedEvent: CoordinatedNotificationEvent
     ) -> [ActivityItem] {
         let eventItem = makeEventItem(
-            from: coordinatedEvent.event
+            from: coordinatedEvent.event,
+            matchedRules: coordinatedEvent.matchedRules
         )
 
         let actionItems =
@@ -46,7 +47,8 @@ nonisolated enum ActivityItemFactory {
     }
 
     private static func makeEventItem(
-        from event: NotificationEvent
+        from event: NotificationEvent,
+        matchedRules: [MatchedAutomationRule]
     ) -> ActivityItem {
         ActivityItem(
             timestamp: event.timestamp,
@@ -54,7 +56,10 @@ nonisolated enum ActivityItemFactory {
             summary: eventSummary(for: event),
             notification: snapshot(
                 from: event.notification
-            )
+            ),
+            matchedRules: matchedRules.map {
+                matchedRuleSnapshot(from: $0)
+            }
         )
     }
 
@@ -183,10 +188,40 @@ nonisolated enum ActivityItemFactory {
             return "Dismissal definitely failed"
         }
     }
-}//
-//  ActivityItemFactory.swift
-//  ShutUpMac
-//
-//  Created by mike on 7/24/26.
-//
+
+    private static func matchedRuleSnapshot(
+        from matchedRule: MatchedAutomationRule
+    ) -> MatchedRuleSnapshot {
+        MatchedRuleSnapshot(
+            id: matchedRule.ruleID,
+            name: matchedRule.ruleName,
+            actions: matchedRule.actions.map {
+                matchedRuleActionSnapshot(from: $0)
+            }
+        )
+    }
+
+    private static func matchedRuleActionSnapshot(
+        from action: NotificationAction
+    ) -> MatchedRuleActionSnapshot {
+        switch action {
+        case .shutUpMacDismiss(let command):
+            return .dismissNotification(
+                command: command
+            )
+
+        case .exec(let command, let arguments):
+            return .runCommand(
+                command: command,
+                arguments: arguments
+            )
+
+        case .dryRunLog(let message):
+            return .diagnosticLog(
+                message: message
+            )
+        }
+    }
+
+}
 

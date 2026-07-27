@@ -23,6 +23,43 @@ final class NotificationAutomationProcessorTests: XCTestCase {
         XCTAssertTrue(results.isEmpty)
     }
 
+    func testDisabledModeStillReportsMatchedRules() {
+        let ruleID = UUID(
+            uuidString: "00000000-0000-0000-0000-000000000201"
+        )!
+
+        let rule = NotificationRule(
+            id: ruleID,
+            name: "Matching rule",
+            criteria: NotificationMatchCriteria(
+                eventTypes: [.appeared]
+            ),
+            actions: [
+                .dryRunLog(message: "should not run")
+            ]
+        )
+
+        let processor = makeProcessor(rules: [rule])
+
+        let result = processor.processDetailed(
+            event: sampleEvent(),
+            mode: .disabled
+        )
+
+        XCTAssertEqual(result.matchedRules.count, 1)
+        XCTAssertEqual(result.matchedRules[0].ruleID, ruleID)
+        XCTAssertEqual(
+            result.matchedRules[0].ruleName,
+            "Matching rule"
+        )
+        XCTAssertEqual(
+            result.matchedRules[0].actions.count,
+            1
+        )
+
+        XCTAssertTrue(result.actionResults.isEmpty)
+    }
+
     func testNonmatchingRuleReturnsNoResults() {
         let rule = NotificationRule(
             id: UUID(),

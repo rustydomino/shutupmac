@@ -80,6 +80,37 @@ final class AutomationEngineTests: XCTestCase {
         XCTAssertTrue(matches.isEmpty)
     }
 
+    func testRuleEvaluationReturnsOneMatchPerRule() {
+        let event = sampleEvent(type: .appeared)
+
+        let ruleID = UUID(
+            uuidString: "00000000-0000-0000-0000-000000000101"
+        )!
+
+        let rule = NotificationRule(
+            id: ruleID,
+            name: "Multiple actions",
+            criteria: NotificationMatchCriteria(
+                eventTypes: [.appeared]
+            ),
+            actions: [
+                .dryRunLog(message: "first action"),
+                .dryRunLog(message: "second action")
+            ]
+        )
+
+        let engine = AutomationEngine(rules: [rule])
+        let matchedRules = engine.evaluateRules(event)
+
+        XCTAssertEqual(matchedRules.count, 1)
+        XCTAssertEqual(matchedRules[0].ruleID, ruleID)
+        XCTAssertEqual(
+            matchedRules[0].ruleName,
+            "Multiple actions"
+        )
+        XCTAssertEqual(matchedRules[0].actions.count, 2)
+    }
+
     func testMultipleActionsProduceMultipleMatches() {
         let event = sampleEvent(type: .appeared)
 

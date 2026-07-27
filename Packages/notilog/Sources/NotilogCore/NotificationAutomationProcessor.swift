@@ -6,6 +6,19 @@ public enum AutomationExecutionMode: Equatable {
     case runActions
 }
 
+public struct NotificationAutomationProcessingResult {
+    public let matchedRules: [MatchedAutomationRule]
+    public let actionResults: [ActionRunResult]
+
+    public init(
+        matchedRules: [MatchedAutomationRule],
+        actionResults: [ActionRunResult]
+    ) {
+        self.matchedRules = matchedRules
+        self.actionResults = actionResults
+    }
+}
+
 public final class NotificationAutomationProcessor {
     private let engine: AutomationEngine
     private let runner: ActionRunner
@@ -22,25 +35,52 @@ public final class NotificationAutomationProcessor {
         event: NotificationEvent,
         mode: AutomationExecutionMode
     ) -> [ActionRunResult] {
+        processDetailed(
+            event: event,
+            mode: mode
+        ).actionResults
+    }
+
+    public func processDetailed(
+        event: NotificationEvent,
+        mode: AutomationExecutionMode
+    ) -> NotificationAutomationProcessingResult {
+        let matchedRules = engine.evaluateRules(event)
+
         guard mode != .disabled else {
-            return []
+            return NotificationAutomationProcessingResult(
+                matchedRules: matchedRules,
+                actionResults: []
+            )
         }
 
-        let matches = engine.evaluate(event)
-
-        return matches.map { match in
-            switch mode {
-            case .disabled:
-                preconditionFailure(
-                    "Disabled automation was handled before evaluation"
+        let actionResults = matchedRules.flatMap { matchedRule in
+            matchedRule.actions.map { action in
+                let match = AutomationMatch(
+                    ruleName: matchedRule.ruleName,
+                    action: action,
+                    event: matchedRule.event
                 )
 
-            case .dryRun:
-                runner.runDryRun(match)
+                switch mode {
+                case .disabled:
+                    preconditionFailure(
+                        "Disabled automation was handled before execution"
+                    )
 
-            case .runActions:
-                runner.run(match)
+                case .dryRun:
+                    return runner.runDryRun(match)
+
+                case .runActions:
+                    return runner.run(match)
+                }
             }
         }
+
+        return NotificationAutomationProcessingResult(
+            matchedRules: matchedRules,
+            actionResults: actionResults
+        )
     }
+
 }

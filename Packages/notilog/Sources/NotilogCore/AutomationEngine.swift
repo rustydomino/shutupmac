@@ -1,5 +1,24 @@
 import Foundation
 
+public struct MatchedAutomationRule {
+    public let ruleID: UUID
+    public let ruleName: String
+    public let actions: [NotificationAction]
+    public let event: NotificationEvent
+
+    public init(
+        ruleID: UUID,
+        ruleName: String,
+        actions: [NotificationAction],
+        event: NotificationEvent
+    ) {
+        self.ruleID = ruleID
+        self.ruleName = ruleName
+        self.actions = actions
+        self.event = event
+    }
+}
+
 public struct AutomationMatch {
     public let ruleName: String
     public let action: NotificationAction
@@ -27,23 +46,36 @@ public final class AutomationEngine {
         self.rules = rules
     }
 
-    public func evaluate(_ event: NotificationEvent) -> [AutomationMatch] {
-        var matches: [AutomationMatch] = []
-
-        for rule in rules where rule.matches(event) {
-            for action in rule.actions {
-                matches.append(
-                    AutomationMatch(
-                        ruleName: rule.name,
-                        action: action,
-                        event: event
-                    )
-                )
-            }
+public func evaluateRules(
+    _ event: NotificationEvent
+) -> [MatchedAutomationRule] {
+    rules.compactMap { rule in
+        guard rule.matches(event) else {
+            return nil
         }
 
-        return matches
+        return MatchedAutomationRule(
+            ruleID: rule.id,
+            ruleName: rule.name,
+            actions: rule.actions,
+            event: event
+        )
     }
+}
+
+public func evaluate(
+    _ event: NotificationEvent
+) -> [AutomationMatch] {
+    evaluateRules(event).flatMap { matchedRule in
+        matchedRule.actions.map { action in
+            AutomationMatch(
+                ruleName: matchedRule.ruleName,
+                action: action,
+                event: matchedRule.event
+            )
+        }
+    }
+}
 
     public static func builtInProbe() -> AutomationEngine {
         AutomationEngine(

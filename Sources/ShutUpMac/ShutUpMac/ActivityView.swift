@@ -98,17 +98,16 @@ struct ActivityView: View {
                     TableColumn(
                         "Rules matched",
                         value:
-                            \NotificationActivityRecord.rulesMatchedDisplay
+                            \NotificationActivityRecord.matchedRuleCount
                     ) { record in
-                        Text(record.rulesMatchedDisplay)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .help(record.rulesMatchedDisplay)
+                        RulesMatchedCell(
+                            matchedRules: record.matchedRules
+                        )
                     }
                     .width(
                         min: 120,
-                        ideal: 180,
-                        max: 350
+                        ideal: 160,
+                        max: 220
                     )
 
                     TableColumn(
