@@ -78,97 +78,109 @@ struct ActivityView: View {
                 )
             } else {
                 VStack(spacing: 0) {
-                    Table(
-                        displayedRecords,
-                        selection: $selectedRecordID,
-                        sortOrder: $sortOrder
-                    ) {
-                        TableColumn(
-                            "App",
-                            value: \NotificationActivityRecord.app
-                        ) { record in
-                            Text(displayValue(record.app))
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                                .help(displayValue(record.app))
-                        }
-                        .width(
-                            min: 90,
-                            ideal: 130,
-                            max: 220
-                        )
-                        
-                        TableColumn("Notification") { record in
-                            VStack(
-                                alignment: .leading,
-                                spacing: 2
-                            ) {
-                                if let displayTitle = record.displayTitle {
-                                    Text(previewValue(displayTitle))
-                                        .fontWeight(.medium)
-                                        .lineLimit(1)
-                                }
-                                
-                                if let displaySubtitle = record.displaySubtitle {
-                                    Text(previewValue(displaySubtitle))
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                
-                                if !record.body.isEmpty {
-                                    Text(previewValue(record.body))
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
+                    ZStack {
+                        Table(
+                            displayedRecords,
+                            selection: $selectedRecordID,
+                            sortOrder: $sortOrder
+                        ) {
+                            TableColumn(
+                                "App",
+                                value: \NotificationActivityRecord.app
+                            ) { record in
+                                Text(displayValue(record.app))
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .help(displayValue(record.app))
                             }
-                            .help(
-                                [record.title, record.subtitle, record.body]
-                                    .filter { !$0.isEmpty }
-                                    .joined(separator: "\n")
+                            .width(
+                                min: 90,
+                                ideal: 130,
+                                max: 220
                             )
-                        }
-                        .width(
-                            min: 240,
-                            ideal: 250
-                        )
-                        
-                        TableColumn(
-                            "Rules matched",
-                            value:
-                                \NotificationActivityRecord.matchedRuleCount
-                        ) { record in
-                            RulesMatchedCell(
-                                matchedRules: record.matchedRules
+                            
+                            TableColumn("Notification") { record in
+                                VStack(
+                                    alignment: .leading,
+                                    spacing: 2
+                                ) {
+                                    if let displayTitle = record.displayTitle {
+                                        Text(previewValue(displayTitle))
+                                            .fontWeight(.medium)
+                                            .lineLimit(1)
+                                    }
+                                    
+                                    if let displaySubtitle = record.displaySubtitle {
+                                        Text(previewValue(displaySubtitle))
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                    
+                                    if !record.body.isEmpty {
+                                        Text(previewValue(record.body))
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+                                .help(
+                                    [record.title, record.subtitle, record.body]
+                                        .filter { !$0.isEmpty }
+                                        .joined(separator: "\n")
+                                )
+                            }
+                            .width(
+                                min: 240,
+                                ideal: 250
                             )
-                        }
-                        .width(
-                            min: 120,
-                            ideal: 160,
-                            max: 220
-                        )
-                        
-                        TableColumn(
-                            "Appeared",
-                            value:
-                                \NotificationActivityRecord.appearedAt
-                        ) { record in
-                            Text(
-                                record.appearedAt,
-                                format: .dateTime
-                                    .month(.abbreviated)
-                                    .day()
-                                    .hour()
-                                    .minute()
-                                    .second()
+                            
+                            TableColumn(
+                                "Rules matched",
+                                value:
+                                    \NotificationActivityRecord.matchedRuleCount
+                            ) { record in
+                                RulesMatchedCell(
+                                    matchedRules: record.matchedRules
+                                )
+                            }
+                            .width(
+                                min: 120,
+                                ideal: 160,
+                                max: 220
                             )
-                            .lineLimit(1)
+                            
+                            TableColumn(
+                                "Appeared",
+                                value:
+                                    \NotificationActivityRecord.appearedAt
+                            ) { record in
+                                Text(
+                                    record.appearedAt,
+                                    format: .dateTime
+                                        .month(.abbreviated)
+                                        .day()
+                                        .hour()
+                                        .minute()
+                                        .second()
+                                )
+                                .lineLimit(1)
+                            }
+                            .width(
+                                min: 145,
+                                ideal: 165,
+                                max: 210
+                            )
+
                         }
-                        .width(
-                            min: 145,
-                            ideal: 165,
-                            max: 210
-                        )
-                    }
+
+                        if store.records.isEmpty {
+                            Text("No notification activity")
+                                .foregroundStyle(.secondary)
+                        } else if !trimmedSearchText.isEmpty
+                            && displayedRecords.isEmpty {
+                            Text("No matching notifications")
+                                .foregroundStyle(.secondary)
+                        }
+                    }    
                 
                     Divider()
 
