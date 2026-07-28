@@ -35,7 +35,8 @@ public struct AutomationMatch {
     }
 }
 
-public final class AutomationEngine {
+public final class AutomationEngine:
+    @unchecked Sendable {
     private let rules: [NotificationRule]
 
     public var configuredRules: [NotificationRule] {

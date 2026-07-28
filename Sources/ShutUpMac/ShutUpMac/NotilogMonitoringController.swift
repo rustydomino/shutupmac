@@ -1,6 +1,12 @@
 import Foundation
 import NotilogCore
 
+enum AutomationConfigurationUpdateResult:
+    Sendable {
+    case activated
+    case failed(String)
+}
+
 /// Schedules Notilog monitoring cycles on one private serial queue.
 ///
 /// The runtime is created, used, and destroyed on this queue so that scans
@@ -129,6 +135,80 @@ nonisolated final class NotilogMonitoringController: @unchecked Sendable {
             isStarted = false
 
             print("Notilog monitoring stopped")
+        }
+    }
+
+    func replaceAutomationEngine(
+        _ engine: AutomationEngine
+    ) {
+        queue.async { [weak self, engine] in
+            guard let self else {
+                return
+            }
+
+            guard let runtime = self.runtime else {
+                print(
+                    "Could not replace Notilog automation engine: "
+                    + "monitoring is not running"
+                )
+                return
+            }
+
+            runtime.replaceAutomationEngine(
+                engine
+            )
+
+            print(
+                "Notilog automation engine replaced"
+            )
+        }
+    }
+
+    func replaceAutomationConfiguration(
+        _ configuration: AutomationConfig,
+        completion: @escaping
+            @MainActor @Sendable (
+                AutomationConfigurationUpdateResult
+            ) -> Void
+    ) {
+        queue.async {
+            [weak self, configuration, completion] in
+
+            guard let self else {
+                return
+            }
+
+            guard let runtime = self.runtime else {
+                Task { @MainActor in
+                    completion(
+                        .failed(
+                            "Notilog monitoring is not running"
+                        )
+                    )
+                }
+
+                return
+            }
+
+            do {
+                try runtime.replaceAutomationConfiguration(
+                    configuration
+                )
+
+                Task { @MainActor in
+                    completion(.activated)
+                }
+            } catch {
+                let message = String(
+                    describing: error
+                )
+
+                Task { @MainActor in
+                    completion(
+                        .failed(message)
+                    )
+                }
+            }
         }
     }
 

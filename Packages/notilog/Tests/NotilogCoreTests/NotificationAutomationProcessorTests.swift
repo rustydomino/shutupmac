@@ -221,6 +221,139 @@ final class NotificationAutomationProcessorTests: XCTestCase {
         XCTAssertTrue(results.isEmpty)
     }
 
+    func testReplaceEngineUsesNewRulesForSubsequentEvents() {
+        let originalRule = NotificationRule(
+            id: UUID(),
+            name: "Mail rule",
+            criteria: NotificationMatchCriteria(
+                appEquals: "Mail"
+            ),
+            actions: [
+                .dryRunLog(message: "matched Mail")
+            ]
+        )
+
+        let replacementRule = NotificationRule(
+            id: UUID(),
+            name: "Messages rule",
+            criteria: NotificationMatchCriteria(
+                appEquals: "Messages"
+            ),
+            actions: [
+                .dryRunLog(message: "matched Messages")
+            ]
+        )
+
+        let processor = NotificationAutomationProcessor(
+            engine: AutomationEngine(
+                rules: [originalRule]
+            )
+        )
+
+        let beforeReplacement = processor.processDetailed(
+            event: sampleEvent(app: "Mail"),
+            mode: .disabled
+        )
+
+        XCTAssertEqual(
+            beforeReplacement.matchedRules.map(\.ruleName),
+            ["Mail rule"]
+        )
+
+        processor.replaceEngine(
+            AutomationEngine(
+                rules: [replacementRule]
+            )
+        )
+
+        let oldRuleAfterReplacement =
+            processor.processDetailed(
+                event: sampleEvent(app: "Mail"),
+                mode: .disabled
+            )
+
+        XCTAssertTrue(
+            oldRuleAfterReplacement.matchedRules.isEmpty
+        )
+
+        let newRuleAfterReplacement =
+            processor.processDetailed(
+                event: sampleEvent(app: "Messages"),
+                mode: .disabled
+            )
+
+        XCTAssertEqual(
+            newRuleAfterReplacement.matchedRules.map(\.ruleName),
+            ["Messages rule"]
+        )
+    }
+
+    func testInvalidConfigurationLeavesCurrentEngineActive() {
+        let originalRule = NotificationRule(
+            id: UUID(),
+            name: "Original Mail rule",
+            criteria: NotificationMatchCriteria(
+                appEquals: "Mail"
+            ),
+            actions: [
+                .dryRunLog(message: "matched Mail")
+            ]
+        )
+
+        let processor = makeProcessor(
+            rules: [originalRule]
+        )
+
+        let invalidConfiguration = AutomationConfig(
+            rules: [
+                AutomationRuleConfig(
+                    id: UUID(),
+                    name: "Invalid replacement rule",
+                    enabled: true,
+                    match: NotificationMatchConfig(
+                        eventTypes: [.appeared],
+                        appEquals: "Messages",
+                        appContains: nil,
+                        titleContains: nil,
+                        subtitleContains: nil,
+                        bodyContains: nil,
+                        anyTextContains: nil,
+                        caseSensitive: false
+                    ),
+                    actions: [
+                        NotificationActionConfig(
+                            type: "exec",
+                            message: nil,
+                            command: nil,
+                            arguments: nil
+                        )
+                    ]
+                )
+            ]
+        )
+
+        XCTAssertThrowsError(
+            try processor.replaceConfiguration(
+                invalidConfiguration
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? AutomationConfigError,
+                .missingExecCommand
+            )
+        }
+
+        let result = processor.processDetailed(
+            event: sampleEvent(app: "Mail"),
+            mode: .disabled
+        )
+
+        XCTAssertEqual(
+            result.matchedRules.map(\.ruleName),
+            ["Original Mail rule"]
+        )
+    }
+
     private func makeProcessor(
         rules: [NotificationRule]
     ) -> NotificationAutomationProcessor {

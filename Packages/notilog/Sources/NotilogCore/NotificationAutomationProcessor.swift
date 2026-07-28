@@ -20,7 +20,7 @@ public struct NotificationAutomationProcessingResult {
 }
 
 public final class NotificationAutomationProcessor {
-    private let engine: AutomationEngine
+    private var engine: AutomationEngine
     private let runner: ActionRunner
 
     public init(
@@ -31,6 +31,12 @@ public final class NotificationAutomationProcessor {
         self.runner = runner
     }
 
+    public func replaceEngine(
+        _ engine: AutomationEngine
+    ) {
+        self.engine = engine
+    }
+
     public func process(
         event: NotificationEvent,
         mode: AutomationExecutionMode
@@ -39,6 +45,16 @@ public final class NotificationAutomationProcessor {
             event: event,
             mode: mode
         ).actionResults
+    }
+
+    public func replaceConfiguration(
+        _ configuration: AutomationConfig
+    ) throws {
+        let candidateEngine = AutomationEngine(
+            rules: try configuration.notificationRules()
+        )
+
+        replaceEngine(candidateEngine)
     }
 
     public func processDetailed(

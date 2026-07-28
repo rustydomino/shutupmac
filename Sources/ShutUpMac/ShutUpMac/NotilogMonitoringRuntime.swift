@@ -11,6 +11,8 @@ nonisolated final class NotilogMonitoringRuntime {
     private let scanner: NotificationScanner
     private let store: NotificationStore
     private let session: ObservationSession
+    private let automationProcessor:
+        NotificationAutomationProcessor
     private let monitor: NotificationMonitor
 
     init(
@@ -81,6 +83,8 @@ nonisolated final class NotilogMonitoringRuntime {
         self.scanner = scanner
         self.store = store
         self.session = session
+        self.automationProcessor =
+            automationProcessor
         self.monitor = monitor
 
         try store.startSession(session)
@@ -106,6 +110,30 @@ nonisolated final class NotilogMonitoringRuntime {
             beforeAutomation: { _ in },
             beforeActionResultCoordination: { _ in },
             afterRecoveredEvents: { _ in }
+        )
+    }
+
+    /// Replaces the rules used by subsequent monitoring cycles.
+    ///
+    /// The caller is responsible for invoking this on the same serial queue
+    /// used for processOneCycle().
+    func replaceAutomationEngine(
+        _ engine: AutomationEngine
+    ) {
+        automationProcessor.replaceEngine(
+            engine
+        )
+    }
+
+    /// Builds and activates rules from a new configuration.
+    ///
+    /// The current engine remains active if configuration conversion fails.
+
+    func replaceAutomationConfiguration(
+        _ configuration: AutomationConfig
+    ) throws {
+        try automationProcessor.replaceConfiguration(
+            configuration
         )
     }
 

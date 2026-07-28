@@ -1,6 +1,8 @@
 import Foundation
 
-public struct AutomationConfig: Codable {
+public struct AutomationConfig:
+    Codable,
+    @unchecked Sendable {
     public let rules: [AutomationRuleConfig]
 
     public init(rules: [AutomationRuleConfig] = []) {
