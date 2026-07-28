@@ -2,6 +2,34 @@ import XCTest
 import NotilogCore
 @testable import ShutUpMac
 
+private final class StubAutomationConfigurationActivator:
+    AutomationConfigurationActivating,
+    @unchecked Sendable {
+
+    private let result:
+        AutomationConfigurationUpdateResult
+
+    init(
+        result: AutomationConfigurationUpdateResult
+    ) {
+        self.result = result
+    }
+
+    func replaceAutomationConfiguration(
+        _ configuration: AutomationConfig,
+        completion: @escaping
+            @MainActor @Sendable (
+                AutomationConfigurationUpdateResult
+            ) -> Void
+    ) {
+        let result = result
+
+        Task { @MainActor in
+            completion(result)
+        }
+    }
+}
+
 final class ShutUpMacTests: XCTestCase {
     func testRepeatedRuleIsIncludedOnlyOnce() throws {
         let ruleID = UUID()
@@ -443,5 +471,322 @@ final class ShutUpMacTests: XCTestCase {
             )
         )
     }
+    
+    @MainActor
+    func testConfigurationStoreWritesConfigurationWithoutActivatingIt()
+        throws {
 
+        let directoryURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    UUID().uuidString,
+                    isDirectory: true
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: directoryURL
+            )
+        }
+
+        let configURL =
+            directoryURL.appendingPathComponent(
+                "config.json"
+            )
+
+        let store = AutomationConfigurationStore(
+            configURL: configURL
+        )
+
+        XCTAssertNil(store.configuration)
+
+        let candidate = AutomationConfig(
+            rules: []
+        )
+
+        try store.writeConfiguration(
+            candidate
+        )
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: configURL.path
+            )
+        )
+
+        let writtenConfiguration =
+            try AutomationConfig.load(
+                from: configURL
+            )
+
+        XCTAssertEqual(
+            writtenConfiguration.rules.count,
+            0
+        )
+
+        // Writing alone does not mean the runtime accepted
+        // and activated this configuration.
+        XCTAssertNil(store.configuration)
+    }
+    
+    @MainActor
+    func testConfigurationStoreDoesNotOverwriteFileWithInvalidConfiguration()
+        throws {
+
+        let directoryURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    UUID().uuidString,
+                    isDirectory: true
+                )
+
+        try FileManager.default.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true
+        )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: directoryURL
+            )
+        }
+
+        let configURL =
+            directoryURL.appendingPathComponent(
+                "config.json"
+            )
+
+        let originalConfiguration =
+            AutomationConfig(rules: [])
+
+        let encoder = JSONEncoder()
+
+        try encoder.encode(
+            originalConfiguration
+        ).write(
+            to: configURL,
+            options: .atomic
+        )
+
+        let invalidConfigurationData = Data(
+            """
+            {
+              "rules": [
+                {
+                  "id": "605121D1-2640-43A8-BC38-659A79DC18C6",
+                  "name": "Invalid exec rule",
+                  "enabled": true,
+                  "match": {
+                    "eventTypes": [
+                      "appeared"
+                    ],
+                    "appEquals": "Messages",
+                    "caseSensitive": false
+                  },
+                  "actions": [
+                    {
+                      "type": "exec"
+                    }
+                  ]
+                }
+              ]
+            }
+            """.utf8
+        )
+
+            let invalidConfiguration =
+                try JSONDecoder().decode(
+                    AutomationConfig.self,
+                    from: invalidConfigurationData
+                )
+            
+        let store = AutomationConfigurationStore(
+            configURL: configURL
+        )
+
+        XCTAssertThrowsError(
+            try store.writeConfiguration(
+                invalidConfiguration
+            )
+        )
+
+        let configurationAfterFailure =
+            try AutomationConfig.load(
+                from: configURL
+            )
+
+        XCTAssertEqual(
+            configurationAfterFailure.rules.count,
+            0
+        )
+    }
+
+    @MainActor
+    func testSaveAndActivateRestoresPreviousFileWhenActivationFails()
+        async throws {
+
+        let directoryURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    UUID().uuidString,
+                    isDirectory: true
+                )
+
+        try FileManager.default.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true
+        )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: directoryURL
+            )
+        }
+
+        let configURL =
+            directoryURL.appendingPathComponent(
+                "config.json"
+            )
+
+        // Use deliberately compact JSON so that we can prove
+        // rollback restores the exact previous bytes.
+        let originalData = Data(
+            #"{"rules":[]}"#.utf8
+        )
+
+        try originalData.write(
+            to: configURL,
+            options: .atomic
+        )
+
+        let store = AutomationConfigurationStore(
+            configURL: configURL
+        )
+
+        XCTAssertNotNil(store.load())
+        XCTAssertNil(store.errorMessage)
+
+        let controller = NotilogMonitoringController(
+            onHistoricalRecords: { _ in },
+            onActivityItems: { _ in }
+        )
+
+        // The controller has deliberately not been started,
+        // so runtime activation must fail.
+        store.saveAndActivate(
+            AutomationConfig(rules: []),
+            using: controller
+        )
+
+        // Replacement is dispatched through the controller queue,
+        // then its result is returned to the main actor.
+        for _ in 0..<100 {
+            if store.errorMessage != nil {
+                break
+            }
+
+            try await Task.sleep(
+                nanoseconds: 10_000_000
+            )
+        }
+
+        XCTAssertNotNil(store.errorMessage)
+
+        let restoredData = try Data(
+            contentsOf: configURL
+        )
+
+        XCTAssertEqual(
+            restoredData,
+            originalData
+        )
+
+        // Failed activation must retain the previously active
+        // in-memory configuration.
+        XCTAssertEqual(
+            store.configuration?.rules.count,
+            0
+        )
+    }
+    
+    @MainActor
+    func testSaveAndActivatePublishesConfigurationAfterActivationSucceeds()
+        async throws {
+
+        let directoryURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    UUID().uuidString,
+                    isDirectory: true
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: directoryURL
+            )
+        }
+
+        let configURL =
+            directoryURL.appendingPathComponent(
+                "config.json"
+            )
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: configURL.path
+            )
+        )
+
+        let store = AutomationConfigurationStore(
+            configURL: configURL
+        )
+
+        XCTAssertNil(store.configuration)
+
+        let activator =
+            StubAutomationConfigurationActivator(
+                result: .activated
+            )
+
+        store.saveAndActivate(
+            AutomationConfig(rules: []),
+            using: activator
+        )
+
+        for _ in 0..<100 {
+            if store.configuration != nil
+                || store.errorMessage != nil {
+                break
+            }
+
+            try await Task.sleep(
+                nanoseconds: 10_000_000
+            )
+        }
+
+        XCTAssertNil(store.errorMessage)
+        XCTAssertNotNil(store.configuration)
+
+        XCTAssertEqual(
+            store.configuration?.rules.count,
+            0
+        )
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: configURL.path
+            )
+        )
+
+        let writtenConfiguration =
+            try AutomationConfig.load(
+                from: configURL
+            )
+
+        XCTAssertEqual(
+            writtenConfiguration.rules.count,
+            0
+        )
+    }
+    
 }

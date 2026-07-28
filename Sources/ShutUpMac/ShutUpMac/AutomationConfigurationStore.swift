@@ -14,6 +14,11 @@ final class AutomationConfigurationStore:
 
     let configURL: URL
 
+    private enum ConfigurationFileSnapshot {
+        case missing
+        case contents(Data)
+    }
+
     init(configURL: URL) {
         self.configURL = configURL
     }
@@ -59,9 +64,40 @@ final class AutomationConfigurationStore:
         }
     }
 
+    func writeConfiguration(
+        _ candidate: AutomationConfig
+    ) throws {
+        // Validate the complete candidate before touching
+        // the existing configuration file.
+        _ = try candidate.notificationRules()
+
+        let directoryURL =
+            configURL.deletingLastPathComponent()
+
+        try FileManager.default.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true
+        )
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [
+            .prettyPrinted,
+            .sortedKeys,
+            .withoutEscapingSlashes
+        ]
+
+        let data = try encoder.encode(candidate)
+
+        try data.write(
+            to: configURL,
+            options: .atomic
+        )
+    }
+
     func activate(
         _ candidate: AutomationConfig,
-        using controller: NotilogMonitoringController
+        using controller:
+            any AutomationConfigurationActivating
     ) {
         do {
             // Reject invalid rules before sending the candidate
@@ -93,5 +129,103 @@ final class AutomationConfigurationStore:
             }
         }
     }
+
+    func saveAndActivate(
+        _ candidate: AutomationConfig,
+        using controller:
+            any AutomationConfigurationActivating
+    ) {
+        let snapshot: ConfigurationFileSnapshot
+
+        do {
+            snapshot = try captureConfigurationFile()
+
+            try writeConfiguration(
+                candidate
+            )
+        } catch {
+            errorMessage = String(
+                describing: error
+            )
+
+            return
+        }
+
+        controller.replaceAutomationConfiguration(
+            candidate
+        ) { [weak self] result in
+            guard let self else {
+                return
+            }
+
+            switch result {
+            case .activated:
+                configuration = candidate
+                errorMessage = nil
+
+            case .failed(let activationMessage):
+                do {
+                    try restoreConfigurationFile(
+                        snapshot
+                    )
+
+                    // The old runtime configuration remained active,
+                    // and its previous file representation is restored.
+                    errorMessage = activationMessage
+                } catch {
+                    errorMessage =
+                        activationMessage
+                        + "\n\nAdditionally, config.json "
+                        + "could not be restored: "
+                        + String(describing: error)
+                }
+            }
+        }
+    }
+
+    private func captureConfigurationFile()
+        throws -> ConfigurationFileSnapshot {
+
+        guard FileManager.default.fileExists(
+            atPath: configURL.path
+        ) else {
+            return .missing
+        }
+
+        return .contents(
+            try Data(contentsOf: configURL)
+        )
+    }
+
+    private func restoreConfigurationFile(
+        _ snapshot: ConfigurationFileSnapshot
+    ) throws {
+        switch snapshot {
+        case .missing:
+            guard FileManager.default.fileExists(
+                atPath: configURL.path
+            ) else {
+                return
+            }
+
+            try FileManager.default.removeItem(
+                at: configURL
+            )
+
+        case .contents(let data):
+            let directoryURL =
+                configURL.deletingLastPathComponent()
+
+            try FileManager.default.createDirectory(
+                at: directoryURL,
+                withIntermediateDirectories: true
+            )
+
+            try data.write(
+                to: configURL,
+                options: .atomic
+            )
+        }
+    }    
 
 }

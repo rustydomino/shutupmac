@@ -7,11 +7,25 @@ enum AutomationConfigurationUpdateResult:
     case failed(String)
 }
 
+protocol AutomationConfigurationActivating:
+    Sendable {
+
+    func replaceAutomationConfiguration(
+        _ configuration: AutomationConfig,
+        completion: @escaping
+            @MainActor @Sendable (
+                AutomationConfigurationUpdateResult
+            ) -> Void
+    )
+}
+
 /// Schedules Notilog monitoring cycles on one private serial queue.
 ///
 /// The runtime is created, used, and destroyed on this queue so that scans
 /// cannot overlap and the database connection remains queue-confined.
-nonisolated final class NotilogMonitoringController: @unchecked Sendable {
+nonisolated final class NotilogMonitoringController:
+    AutomationConfigurationActivating,
+    @unchecked Sendable {
     private let queue = DispatchQueue(
         label: "com.shutupmac.notilog-monitoring"
     )
