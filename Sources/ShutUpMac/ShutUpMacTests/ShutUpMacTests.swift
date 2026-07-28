@@ -997,4 +997,159 @@ final class ShutUpMacTests: XCTestCase {
         )
     }
     
+    func testMonitoringRuntimeCanToggleDatabaseLogging()
+        throws {
+
+        let temporaryRoot =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    UUID().uuidString,
+                    isDirectory: true
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: temporaryRoot
+            )
+        }
+
+        let runtimePaths = NotilogRuntimePaths(
+            applicationSupport: temporaryRoot
+        )
+
+        let runtime = try NotilogMonitoringRuntime(
+            runtimePaths: runtimePaths,
+            initialConfiguration:
+                AutomationConfig(rules: []),
+            loggingEnabled: false
+        )
+
+        // Starting with logging disabled must not create
+        // a new database merely for history.
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: runtimePaths.database.path
+            )
+        )
+
+        try runtime.setLoggingEnabled(true)
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: runtimePaths.database.path
+            )
+        )
+
+        try runtime.setLoggingEnabled(false)
+
+        // Disabling logging retains the database on disk.
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: runtimePaths.database.path
+            )
+        )
+    }
+
+    func testMonitoringRuntimeKeepsExistingHistoryReadableWhenLoggingIsDisabled()
+        throws {
+
+        let temporaryRoot =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    UUID().uuidString,
+                    isDirectory: true
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: temporaryRoot
+            )
+        }
+
+        let runtimePaths = NotilogRuntimePaths(
+            applicationSupport: temporaryRoot
+        )
+
+        try runtimePaths.ensureDirectoriesExist()
+
+        let historicalEvent = NotificationEvent(
+            type: .appeared,
+            notification: VisibleNotification(
+                key: "test-notification",
+                app: "Test App",
+                title: "Existing history",
+                subtitle: "",
+                body: "Persisted before logging was disabled"
+            ),
+            timestamp: Date(
+                timeIntervalSince1970: 100
+            )
+        )
+
+        do {
+            let store = try NotificationStore(
+                path: runtimePaths.database.path
+            )
+
+            let session = ObservationSession(
+                id: "historical-session",
+                startedAt: Date(
+                    timeIntervalSince1970: 90
+                )
+            )
+
+            try store.startSession(session)
+
+            try store.insert(
+                historicalEvent,
+                session: session
+            )
+
+            try store.endSession(
+                session,
+                endedAt: Date(
+                    timeIntervalSince1970: 110
+                )
+            )
+        }
+
+        let runtime = try NotilogMonitoringRuntime(
+            runtimePaths: runtimePaths,
+            initialConfiguration:
+                AutomationConfig(rules: []),
+            loggingEnabled: false
+        )
+
+        let historyWhileDisabled =
+            try runtime.recentAppearanceEvents()
+
+        XCTAssertEqual(
+            historyWhileDisabled.count,
+            1
+        )
+
+        XCTAssertEqual(
+            historyWhileDisabled.first?
+                .event.notification.title,
+            "Existing history"
+        )
+
+        try runtime.setLoggingEnabled(true)
+        try runtime.setLoggingEnabled(false)
+
+        let historyAfterToggle =
+            try runtime.recentAppearanceEvents()
+
+        XCTAssertEqual(
+            historyAfterToggle.count,
+            1
+        )
+
+        XCTAssertEqual(
+            historyAfterToggle.first?
+                .event.notification.title,
+            "Existing history"
+        )
+    }
+    
 }

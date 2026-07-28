@@ -7,6 +7,12 @@ enum AutomationConfigurationUpdateResult:
     case failed(String)
 }
 
+enum DatabaseLoggingUpdateResult:
+    Sendable {
+    case updated(Bool)
+    case failed(String)
+}
+
 protocol AutomationConfigurationActivating:
     Sendable {
 
@@ -33,6 +39,8 @@ nonisolated final class NotilogMonitoringController:
     private let interval: TimeInterval
     private let runtimePaths: NotilogRuntimePaths
     
+    private var loggingEnabled: Bool
+
     private let initialConfiguration:
         AutomationConfig?
 
@@ -53,6 +61,7 @@ nonisolated final class NotilogMonitoringController:
             .legacyNotilogDefault(),
         initialConfiguration:
             AutomationConfig? = nil,
+        loggingEnabled: Bool = true,
         interval: TimeInterval = 1.0,
         onHistoricalRecords: @escaping
             @MainActor @Sendable (
@@ -64,6 +73,7 @@ nonisolated final class NotilogMonitoringController:
         self.runtimePaths = runtimePaths
         self.initialConfiguration =
             initialConfiguration
+        self.loggingEnabled = loggingEnabled
         self.interval = interval
         self.onHistoricalRecords = onHistoricalRecords
         self.onActivityItems = onActivityItems
@@ -79,7 +89,9 @@ nonisolated final class NotilogMonitoringController:
                 let runtime = try NotilogMonitoringRuntime(
                     runtimePaths: self.runtimePaths,
                     initialConfiguration:
-                        self.initialConfiguration
+                        self.initialConfiguration,
+                    loggingEnabled:
+                        self.loggingEnabled
                 )
 
                 do {
@@ -241,6 +253,56 @@ nonisolated final class NotilogMonitoringController:
         }
     }
 
+    func setLoggingEnabled(
+        _ enabled: Bool,
+        completion: @escaping
+            @MainActor @Sendable (
+                DatabaseLoggingUpdateResult
+            ) -> Void
+    ) {
+        queue.async { [weak self] in
+            guard let self else {
+                return
+            }
+
+            guard let runtime = self.runtime else {
+                Task { @MainActor in
+                    completion(
+                        .failed(
+                            "Notilog monitoring is not running"
+                        )
+                    )
+                }
+
+                return
+            }
+
+            do {
+                try runtime.setLoggingEnabled(
+                    enabled
+                )
+
+                self.loggingEnabled = enabled
+
+                Task { @MainActor in
+                    completion(
+                        .updated(enabled)
+                    )
+                }
+            } catch {
+                let message = String(
+                    describing: error
+                )
+
+                Task { @MainActor in
+                    completion(
+                        .failed(message)
+                    )
+                }
+            }
+        }
+    }
+
     private func processCycle() {
         guard let runtime else {
             return
@@ -258,13 +320,19 @@ nonisolated final class NotilogMonitoringController:
                 verificationTimestamp: timestamp
             )
 
-            guard !activityItems.isEmpty else {
-                return
-            }
+        guard !activityItems.isEmpty else {
+            return
+        }
 
-            Task { @MainActor [onActivityItems, activityItems] in
-                onActivityItems(activityItems)
-            }
+        // Rules and actions still execute while logging is disabled,
+        // but notification activity is not published to the Activity viewer.
+        guard loggingEnabled else {
+            return
+        }
+
+        Task { @MainActor [onActivityItems, activityItems] in
+            onActivityItems(activityItems)
+        }
 
             print(
                 "Notilog monitoring cycle produced "

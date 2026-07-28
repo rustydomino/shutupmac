@@ -1,8 +1,14 @@
 public final class CompletedActionVerificationCoordinator {
-    private let store: NotificationStore?
+    private var store: NotificationStore?
 
     public init(
         store: NotificationStore?
+    ) {
+        self.store = store
+    }
+
+    public func replaceStore(
+        _ store: NotificationStore?
     ) {
         self.store = store
     }

@@ -5,6 +5,9 @@ enum PreferenceKeys {
     static let hideDockIcon = "hideDockIcon"
     static let enableGlobalHotkeys = "enableGlobalHotkeys"
 
+    static let notilogDatabaseLoggingEnabled =
+        "notilogDatabaseLoggingEnabled"
+
     static let clearMostRecentNotificationHotKey = "clearMostRecentNotificationHotKey"
     static let clearVisibleNotificationsHotKey = "clearVisibleNotificationsHotKey"
     static let clearAllNotificationsHotKey = "clearAllNotificationsHotKey"
@@ -19,6 +22,7 @@ enum AppPreferences {
         UserDefaults.standard.register(defaults: [
             PreferenceKeys.hideDockIcon: true,
             PreferenceKeys.enableGlobalHotkeys: true,
+            PreferenceKeys.notilogDatabaseLoggingEnabled: true,
             PreferenceKeys.clearMostRecentNotificationHotKey: HotKey.defaultClearMostRecent.encodedString,
             PreferenceKeys.clearVisibleNotificationsHotKey: HotKey.defaultClearDesktop.encodedString,
             PreferenceKeys.clearAllNotificationsHotKey: HotKey.defaultClearAll.encodedString,
@@ -45,6 +49,25 @@ enum AppPreferences {
         )
 
         return HotKey.decode(storedValue) ?? .defaultClearMostRecent
+    }
+
+    static var notilogDatabaseLoggingEnabled: Bool {
+        UserDefaults.standard.bool(
+            forKey:
+                PreferenceKeys
+                    .notilogDatabaseLoggingEnabled
+        )
+    }
+
+    static func setNotilogDatabaseLoggingEnabled(
+        _ enabled: Bool
+    ) {
+        UserDefaults.standard.set(
+            enabled,
+            forKey:
+                PreferenceKeys
+                    .notilogDatabaseLoggingEnabled
+        )
     }
 
     static var clearVisibleNotificationsHotKey: HotKey {

@@ -47,7 +47,17 @@ struct ShutUpMacApp: App {
                 reloadAutomationConfiguration: {
                     applicationDelegate
                         .reloadAutomationConfiguration()
-                }                
+                },
+                setNotilogDatabaseLoggingEnabled: {
+                        enabled,
+                        completion in
+
+                        applicationDelegate
+                            .setNotilogDatabaseLoggingEnabled(
+                                enabled,
+                                completion: completion
+                            )
+                }
 
         )
     }

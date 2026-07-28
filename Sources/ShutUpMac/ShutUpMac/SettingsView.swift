@@ -14,6 +14,14 @@ struct SettingsView: View {
     let reloadAutomationConfiguration:
         () -> Void
 
+    let setNotilogDatabaseLoggingEnabled:
+        (
+            Bool,
+            @escaping @MainActor @Sendable (
+                DatabaseLoggingUpdateResult
+            ) -> Void
+        ) -> Void
+
     @AppStorage(PreferenceKeys.hideDockIcon) private var hideDockIcon = true
     @AppStorage(PreferenceKeys.enableGlobalHotkeys) private var enableGlobalHotkeys = true
     @AppStorage(PreferenceKeys.clearMostRecentNotificationHotKey) private var clearMostRecentNotificationHotKey = HotKey.defaultClearMostRecent.encodedString
@@ -25,6 +33,15 @@ struct SettingsView: View {
     @State private var cliInstallCommand = CLIInstallCommandBuilder.makeCommand()
     @State private var dockIconChangeNeedsRestart = false
 
+    @State private var databaseLoggingEnabled =
+        AppPreferences.notilogDatabaseLoggingEnabled
+
+    @State private var databaseLoggingUpdateInProgress =
+        false
+
+    @State private var databaseLoggingErrorMessage:
+        String?
+
     private var showDockIcon: Binding<Bool> {
         Binding(
             get: {
@@ -32,6 +49,40 @@ struct SettingsView: View {
             },
             set: { newValue in
                 hideDockIcon = !newValue
+            }
+        )
+    }
+
+    private var databaseLoggingBinding:
+        Binding<Bool> {
+
+        Binding(
+            get: {
+                databaseLoggingEnabled
+            },
+            set: { requestedValue in
+                guard !databaseLoggingUpdateInProgress else {
+                    return
+                }
+
+                databaseLoggingUpdateInProgress = true
+                databaseLoggingErrorMessage = nil
+
+                setNotilogDatabaseLoggingEnabled(
+                    requestedValue
+                ) { result in
+                    databaseLoggingUpdateInProgress = false
+
+                    switch result {
+                    case .updated(let activeValue):
+                        databaseLoggingEnabled =
+                            activeValue
+
+                    case .failed(let message):
+                        databaseLoggingErrorMessage =
+                            message
+                    }
+                }
             }
         )
     }
@@ -162,6 +213,53 @@ struct SettingsView: View {
 
             Divider()
 
+            Text("Notification History")
+                .font(.headline)
+
+            Toggle(
+                "Enable notification logging",
+                isOn: databaseLoggingBinding
+            )
+            .disabled(databaseLoggingUpdateInProgress)
+
+            Text(
+                "When disabled, rules and actions still work, "
+                + "but new notifications are neither written "
+                + "to the Notilog database nor shown in Activity. "
+                + "Existing history is retained and remains visible."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(
+                horizontal: false,
+                vertical: true
+            )
+
+            if databaseLoggingUpdateInProgress {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+
+                    Text("Updating notification logging…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let databaseLoggingErrorMessage {
+                Text(databaseLoggingErrorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
+            }
+
+
+            Divider()
+
             Text("Automation Configuration")
                 .font(.headline)
 
@@ -228,9 +326,14 @@ struct SettingsView: View {
             Spacer()
         }
         .padding(20)
-        .frame(width: 620, height: 700)
+        .frame(width: 620, height: 860)
         .onAppear {
-            launchAtLogin = LaunchAtLoginController.isEnabled
+            launchAtLogin =
+                LaunchAtLoginController.isEnabled
+
+            databaseLoggingEnabled =
+                AppPreferences
+                    .notilogDatabaseLoggingEnabled
         }
         .onChange(of: hideDockIcon) { _, newValue in
             if newValue {

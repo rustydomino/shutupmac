@@ -9,15 +9,29 @@ nonisolated final class NotilogMonitoringRuntime {
     let runtimePaths: NotilogRuntimePaths
 
     private let scanner: NotificationScanner
-    private let store: NotificationStore
-    private let session: ObservationSession
+
+    private var store: NotificationStore?
+    private var session: ObservationSession
+    private var loggingEnabled: Bool
+
     private let automationProcessor:
         NotificationAutomationProcessor
+
+    private let completedVerificationCoordinator:
+        CompletedActionVerificationCoordinator
+
+    private let actionResultCoordinator:
+        ActionResultCoordinator
+
+    private let eventPersistenceCoordinator:
+        NotificationEventPersistenceCoordinator
+
     private let monitor: NotificationMonitor
 
     init(
         runtimePaths: NotilogRuntimePaths = .legacyNotilogDefault(),
         initialConfiguration: AutomationConfig? = nil,
+        loggingEnabled: Bool = true,
         redactionPolicy: RedactionPolicy = .disabled,
         automationMode: AutomationExecutionMode = .disabled,
         dismissalVerificationDelay: TimeInterval = 2.0
@@ -26,11 +40,24 @@ nonisolated final class NotilogMonitoringRuntime {
 
         let scanner = NotificationScanner()
 
-        let store = try NotificationStore(
-            path: runtimePaths.database.path
-        )
+        let store: NotificationStore?
 
-        let previouslyActive = try store.loadActiveNotifications()
+        let databaseAlreadyExists =
+            FileManager.default.fileExists(
+                atPath: runtimePaths.database.path
+            )
+
+        if loggingEnabled || databaseAlreadyExists {
+            store = try NotificationStore(
+                path: runtimePaths.database.path
+            )
+        } else {
+            store = nil
+        }
+
+        let previouslyActive =
+            try store?.loadActiveNotifications()
+                ?? []
 
         let automationEngine: AutomationEngine
 
@@ -54,13 +81,19 @@ nonisolated final class NotilogMonitoringRuntime {
             previouslyActive: previouslyActive
         )
 
+        // The database may remain open for reading existing history
+        // while new persistence is disabled.
+        let persistenceStore =
+            loggingEnabled ? store : nil
+
         let completedVerificationCoordinator =
             CompletedActionVerificationCoordinator(
-                store: store
+                store: persistenceStore
             )
 
+
         let actionResultCoordinator = ActionResultCoordinator(
-            store: store,
+            store: persistenceStore,
             session: session,
             redactionPolicy: redactionPolicy,
             cycleProcessor: cycleProcessor,
@@ -69,7 +102,7 @@ nonisolated final class NotilogMonitoringRuntime {
 
         let eventPersistenceCoordinator =
             NotificationEventPersistenceCoordinator(
-                store: store,
+                store: persistenceStore,
                 session: session,
                 redactionPolicy: redactionPolicy
             )
@@ -92,16 +125,30 @@ nonisolated final class NotilogMonitoringRuntime {
         self.scanner = scanner
         self.store = store
         self.session = session
+        self.loggingEnabled = loggingEnabled
         self.automationProcessor =
             automationProcessor
+        self.completedVerificationCoordinator =
+            completedVerificationCoordinator
+        self.actionResultCoordinator =
+            actionResultCoordinator
+        self.eventPersistenceCoordinator =
+            eventPersistenceCoordinator
         self.monitor = monitor
 
-        try store.startSession(session)
+        if loggingEnabled,
+        let store {
+            try store.startSession(session)
+        }
+
     }
 
-    deinit {
+deinit {
+    if loggingEnabled,
+       let store {
         try? store.endSession(session)
     }
+}
 
     /// Scans the current Notification Center AX tree and processes exactly
     /// one monitoring cycle.
@@ -134,6 +181,90 @@ nonisolated final class NotilogMonitoringRuntime {
         )
     }
 
+    /// Enables or disables database persistence for subsequent monitoring cycles.
+    ///
+    /// The database may remain open while logging is disabled so that existing
+    /// history can still be read. The caller must invoke this on the same serial
+    /// queue used for processOneCycle().
+    func setLoggingEnabled(
+        _ enabled: Bool
+    ) throws {
+        guard enabled != loggingEnabled else {
+            return
+        }
+
+        if enabled {
+            let writableStore: NotificationStore
+
+            if let store {
+                // Reuse an existing database that was opened for
+                // reading historical records.
+                writableStore = store
+            } else {
+                writableStore = try NotificationStore(
+                    path: runtimePaths.database.path
+                )
+            }
+
+            let candidateSession =
+                ObservationSession()
+
+            // Do not connect any coordinator until the new
+            // database session has started successfully.
+            try writableStore.startSession(
+                candidateSession
+            )
+
+            completedVerificationCoordinator
+                .replaceStore(writableStore)
+
+            actionResultCoordinator
+                .replacePersistence(
+                    store: writableStore,
+                    session: candidateSession
+                )
+
+            eventPersistenceCoordinator
+                .replacePersistence(
+                    store: writableStore,
+                    session: candidateSession
+                )
+
+            store = writableStore
+            session = candidateSession
+            loggingEnabled = true
+        } else {
+            guard let currentStore = store else {
+                return
+            }
+
+            // If ending the session fails, leave the current
+            // persistence configuration unchanged.
+            try currentStore.endSession(
+                session
+            )
+
+            completedVerificationCoordinator
+                .replaceStore(nil)
+
+            actionResultCoordinator
+                .replacePersistence(
+                    store: nil,
+                    session: session
+                )
+
+            eventPersistenceCoordinator
+                .replacePersistence(
+                    store: nil,
+                    session: session
+                )
+
+            // Keep the database open so existing history can
+            // still be queried and displayed.
+            loggingEnabled = false
+        }
+    }   
+
     /// Builds and activates rules from a new configuration.
     ///
     /// The current engine remains active if configuration conversion fails.
@@ -153,7 +284,11 @@ nonisolated final class NotilogMonitoringRuntime {
     func recentAppearanceEvents(
         limit: Int = 1_000
     ) throws -> [NotificationEventRecord] {
-        try store.recentAppearanceEvents(
+        guard let store else {
+            return []
+        }
+
+        return try store.recentAppearanceEvents(
             limit: limit
         )
     }

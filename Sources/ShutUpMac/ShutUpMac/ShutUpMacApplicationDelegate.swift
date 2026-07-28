@@ -18,6 +18,9 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
             runtimePaths: runtimePaths,
             initialConfiguration:
                 automationConfigurationStore.configuration,
+            loggingEnabled:
+                AppPreferences
+                    .notilogDatabaseLoggingEnabled,
             onHistoricalRecords: { [weak self] records in                
                 self?.activityStore.loadHistoricalRecords(
                     records
@@ -43,6 +46,31 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
         automationConfigurationStore.reloadFromDisk(
             using: notilogMonitoringController
         )
+    }
+
+    func setNotilogDatabaseLoggingEnabled(
+        _ enabled: Bool,
+        completion: @escaping
+            @MainActor @Sendable (
+                DatabaseLoggingUpdateResult
+            ) -> Void
+    ) {
+        notilogMonitoringController.setLoggingEnabled(
+            enabled
+        ) { result in
+            switch result {
+            case .updated(let activeValue):
+                AppPreferences
+                    .setNotilogDatabaseLoggingEnabled(
+                        activeValue
+                    )
+
+            case .failed:
+                break
+            }
+
+            completion(result)
+        }
     }
 
     func applicationDidFinishLaunching(

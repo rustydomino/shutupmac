@@ -14,8 +14,8 @@ public struct CoordinatedActionResult {
 }
 
 public final class ActionResultCoordinator {
-    private let store: NotificationStore?
-    private let session: ObservationSession
+    private var store: NotificationStore?
+    private var session: ObservationSession
     private let redactionPolicy: RedactionPolicy
     private let cycleProcessor: MonitoringCycleProcessor
     private let dismissalVerificationDelay: TimeInterval
@@ -32,6 +32,14 @@ public final class ActionResultCoordinator {
         self.redactionPolicy = redactionPolicy
         self.cycleProcessor = cycleProcessor
         self.dismissalVerificationDelay = dismissalVerificationDelay
+    }
+
+    public func replacePersistence(
+        store: NotificationStore?,
+        session: ObservationSession
+    ) {
+        self.store = store
+        self.session = session
     }
 
     public func process(
