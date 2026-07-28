@@ -4,7 +4,7 @@
 
 Rather than depending on Apple's undocumented notification database, Notilog observes notifications as they appear in the Notification Center user interface. It can record notification lifecycle events, evaluate rules, execute actions, verify ShutUpMac dismissals, and operate with configurable logging, console, and redaction policies.
 
-The project consists of a reusable Swift library, `NotilogCore`, and a CLI host, `notilog-cli`. `NotificationMonitor` exposes one complete, nonblocking monitoring cycle so the ShutUpMac app or another GUI can reuse the same event, automation, persistence, and verification behavior without launching or duplicating the CLI.
+The project consists of a reusable Swift library, `NotilogCore`, and a CLI host, `notilog-cli`. `NotificationMonitor` exposes one complete, nonblocking monitoring cycle. The ShutUpMac app now embeds that facade directly, reusing the same event, automation, persistence, verification, and redaction behavior without launching or duplicating the CLI.
 
 ## Current Features
 
@@ -100,6 +100,17 @@ logs/            Reserved runtime log directory
 ```
 
 An embedding host may supply a different application-support root or fully explicit config, database, and logs URLs.
+
+## ShutUpMac App Host
+
+The ShutUpMac app currently uses the legacy Notilog runtime directory and owns the watcher lifecycle with a timer-driven host around `NotificationMonitor`. On launch it loads recent notification appearance records into the Activity window and then appends live monitoring results.
+
+ShutUpMac Settings provides live controls for:
+
+- Enabling or disabling notification logging. When disabled, scanning, rules, actions, and verification continue, but new SQLite records and Activity rows are suppressed.
+- Redacting title, subtitle, and body. Selected nonempty fields become `[REDACTED]` in subsequent Activity rows and database writes. The application name remains visible in the GUI.
+
+The GUI controls intentionally expose a smaller redaction surface than the CLI. `notilog-cli --redact` continues to support `app` and the reserved `attachments` field in addition to title, subtitle, and body.
 
 ## Quick Start
 
@@ -347,7 +358,7 @@ MonitoringCycleProcessor                   NotificationEventCoordinator
                                                      └─ action coordination
 ```
 
-The host supplies scans and timestamps, receives typed results through `NotificationMonitor`, and chooses how to render them. `notilog-cli` owns the AX polling loop, sleeping, argument parsing, and terminal output; `NotilogCore` owns reusable event, action, persistence, and verification coordination.
+The host supplies scans and timestamps, receives typed results through `NotificationMonitor`, and chooses how to render them. `notilog-cli` owns its AX polling loop, sleeping, argument parsing, and terminal output. The ShutUpMac app owns a separate timer-driven lifecycle and Activity presentation. `NotilogCore` owns the reusable event, action, persistence, verification, and redaction coordination shared by both hosts.
 
 The original event is used for rule matching and configured actions. Redacted copies are created for Notilog-owned output and persistence.
 

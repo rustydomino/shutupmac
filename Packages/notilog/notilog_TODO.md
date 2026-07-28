@@ -1,6 +1,6 @@
 # Notilog TODO
 
-_Last updated: 2026-07-24_
+_Last updated: 2026-07-28_
 
 ## Completed foundations
 
@@ -18,20 +18,27 @@ _Last updated: 2026-07-24_
 - [x] Keep the CLI responsible for AX scanning, timestamps, terminal rendering, looping, and sleeping.
 - [x] Reject malformed positive-integer CLI values instead of silently using defaults.
 - [x] Reject a missing `--config` value.
+- [x] Embed `NotificationMonitor` in the ShutUpMac app with app-owned start/stop lifecycle.
+- [x] Add a read-only Activity window that loads recent SQLite history and appends live notification activity.
+- [x] Add a GUI switch for enabling and disabling notification logging while rules and actions continue.
+- [x] Add GUI redaction controls for title, subtitle, and body.
+- [x] Apply GUI redaction to subsequent Activity rows and SQLite writes without restarting monitoring.
 
 ## Immediate next steps
 
-- [ ] Merge the refactor branch into `main` and run the package tests on the merged branch.
-- [ ] Refresh the shared source archive or project upload after the merge.
-- [ ] Decide the next product milestone: direct ShutUpMac app hosting or the read-only Activity viewer.
+- [ ] Commit the GUI redaction and documentation changes.
+- [ ] Add app-level tests for preference-to-policy mapping, live policy replacement, and Activity redaction.
 - [ ] Add process-level tests for CLI option parsing and exit codes so malformed-option behavior is automated.
+- [ ] Choose the next GUI milestone: Activity details/filters or the first read-only Rules view.
 
 ## Library and host integration
 
-- [ ] Integrate `NotificationMonitor` into the ShutUpMac app when the app is ready to own watcher lifecycle.
-- [ ] Add a cancellable app-host lifecycle without adding an infinite loop to `NotilogCore`.
+- [x] Integrate `NotificationMonitor` into the ShutUpMac app with app-owned watcher lifecycle.
+- [x] Add a cancellable timer-driven app host without adding an infinite loop to `NotilogCore`.
+- [x] Preserve the CLI as a supported debugging and operational host.
+- [x] Load historical appearance records and publish live monitoring results to the Activity store.
+- [x] Allow the app host to replace automation configuration, logging state, and redaction policy at runtime.
 - [ ] Decide whether the app and CLI should share a factory/builder for monitor dependency assembly.
-- [ ] Preserve the CLI as a supported debugging and operational host.
 - [ ] Add structured host events only if callback-based presentation becomes awkward in the GUI.
 
 ## Privacy mode
@@ -54,21 +61,21 @@ _Last updated: 2026-07-24_
 - [x] Suppress captured action stdout/stderr when redaction is enabled.
 - [x] Preserve operational metadata needed for diagnostics and verification.
 - [x] Leave genuinely empty selected fields empty.
+- [x] Expose title, subtitle, and body redaction in ShutUpMac Settings.
+- [x] Disable the GUI redaction controls when notification logging is disabled while preserving saved selections.
+- [x] Apply live GUI policy changes to both persistence coordinators and Activity presentation.
+- [x] Keep the application name visible in the GUI redaction mode.
 
 ### Global truncation
 
-- [ ] Add `watch --truncate <length>`.
-- [ ] Apply independently to title, subtitle, and body.
-- [ ] Count Swift `Character` values, not UTF-8 bytes.
-- [ ] Append `…` only when text was shortened.
-- [ ] Define `--truncate 0` behavior.
-- [ ] Reject negative or invalid lengths with a clear error.
-- [ ] Decide and document precedence: `--redact` overrides `--truncate`.
-- [ ] Warn that truncation is not strong privacy protection.
+- [x] Decide not to implement `watch --truncate <length>` at this time.
+- [x] Keep the privacy model centered on explicit no-logging and redaction controls.
+- [x] Avoid presenting truncation as strong privacy protection.
+- [ ] Revisit only if a concrete display or storage-minimization requirement emerges.
 
 ### Privacy preset
 
-- [ ] Consider adding `watch --privacy` after truncation and retention semantics are stable.
+- [ ] Consider a named privacy preset only if the explicit no-logging and redaction controls become unwieldy.
 - [ ] Decide whether it means `--no-logging`, `--redact`, or a documented combination.
 - [ ] Avoid adding the preset until its promise is unambiguous.
 
@@ -82,9 +89,9 @@ _Last updated: 2026-07-24_
 }
 ```
 
-- [ ] Candidate modes: `inherit`, `full`, `truncate`, `redact`, and `none`.
+- [ ] Candidate modes: `inherit`, `full`, `redact`, and `none`.
 - [ ] Evaluate criteria and action templates against full in-memory content before persistence policy is applied.
-- [ ] Define deterministic precedence when multiple rules match: `none` > `redact` > `truncate` > `full`.
+- [ ] Define deterministic precedence when multiple rules match: `none` > `redact` > `full`.
 - [ ] Decide whether retention belongs inside automation rules or in a separate retention-rules system.
 
 ## Monitoring lifecycle
@@ -139,7 +146,7 @@ _Last updated: 2026-07-24_
 - [ ] Add structured `action_type` to `action_runs`.
 - [ ] Avoid making future UI code parse human-readable action summaries.
 - [ ] Consider explicit fields for executable, notification key, verification timing, and completion timestamp.
-- [ ] Decide whether redacted/truncated records should store the applied privacy mode.
+- [ ] Decide whether redacted records should store the applied privacy mode and selected fields.
 - [ ] Consider recording that an event was intentionally not persisted without retaining its content.
 
 ## Tests
@@ -161,22 +168,28 @@ _Last updated: 2026-07-24_
 - [ ] Add process-level tests for missing and malformed CLI option values.
 - [ ] Add explicit process tests proving `--quiet` suppresses all routine watch output.
 - [ ] Add restart tests for stale/pending verification behavior after that policy is defined.
-- [ ] Add Unicode truncation and precedence tests when `--truncate` is implemented.
+- [ ] Add app-level tests for logging-state transitions and redaction preference mapping.
+- [ ] Add Activity factory tests for selected-field redaction and action-result suppression.
 - [ ] Add per-rule retention precedence tests if retention policy is added.
 
 ## First GUI milestone: Activity viewer
 
-- [ ] Build a read-only macOS Activity viewer before a full rule builder.
-- [ ] Present a joined narrative rather than separate raw tables:
+- [x] Build a read-only macOS Activity viewer before a full rule builder.
+- [x] Load up to 1,000 recent notification appearance records from SQLite.
+- [x] Append live notification activity from the embedded Notilog monitor.
+- [x] Present app, notification preview, matched rules, and appearance time in a sortable table.
+- [x] Add full-text Spotlight-style search across notification records.
+- [x] Retain existing history while logging is disabled and suppress new Activity rows.
+- [x] Display GUI-selected redacted fields as `[REDACTED]`.
+- [ ] Add a details/inspector view that presents the joined lifecycle narrative:
   - notification appeared
   - rule matched
   - action executed
   - immediate action result
   - delayed verification result
   - notification disappeared
-- [ ] Add filters for app, rule, event type, action status, verification status, and time range.
-- [ ] Clearly display privacy state for redacted/truncated records.
-- [ ] Add a details view for the original stored event/action fields.
+- [ ] Add structured filters for app, rule, event type, action status, verification status, and time range.
+- [ ] Display applied privacy state explicitly rather than relying only on `[REDACTED]` values.
 
 ## Rules UX
 
@@ -201,19 +214,24 @@ _Last updated: 2026-07-24_
 - [x] Explain that key disappearance is only probable success.
 - [x] Document `--no-logging`, `--quiet`, and `--redact` with examples.
 - [x] Document the library-first monitoring architecture and host/core boundary.
+- [x] Document the ShutUpMac Activity, logging, and GUI redaction behavior.
+- [x] Record that global truncation is intentionally out of scope for now.
 - [ ] State clearly whether console output may be retained by the user's terminal or shell environment.
-- [ ] Document truncation and all option-precedence rules when truncation is added.
 
 ## Suggested implementation order
 
 1. [x] Implement global no-logging and redaction policies.
 2. [x] Make runtime paths, startup configuration, and diagnostics host-configurable.
 3. [x] Complete the library-first watch-session refactor and one-cycle monitor facade.
-4. [x] Update architecture, README, and roadmap documentation.
-5. [ ] Merge and refresh the shared source baseline.
-6. [ ] Choose direct ShutUpMac app hosting or the Activity viewer as the next milestone.
-7. [ ] Add `--truncate <length>` if stronger display/storage minimization is still desired.
-8. [ ] Add stable rule IDs and structured action identity.
-9. [ ] Resolve stale/pending verification behavior across restart.
-10. [ ] Build the Activity viewer, then Rules viewer and rule-builder workflows.
-11. [ ] Add per-rule retention policies only after the global privacy pipeline remains stable.
+4. [x] Integrate the monitor into ShutUpMac with app-owned lifecycle.
+5. [x] Build the first read-only Activity viewer with historical and live records.
+6. [x] Add live GUI control of notification logging.
+7. [x] Add live GUI redaction for title, subtitle, and body.
+8. [ ] Add app-level regression tests for logging, redaction, and Activity presentation.
+9. [ ] Add Activity details and structured filtering.
+10. [ ] Build the read-only Rules viewer, followed by rule editing and rule creation.
+11. [ ] Add stable rule IDs and structured action identity.
+12. [ ] Resolve stale/pending verification behavior across restart.
+13. [ ] Add per-rule retention policies only after the global privacy pipeline remains stable.
+
+Global truncation is not currently planned; revisit it only if a concrete product requirement justifies the additional policy complexity.

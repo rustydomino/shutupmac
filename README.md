@@ -1,8 +1,8 @@
 # ShutUpMac
 
-ShutUpMac is a small macOS menu bar utility for clearing Notification Center notifications from the keyboard, menu bar, or command line.
+ShutUpMac is a macOS menu bar utility for clearing, observing, and automating Notification Center notifications.
 
-It is built around Accessibility automation. The goal is simple: let you keep your hands on the keyboard while clearing notification clutter.
+It combines keyboard- and command-driven notification dismissal with an embedded Notilog watcher, searchable notification history, and configurable privacy controls. It is built around macOS Accessibility automation.
 
 GitHub page: https://github.com/rustydomino/shutupmac
 
@@ -15,9 +15,13 @@ GitHub page: https://github.com/rustydomino/shutupmac
 - Clear all notifications
 - Send a test notification
 - Configurable global hotkeys
-- Optional menu-bar-only mode with hidden Dock icon
+- Searchable Activity window backed by Notilog history and live monitoring
+- Optional notification logging with live enable/disable control
+- Optional title, subtitle, and body redaction for Activity and persisted history
+- Runtime reload of `config.json` automation rules
 - Optional launch at login
 - Built-in command line helper install command
+- Menu-bar-only operation without a Dock or app-switcher icon
 
 ### Notification clearing actions
 
@@ -38,6 +42,25 @@ GitHub page: https://github.com/rustydomino/shutupmac
 | Send Test Notification | `Control` + `Option` + `Command` + `T` |
 
 Hotkeys can be changed in Settings.
+
+## Notification activity and privacy
+
+ShutUpMac starts the reusable `NotilogCore` monitoring pipeline inside the app when Accessibility permission and the Notilog configuration are available. The app uses the legacy Notilog runtime directory:
+
+```text
+~/Library/Application Support/notilog/
+```
+
+The **Activity** window loads up to 1,000 recent notification appearance records from SQLite and then appends newly observed notifications while ShutUpMac is running. The table includes the source app, notification preview, matched rules, and appearance time, with full-text search and sortable columns.
+
+Settings includes **Enable notification logging**:
+
+- Enabled: new notifications are written to SQLite and published to Activity.
+- Disabled: scanning, rule matching, actions, and delayed verification continue, but new notification records are not written or added to Activity. Existing history remains available.
+
+**Redact notification contents** is a suboption of notification logging. Title, subtitle, and body can be selected independently. Selected nonempty fields are replaced with `[REDACTED]` before they are written to SQLite or shown in Activity. The source application remains visible in the GUI. Policy changes apply to subsequent records immediately; previously stored rows are not rewritten.
+
+The redaction controls retain their saved selections when logging is disabled. At least one content field must remain selected while redaction is enabled.
 
 ## Command line helper
 
@@ -137,16 +160,9 @@ If test notifications are disabled, open ShutUpMac notification settings from th
 
 For persistent test notifications, set ShutUpMac's notification style to **Alerts** in System Settings. macOS controls this setting; ShutUpMac cannot force alert-style notifications automatically.
 
-## Dock icon setting
+## Menu-bar-only behavior
 
-ShutUpMac can run as a regular Mac app or as a menu-bar-only utility.
-
-In Settings:
-
-- **Show Dock icon** enabled: ShutUpMac appears in the Dock and app switcher.
-- **Show Dock icon** disabled: ShutUpMac runs as a menu-bar-only utility.
-
-When the Dock icon is hidden, clicking a ShutUpMac test notification should not leave ShutUpMac in the foreground.
+ShutUpMac runs as a menu-bar-only utility. It does not present a Dock icon or remain in the Command-Tab app switcher. Activity, Settings, and About are opened from the menu bar.
 
 ## Project layout
 
@@ -170,7 +186,7 @@ ShutUpMac/
 
 The `notilog-cli` executable remains available for development, diagnostics, scripting, and direct testing.
 
-The ShutUpMac app does not yet start or communicate with the Notilog watcher. The current integration is structural groundwork for future features such as notification history, automatic dismissal rules, dismissal status, rule editing, and creating rules from observed notifications.
+The ShutUpMac app hosts the Notilog watcher directly. It owns the polling lifecycle, loads historical notification records, publishes live activity, activates automation rules from `config.json`, and can change logging and redaction policy without restarting monitoring. The standalone `notilog-cli` remains available for diagnostics, scripting, and direct testing.
 
 ### ShutUpMac dismissal engine
 
@@ -205,10 +221,18 @@ ShutUpMacApp.swift
   Menu bar app entry point and menu actions
 
 SettingsView.swift
-  App preferences, hotkey settings, launch-at-login, and CLI install command
+  App preferences, hotkeys, notification logging and redaction controls,
+  automation configuration reload, launch-at-login, and CLI install command
+
+ActivityView.swift / ActivityStore.swift
+  Searchable, sortable notification history and live Activity presentation
+
+NotilogMonitoringController.swift / NotilogMonitoringRuntime.swift
+  App-owned Notilog lifecycle, one-cycle processing, history loading,
+  automation activation, persistence control, and live privacy-policy updates
 
 AppPreferences.swift
-  UserDefaults preference keys and defaults
+  UserDefaults preference keys, defaults, and redaction-policy construction
 
 HotKey.swift
   Hotkey model, encoding, decoding, display, and availability checks
@@ -258,7 +282,7 @@ Scheme: ShutUpMac
 Destination: My Mac
 ```
 
-The app target links the local `NotilogCore` package product, but does not yet start the Notilog watcher at runtime.
+The app target links the local `NotilogCore` package product and starts the embedded watcher at runtime after Accessibility permission and configuration validation succeed.
 
 ### ShutUpMac CLI
 
@@ -316,7 +340,7 @@ CLI-only or advanced actions:
 
 `--dismiss-key` is intended as an automation integration point. ShutUpMac does not need to know which tool generated the key; it only receives a runtime Accessibility key and attempts to dismiss the currently visible matching notification element.
 
-Notilog remains independently usable through `notilog-cli`, but it is now stored in the ShutUpMac repository as the future monitoring and automation subsystem. During the structural-integration phase, preserve current behavior and avoid duplicating notification scanning, persistence, rule matching, or dismissal logic across app and CLI targets.
+Notilog remains independently usable through `notilog-cli` and is also the active monitoring and automation subsystem embedded in the ShutUpMac app. Preserve the host/core boundary and avoid duplicating notification scanning, persistence, rule matching, privacy policy, or dismissal logic across app and CLI targets.
 
 ## Version history
 
