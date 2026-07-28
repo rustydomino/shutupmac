@@ -789,4 +789,212 @@ final class ShutUpMacTests: XCTestCase {
         )
     }
     
+    @MainActor
+    func testReloadFromDiskActivatesValidExternalConfiguration()
+        async throws {
+
+        let directoryURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    UUID().uuidString,
+                    isDirectory: true
+                )
+
+        try FileManager.default.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true
+        )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: directoryURL
+            )
+        }
+
+        let configURL =
+            directoryURL.appendingPathComponent(
+                "config.json"
+            )
+
+        let originalConfiguration =
+            AutomationConfig(rules: [])
+
+        try JSONEncoder().encode(
+            originalConfiguration
+        ).write(
+            to: configURL,
+            options: .atomic
+        )
+
+        let store = AutomationConfigurationStore(
+            configURL: configURL
+        )
+
+        XCTAssertNotNil(store.load())
+        XCTAssertEqual(
+            store.configuration?.rules.count,
+            0
+        )
+
+        let externallyEditedData = Data(
+            """
+            {
+              "rules": [
+                {
+                  "id": "0C395504-6752-4464-B3B2-2DB117B62466",
+                  "name": "Reloaded Mail rule",
+                  "enabled": true,
+                  "match": {
+                    "eventTypes": [
+                      "appeared"
+                    ],
+                    "appEquals": "Mail",
+                    "caseSensitive": false
+                  },
+                  "actions": [
+                    {
+                      "type": "dry_run_log",
+                      "message": "Mail matched"
+                    }
+                  ]
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        try externallyEditedData.write(
+            to: configURL,
+            options: .atomic
+        )
+
+        let activator =
+            StubAutomationConfigurationActivator(
+                result: .activated
+            )
+
+        store.reloadFromDisk(
+            using: activator
+        )
+
+        for _ in 0..<100 {
+            if store.configuration?.rules.count == 1
+                || store.errorMessage != nil {
+                break
+            }
+
+            try await Task.sleep(
+                nanoseconds: 10_000_000
+            )
+        }
+
+        XCTAssertNil(store.errorMessage)
+        XCTAssertEqual(
+            store.configuration?.rules.count,
+            1
+        )
+
+        XCTAssertEqual(
+            store.configuration?.rules.first?.name,
+            "Reloaded Mail rule"
+        )
+    }
+    
+    @MainActor
+    func testReloadFromDiskPreservesActiveConfigurationWhenExternalFileIsInvalid()
+        async throws {
+
+        let directoryURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    UUID().uuidString,
+                    isDirectory: true
+                )
+
+        try FileManager.default.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true
+        )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: directoryURL
+            )
+        }
+
+        let configURL =
+            directoryURL.appendingPathComponent(
+                "config.json"
+            )
+
+        let originalConfiguration =
+            AutomationConfig(rules: [])
+
+        try JSONEncoder().encode(
+            originalConfiguration
+        ).write(
+            to: configURL,
+            options: .atomic
+        )
+
+        let store = AutomationConfigurationStore(
+            configURL: configURL
+        )
+
+        XCTAssertNotNil(store.load())
+        XCTAssertEqual(
+            store.configuration?.rules.count,
+            0
+        )
+        XCTAssertNil(store.errorMessage)
+
+        let invalidExternalData = Data(
+            """
+            {
+              "rules": [
+                {
+                  "id": "DC710954-BDC6-4034-975F-E21B5DD97249",
+                  "name": "Invalid external rule",
+                  "enabled": true,
+                  "match": {
+                    "eventTypes": [
+                      "appeared"
+                    ],
+                    "appEquals": "Mail",
+                    "caseSensitive": false
+                  },
+                  "actions": [
+                    {
+                      "type": "exec"
+                    }
+                  ]
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        try invalidExternalData.write(
+            to: configURL,
+            options: .atomic
+        )
+
+        let activator =
+            StubAutomationConfigurationActivator(
+                result: .activated
+            )
+
+        store.reloadFromDisk(
+            using: activator
+        )
+
+        XCTAssertNotNil(store.errorMessage)
+
+        // The previously active configuration remains published.
+        XCTAssertEqual(
+            store.configuration?.rules.count,
+            0
+        )
+    }
+    
 }

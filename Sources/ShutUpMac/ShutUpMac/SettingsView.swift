@@ -1,8 +1,19 @@
 import SwiftUI
 import ServiceManagement
 import AppKit
+import NotilogCore
 
 struct SettingsView: View {
+    @ObservedObject
+    var automationConfigurationStore:
+        AutomationConfigurationStore
+
+    let saveAutomationConfiguration:
+        (AutomationConfig) -> Void 
+
+    let reloadAutomationConfiguration:
+        () -> Void
+
     @AppStorage(PreferenceKeys.hideDockIcon) private var hideDockIcon = true
     @AppStorage(PreferenceKeys.enableGlobalHotkeys) private var enableGlobalHotkeys = true
     @AppStorage(PreferenceKeys.clearMostRecentNotificationHotKey) private var clearMostRecentNotificationHotKey = HotKey.defaultClearMostRecent.encodedString
@@ -147,6 +158,43 @@ struct SettingsView: View {
                 Text("macOS needs you to approve ShutUpMac in Login Items.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            Text("Automation Configuration")
+                .font(.headline)
+
+            Text(
+                automationConfigurationStore.configURL.path
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+
+            Button("Reload config.json") {
+                reloadAutomationConfiguration()
+            }
+
+            Text(
+                "Reloads rules from disk and activates them immediately. "
+                + "If the file is invalid, the currently active rules remain unchanged."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+            if let errorMessage =
+                automationConfigurationStore.errorMessage {
+
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
             }
 
             Divider()

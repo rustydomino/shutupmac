@@ -64,6 +64,43 @@ final class AutomationConfigurationStore:
         }
     }
 
+    func reloadFromDisk(
+        using controller:
+            any AutomationConfigurationActivating
+    ) {
+        let candidate: AutomationConfig
+
+        do {
+            if FileManager.default.fileExists(
+                atPath: configURL.path
+            ) {
+                candidate = try AutomationConfig.load(
+                    from: configURL
+                )
+            } else {
+                candidate = AutomationConfig(
+                    rules: []
+                )
+            }
+
+            // Validate before asking the running monitor
+            // to replace its current engine.
+            _ = try candidate.notificationRules()
+        } catch {
+            // Preserve the currently active configuration.
+            errorMessage = String(
+                describing: error
+            )
+
+            return
+        }
+
+        activate(
+            candidate,
+            using: controller
+        )
+    }
+
     func writeConfiguration(
         _ candidate: AutomationConfig
     ) throws {

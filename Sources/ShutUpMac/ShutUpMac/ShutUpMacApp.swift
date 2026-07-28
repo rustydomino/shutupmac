@@ -32,9 +32,26 @@ struct ShutUpMacApp: App {
         }
         .defaultSize(width: 760, height: 500)
         
-        Window("ShutUpMac Settings", id: "settings") {
-            SettingsView()
-        }
+    Window("ShutUpMac Settings", id: "settings") {
+        SettingsView(
+            automationConfigurationStore:
+                applicationDelegate
+                    .automationConfigurationStore,
+                
+                saveAutomationConfiguration: { candidate in
+                    applicationDelegate
+                        .saveAutomationConfiguration(
+                            candidate
+                        )
+                },
+                reloadAutomationConfiguration: {
+                    applicationDelegate
+                        .reloadAutomationConfiguration()
+                }                
+
+        )
+    }
+
         .windowResizability(.contentSize)
 
         Window("About ShutUpMac", id: "about") {

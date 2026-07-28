@@ -8,7 +8,7 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
     private let runtimePaths =
         NotilogRuntimePaths.legacyNotilogDefault()
 
-    private lazy var automationConfigurationStore =
+    private(set) lazy var automationConfigurationStore =
         AutomationConfigurationStore(
             configURL: runtimePaths.config
         )
@@ -29,6 +29,21 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
                 )
             }
         )
+
+    func saveAutomationConfiguration(
+        _ candidate: AutomationConfig
+    ) {
+        automationConfigurationStore.saveAndActivate(
+            candidate,
+            using: notilogMonitoringController
+        )
+    }
+
+    func reloadAutomationConfiguration() {
+        automationConfigurationStore.reloadFromDisk(
+            using: notilogMonitoringController
+        )
+    }
 
     func applicationDidFinishLaunching(
         _ notification: Notification
