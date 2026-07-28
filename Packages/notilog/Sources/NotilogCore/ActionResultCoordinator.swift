@@ -16,7 +16,7 @@ public struct CoordinatedActionResult {
 public final class ActionResultCoordinator {
     private var store: NotificationStore?
     private var session: ObservationSession
-    private let redactionPolicy: RedactionPolicy
+    private var redactionPolicy: RedactionPolicy
     private let cycleProcessor: MonitoringCycleProcessor
     private let dismissalVerificationDelay: TimeInterval
 
@@ -40,6 +40,12 @@ public final class ActionResultCoordinator {
     ) {
         self.store = store
         self.session = session
+    }
+
+    public func replaceRedactionPolicy(
+        _ policy: RedactionPolicy
+    ) {
+        redactionPolicy = policy
     }
 
     public func process(

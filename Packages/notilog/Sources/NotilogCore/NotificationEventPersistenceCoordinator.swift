@@ -1,7 +1,7 @@
 public final class NotificationEventPersistenceCoordinator {
     private var store: NotificationStore?
     private var session: ObservationSession
-    private let redactionPolicy: RedactionPolicy
+    private var redactionPolicy: RedactionPolicy
 
     public init(
         store: NotificationStore?,
@@ -19,6 +19,12 @@ public final class NotificationEventPersistenceCoordinator {
     ) {
         self.store = store
         self.session = session
+    }
+
+    public func replaceRedactionPolicy(
+        _ policy: RedactionPolicy
+    ) {
+        redactionPolicy = policy
     }
 
     public func persist(

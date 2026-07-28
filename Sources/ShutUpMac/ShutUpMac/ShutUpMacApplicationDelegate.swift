@@ -21,6 +21,9 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
             loggingEnabled:
                 AppPreferences
                     .notilogDatabaseLoggingEnabled,
+            redactionPolicy:
+                AppPreferences
+                    .notilogRedactionPolicy,
             onHistoricalRecords: { [weak self] records in                
                 self?.activityStore.loadHistoricalRecords(
                     records
@@ -71,6 +74,13 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
 
             completion(result)
         }
+    }
+
+    func replaceNotilogRedactionPolicy(
+        _ policy: RedactionPolicy
+    ) {
+        notilogMonitoringController
+            .replaceRedactionPolicy(policy)
     }
 
     func applicationDidFinishLaunching(

@@ -40,6 +40,7 @@ nonisolated final class NotilogMonitoringController:
     private let runtimePaths: NotilogRuntimePaths
     
     private var loggingEnabled: Bool
+    private var redactionPolicy: RedactionPolicy
 
     private let initialConfiguration:
         AutomationConfig?
@@ -62,6 +63,7 @@ nonisolated final class NotilogMonitoringController:
         initialConfiguration:
             AutomationConfig? = nil,
         loggingEnabled: Bool = true,
+        redactionPolicy: RedactionPolicy = .disabled,
         interval: TimeInterval = 1.0,
         onHistoricalRecords: @escaping
             @MainActor @Sendable (
@@ -74,6 +76,7 @@ nonisolated final class NotilogMonitoringController:
         self.initialConfiguration =
             initialConfiguration
         self.loggingEnabled = loggingEnabled
+        self.redactionPolicy = redactionPolicy
         self.interval = interval
         self.onHistoricalRecords = onHistoricalRecords
         self.onActivityItems = onActivityItems
@@ -91,7 +94,9 @@ nonisolated final class NotilogMonitoringController:
                     initialConfiguration:
                         self.initialConfiguration,
                     loggingEnabled:
-                        self.loggingEnabled
+                        self.loggingEnabled,
+                    redactionPolicy:
+                        self.redactionPolicy
                 )
 
                 do {
@@ -303,6 +308,31 @@ nonisolated final class NotilogMonitoringController:
         }
     }
 
+    func replaceRedactionPolicy(
+        _ policy: RedactionPolicy
+    ) {
+        queue.async { [weak self, policy] in
+            guard let self else {
+                return
+            }
+
+            // Retain the setting even if monitoring is not currently running.
+            self.redactionPolicy = policy
+
+            guard let runtime = self.runtime else {
+                return
+            }
+
+            runtime.replaceRedactionPolicy(
+                policy
+            )
+
+            print(
+                "Notilog redaction policy replaced"
+            )
+        }
+    }
+
     private func processCycle() {
         guard let runtime else {
             return
@@ -317,7 +347,8 @@ nonisolated final class NotilogMonitoringController:
 
             let activityItems = ActivityItemFactory.makeItems(
                 from: result,
-                verificationTimestamp: timestamp
+                verificationTimestamp: timestamp,
+                redactionPolicy: redactionPolicy
             )
 
         guard !activityItems.isEmpty else {

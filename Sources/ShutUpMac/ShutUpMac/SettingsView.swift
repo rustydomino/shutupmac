@@ -22,11 +22,39 @@ struct SettingsView: View {
             ) -> Void
         ) -> Void
 
-    @AppStorage(PreferenceKeys.enableGlobalHotkeys) private var enableGlobalHotkeys = true
-    @AppStorage(PreferenceKeys.clearMostRecentNotificationHotKey) private var clearMostRecentNotificationHotKey = HotKey.defaultClearMostRecent.encodedString
-    @AppStorage(PreferenceKeys.clearVisibleNotificationsHotKey) private var clearVisibleNotificationsHotKey = HotKey.defaultClearDesktop.encodedString
-    @AppStorage(PreferenceKeys.clearAllNotificationsHotKey) private var clearAllNotificationsHotKey = HotKey.defaultClearAll.encodedString
-    @AppStorage(PreferenceKeys.testNotificationHotKey) private var testNotificationHotKey = HotKey.defaultTestNotification.encodedString
+    let replaceNotilogRedactionPolicy:
+        (RedactionPolicy) -> Void
+
+    @AppStorage(PreferenceKeys.enableGlobalHotkeys)
+    private var enableGlobalHotkeys = true
+
+    @AppStorage(PreferenceKeys.clearMostRecentNotificationHotKey)
+    private var clearMostRecentNotificationHotKey =
+        HotKey.defaultClearMostRecent.encodedString
+
+    @AppStorage(PreferenceKeys.clearVisibleNotificationsHotKey)
+    private var clearVisibleNotificationsHotKey =
+        HotKey.defaultClearDesktop.encodedString
+
+    @AppStorage(PreferenceKeys.clearAllNotificationsHotKey)
+    private var clearAllNotificationsHotKey =
+        HotKey.defaultClearAll.encodedString
+
+    @AppStorage(PreferenceKeys.testNotificationHotKey)
+    private var testNotificationHotKey = 
+        HotKey.defaultTestNotification.encodedString
+
+    @AppStorage(PreferenceKeys.notilogRedactionEnabled)
+    private var notilogRedactionEnabled = false
+
+    @AppStorage(PreferenceKeys.notilogRedactTitle)
+    private var notilogRedactTitle = true
+
+    @AppStorage(PreferenceKeys.notilogRedactSubtitle)
+    private var notilogRedactSubtitle = true
+
+    @AppStorage(PreferenceKeys.notilogRedactBody)
+    private var notilogRedactBody = true
 
     @State private var launchAtLogin = LaunchAtLoginController.isEnabled
     @State private var cliInstallCommand = CLIInstallCommandBuilder.makeCommand()
@@ -71,6 +99,99 @@ struct SettingsView: View {
                     }
                 }
             }
+        )
+    }
+
+private var redactionEnabledBinding:
+    Binding<Bool> {
+
+    Binding(
+        get: {
+            notilogRedactionEnabled
+        },
+        set: { enabled in
+            if enabled
+                && !notilogRedactTitle
+                && !notilogRedactSubtitle
+                && !notilogRedactBody {
+
+                notilogRedactTitle = true
+                notilogRedactSubtitle = true
+                notilogRedactBody = true
+            }
+
+            notilogRedactionEnabled = enabled
+            applyRedactionPolicy()
+        }
+    )
+}
+
+private var redactTitleBinding:
+    Binding<Bool> {
+
+    Binding(
+        get: {
+            notilogRedactTitle
+        },
+        set: { enabled in
+            guard enabled
+                || notilogRedactSubtitle
+                || notilogRedactBody else {
+
+                return
+            }
+
+            notilogRedactTitle = enabled
+            applyRedactionPolicy()
+        }
+    )
+}
+
+private var redactSubtitleBinding:
+    Binding<Bool> {
+
+    Binding(
+        get: {
+            notilogRedactSubtitle
+        },
+        set: { enabled in
+            guard enabled
+                || notilogRedactTitle
+                || notilogRedactBody else {
+
+                return
+            }
+
+            notilogRedactSubtitle = enabled
+            applyRedactionPolicy()
+        }
+    )
+}
+
+    private var redactBodyBinding:
+        Binding<Bool> {
+
+        Binding(
+            get: {
+                notilogRedactBody
+            },
+            set: { enabled in
+                guard enabled
+                    || notilogRedactTitle
+                    || notilogRedactSubtitle else {
+
+                    return
+                }
+
+                notilogRedactBody = enabled
+                applyRedactionPolicy()
+            }
+        )
+    }
+
+    private func applyRedactionPolicy() {
+        replaceNotilogRedactionPolicy(
+            AppPreferences.notilogRedactionPolicy
         )
     }
 
@@ -207,6 +328,54 @@ struct SettingsView: View {
             .fixedSize(
                 horizontal: false,
                 vertical: true
+            )
+
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle(
+                    "Redact notification contents",
+                    isOn: redactionEnabledBinding
+                )
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle(
+                        "Title",
+                        isOn: redactTitleBinding
+                    )
+
+                    Toggle(
+                        "Subtitle",
+                        isOn: redactSubtitleBinding
+                    )
+
+                    Toggle(
+                        "Body",
+                        isOn: redactBodyBinding
+                    )
+                }
+                .padding(.leading, 20)
+                .disabled(!notilogRedactionEnabled)
+
+                Text(
+                    "Selected fields are replaced with "
+                    + "\"[REDACTED]\" before being written "
+                    + "to notification history."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(
+                    horizontal: false,
+                    vertical: true
+                )
+            }
+            .disabled(
+                !databaseLoggingEnabled
+                    || databaseLoggingUpdateInProgress
+            )
+            .opacity(
+                databaseLoggingEnabled
+                    && !databaseLoggingUpdateInProgress
+                    ? 1
+                    : 0.5
             )
 
             if databaseLoggingUpdateInProgress {

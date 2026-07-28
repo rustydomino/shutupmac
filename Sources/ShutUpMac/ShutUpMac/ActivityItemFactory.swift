@@ -5,7 +5,8 @@ import NotilogCore
 nonisolated enum ActivityItemFactory {
     static func makeItems(
         from result: NotificationMonitoringResult,
-        verificationTimestamp: Date
+        verificationTimestamp: Date,
+        redactionPolicy: RedactionPolicy = .disabled
     ) -> [ActivityItem] {
         let verificationItems =
             result.completedActionVerifications.map {
@@ -17,12 +18,18 @@ nonisolated enum ActivityItemFactory {
 
         let recoveredItems =
             result.recoveredEvents.flatMap {
-                makeItems(from: $0)
+                makeItems(
+                    from: $0,
+                    redactionPolicy: redactionPolicy
+                )
             }
 
         let eventItems =
             result.events.flatMap {
-                makeItems(from: $0)
+                makeItems(
+                    from: $0,
+                    redactionPolicy: redactionPolicy
+                )
             }
 
         return verificationItems
@@ -31,16 +38,24 @@ nonisolated enum ActivityItemFactory {
     }
 
     private static func makeItems(
-        from coordinatedEvent: CoordinatedNotificationEvent
+        from coordinatedEvent: CoordinatedNotificationEvent,
+        redactionPolicy: RedactionPolicy
     ) -> [ActivityItem] {
+        let redactedEvent = redactionPolicy.applying(
+            to: coordinatedEvent.event
+        )
+
         let eventItem = makeEventItem(
-            from: coordinatedEvent.event,
+            from: redactedEvent,
             matchedRules: coordinatedEvent.matchedRules
         )
 
         let actionItems =
             coordinatedEvent.actionResults.map {
-                makeActionItem(from: $0)
+                makeActionItem(
+                    from: $0,
+                    redactionPolicy: redactionPolicy
+                )
             }
 
         return [eventItem] + actionItems
@@ -64,10 +79,13 @@ nonisolated enum ActivityItemFactory {
     }
 
     private static func makeActionItem(
-        from coordinatedResult: CoordinatedActionResult
+        from coordinatedResult: CoordinatedActionResult,
+        redactionPolicy: RedactionPolicy
     ) -> ActivityItem {
-        let result = coordinatedResult.result
-
+        let result = redactionPolicy.applying(
+            to: coordinatedResult.result
+        )
+ 
         return ActivityItem(
             timestamp: result.event.timestamp,
             kind: .actionRun,

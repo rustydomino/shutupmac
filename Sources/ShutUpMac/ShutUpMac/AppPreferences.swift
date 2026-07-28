@@ -1,11 +1,24 @@
 import Foundation
 import AppKit
+import NotilogCore
 
 enum PreferenceKeys {
     static let enableGlobalHotkeys = "enableGlobalHotkeys"
 
     static let notilogDatabaseLoggingEnabled =
         "notilogDatabaseLoggingEnabled"
+
+    static let notilogRedactionEnabled =
+        "notilogRedactionEnabled"
+
+    static let notilogRedactTitle =
+        "notilogRedactTitle"
+
+    static let notilogRedactSubtitle =
+        "notilogRedactSubtitle"
+
+    static let notilogRedactBody =
+        "notilogRedactBody"
 
     static let clearMostRecentNotificationHotKey = "clearMostRecentNotificationHotKey"
     static let clearVisibleNotificationsHotKey = "clearVisibleNotificationsHotKey"
@@ -21,6 +34,10 @@ enum AppPreferences {
         UserDefaults.standard.register(defaults: [
             PreferenceKeys.enableGlobalHotkeys: true,
             PreferenceKeys.notilogDatabaseLoggingEnabled: true,
+            PreferenceKeys.notilogRedactionEnabled: false,
+            PreferenceKeys.notilogRedactTitle: true,
+            PreferenceKeys.notilogRedactSubtitle: true,
+            PreferenceKeys.notilogRedactBody: true,
             PreferenceKeys.clearMostRecentNotificationHotKey:
                 HotKey.defaultClearMostRecent.encodedString,
             PreferenceKeys.clearVisibleNotificationsHotKey:
@@ -67,6 +84,52 @@ enum AppPreferences {
                 PreferenceKeys
                     .notilogDatabaseLoggingEnabled
         )
+    }
+
+    static var notilogRedactionEnabled: Bool {
+        UserDefaults.standard.bool(
+            forKey: PreferenceKeys.notilogRedactionEnabled
+        )
+    }
+
+    static var notilogRedactTitle: Bool {
+        UserDefaults.standard.bool(
+            forKey: PreferenceKeys.notilogRedactTitle
+        )
+    }
+
+    static var notilogRedactSubtitle: Bool {
+        UserDefaults.standard.bool(
+            forKey: PreferenceKeys.notilogRedactSubtitle
+        )
+    }
+
+    static var notilogRedactBody: Bool {
+        UserDefaults.standard.bool(
+            forKey: PreferenceKeys.notilogRedactBody
+        )
+    }
+
+    static var notilogRedactionPolicy: RedactionPolicy {
+        guard notilogRedactionEnabled else {
+            return .disabled
+        }
+
+        var fields: Set<RedactionField> = []
+
+        if notilogRedactTitle {
+            fields.insert(.title)
+        }
+
+        if notilogRedactSubtitle {
+            fields.insert(.subtitle)
+        }
+
+        if notilogRedactBody {
+            fields.insert(.body)
+        }
+
+        return RedactionPolicy(fields: fields)
     }
 
     static var clearVisibleNotificationsHotKey: HotKey {

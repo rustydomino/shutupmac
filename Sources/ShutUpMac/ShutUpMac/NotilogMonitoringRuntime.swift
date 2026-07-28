@@ -181,6 +181,20 @@ deinit {
         )
     }
 
+    /// Replaces the redaction policy used by subsequent database writes.
+    ///
+    /// The caller must invoke this on the same serial queue used for
+    /// processOneCycle().
+    func replaceRedactionPolicy(
+        _ policy: RedactionPolicy
+    ) {
+        eventPersistenceCoordinator
+            .replaceRedactionPolicy(policy)
+
+        actionResultCoordinator
+            .replaceRedactionPolicy(policy)
+    }
+
     /// Enables or disables database persistence for subsequent monitoring cycles.
     ///
     /// The database may remain open while logging is disabled so that existing

@@ -57,6 +57,12 @@ struct ShutUpMacApp: App {
                                 enabled,
                                 completion: completion
                             )
+                },
+                replaceNotilogRedactionPolicy: { policy in
+                    applicationDelegate
+                        .replaceNotilogRedactionPolicy(
+                            policy
+                        )
                 }
 
         )
