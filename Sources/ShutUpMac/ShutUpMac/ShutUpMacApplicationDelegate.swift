@@ -1,12 +1,24 @@
 import AppKit
+import NotilogCore
 
 @MainActor
 final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
     let activityStore = ActivityStore()
 
+    private let runtimePaths =
+        NotilogRuntimePaths.legacyNotilogDefault()
+
+    private lazy var automationConfigurationStore =
+        AutomationConfigurationStore(
+            configURL: runtimePaths.config
+        )
+
     private lazy var notilogMonitoringController =
         NotilogMonitoringController(
-            onHistoricalRecords: { [weak self] records in
+            runtimePaths: runtimePaths,
+            initialConfiguration:
+                automationConfigurationStore.configuration,
+            onHistoricalRecords: { [weak self] records in                
                 self?.activityStore.loadHistoricalRecords(
                     records
                 )
@@ -34,6 +46,19 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
                 "Notilog monitoring was not started because "
                 + "Accessibility permission is unavailable."
             )
+            return
+        }
+
+        guard automationConfigurationStore.load() != nil else {
+            print(
+                "Notilog monitoring was not started because "
+                + "config.json could not be loaded: "
+                + (
+                    automationConfigurationStore.errorMessage
+                        ?? "Unknown configuration error"
+                )
+            )
+
             return
         }
 

@@ -17,6 +17,7 @@ nonisolated final class NotilogMonitoringRuntime {
 
     init(
         runtimePaths: NotilogRuntimePaths = .legacyNotilogDefault(),
+        initialConfiguration: AutomationConfig? = nil,
         redactionPolicy: RedactionPolicy = .disabled,
         automationMode: AutomationExecutionMode = .disabled,
         dismissalVerificationDelay: TimeInterval = 2.0
@@ -31,9 +32,17 @@ nonisolated final class NotilogMonitoringRuntime {
 
         let previouslyActive = try store.loadActiveNotifications()
 
-        let automationEngine = try Self.loadAutomationEngine(
-            configURL: runtimePaths.config
-        )
+        let automationEngine: AutomationEngine
+
+        if let initialConfiguration {
+            automationEngine = AutomationEngine(
+                rules: try initialConfiguration.notificationRules()
+            )
+        } else {
+            automationEngine = try Self.loadAutomationEngine(
+                configURL: runtimePaths.config
+            )
+        }
 
         let automationProcessor = NotificationAutomationProcessor(
             engine: automationEngine

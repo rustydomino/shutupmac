@@ -17,7 +17,11 @@ nonisolated final class NotilogMonitoringController: @unchecked Sendable {
     )
 
     private let interval: TimeInterval
+    private let runtimePaths: NotilogRuntimePaths
     
+    private let initialConfiguration:
+        AutomationConfig?
+
     private let onActivityItems:
         @MainActor @Sendable ([ActivityItem]) -> Void
     
@@ -31,6 +35,10 @@ nonisolated final class NotilogMonitoringController: @unchecked Sendable {
     private var isStarted = false
 
     init(
+        runtimePaths: NotilogRuntimePaths =
+            .legacyNotilogDefault(),
+        initialConfiguration:
+            AutomationConfig? = nil,
         interval: TimeInterval = 1.0,
         onHistoricalRecords: @escaping
             @MainActor @Sendable (
@@ -39,6 +47,9 @@ nonisolated final class NotilogMonitoringController: @unchecked Sendable {
         onActivityItems: @escaping
             @MainActor @Sendable ([ActivityItem]) -> Void
     ) {
+        self.runtimePaths = runtimePaths
+        self.initialConfiguration =
+            initialConfiguration
         self.interval = interval
         self.onHistoricalRecords = onHistoricalRecords
         self.onActivityItems = onActivityItems
@@ -51,7 +62,11 @@ nonisolated final class NotilogMonitoringController: @unchecked Sendable {
             }
 
             do {
-                let runtime = try NotilogMonitoringRuntime()
+                let runtime = try NotilogMonitoringRuntime(
+                    runtimePaths: self.runtimePaths,
+                    initialConfiguration:
+                        self.initialConfiguration
+                )
 
                 do {
                     let historicalEvents =

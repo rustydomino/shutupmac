@@ -1,4 +1,5 @@
 import XCTest
+import NotilogCore
 @testable import ShutUpMac
 
 final class ShutUpMacTests: XCTestCase {
@@ -311,4 +312,136 @@ final class ShutUpMacTests: XCTestCase {
 
         XCTAssertFalse(store.isAtRecordCapacity)
     }
+
+    @MainActor
+    func testConfigurationStorePreservesValidConfigurationAfterFailedReload()
+        throws {
+
+        let directoryURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    UUID().uuidString,
+                    isDirectory: true
+                )
+
+        try FileManager.default.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true
+        )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: directoryURL
+            )
+        }
+
+        let configURL =
+            directoryURL.appendingPathComponent(
+                "config.json"
+            )
+
+        let validConfiguration = AutomationConfig(
+            rules: []
+        )
+
+        let validData = try JSONEncoder().encode(
+            validConfiguration
+        )
+
+        try validData.write(
+            to: configURL,
+            options: .atomic
+        )
+
+        let store = AutomationConfigurationStore(
+            configURL: configURL
+        )
+
+        let firstLoad = store.load()
+
+        XCTAssertNotNil(firstLoad)
+        XCTAssertEqual(
+            store.configuration?.rules.count,
+            0
+        )
+        XCTAssertNil(store.errorMessage)
+
+        try Data(
+            "{ invalid json".utf8
+        ).write(
+            to: configURL,
+            options: .atomic
+        )
+
+        let failedReload = store.load()
+
+        XCTAssertNil(failedReload)
+
+        // The last successfully loaded configuration remains available.
+        XCTAssertEqual(
+            store.configuration?.rules.count,
+            0
+        )
+
+        XCTAssertNotNil(store.errorMessage)
+    }
+    
+    @MainActor
+    func testConfigurationStoreUsesEmptyConfigurationWhenFileIsMissing()
+        throws {
+
+        let directoryURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    UUID().uuidString,
+                    isDirectory: true
+                )
+
+        try FileManager.default.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true
+        )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: directoryURL
+            )
+        }
+
+        let configURL =
+            directoryURL.appendingPathComponent(
+                "config.json"
+            )
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: configURL.path
+            )
+        )
+
+        let store = AutomationConfigurationStore(
+            configURL: configURL
+        )
+
+        let configuration = store.load()
+
+        XCTAssertNotNil(configuration)
+        XCTAssertEqual(
+            configuration?.rules.count,
+            0
+        )
+        XCTAssertEqual(
+            store.configuration?.rules.count,
+            0
+        )
+        XCTAssertNil(store.errorMessage)
+
+        // Loading an absent configuration should not create a file.
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: configURL.path
+            )
+        )
+    }
+
 }
