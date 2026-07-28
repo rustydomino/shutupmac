@@ -2,7 +2,6 @@ import Foundation
 import AppKit
 
 enum PreferenceKeys {
-    static let hideDockIcon = "hideDockIcon"
     static let enableGlobalHotkeys = "enableGlobalHotkeys"
 
     static let notilogDatabaseLoggingEnabled =
@@ -20,23 +19,23 @@ enum PreferenceKeys {
 enum AppPreferences {
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
-            PreferenceKeys.hideDockIcon: true,
             PreferenceKeys.enableGlobalHotkeys: true,
             PreferenceKeys.notilogDatabaseLoggingEnabled: true,
-            PreferenceKeys.clearMostRecentNotificationHotKey: HotKey.defaultClearMostRecent.encodedString,
-            PreferenceKeys.clearVisibleNotificationsHotKey: HotKey.defaultClearDesktop.encodedString,
-            PreferenceKeys.clearAllNotificationsHotKey: HotKey.defaultClearAll.encodedString,
-            PreferenceKeys.testNotificationHotKey: HotKey.defaultTestNotification.encodedString,
+            PreferenceKeys.clearMostRecentNotificationHotKey:
+                HotKey.defaultClearMostRecent.encodedString,
+            PreferenceKeys.clearVisibleNotificationsHotKey:
+                HotKey.defaultClearDesktop.encodedString,
+            PreferenceKeys.clearAllNotificationsHotKey:
+                HotKey.defaultClearAll.encodedString,
+            PreferenceKeys.testNotificationHotKey:
+                HotKey.defaultTestNotification.encodedString,
 
-            // Keep a default for older code/preferences. New code should not use this.
-            PreferenceKeys.clearNotificationsHotKey: HotKey.defaultClear.encodedString
+            // Keep a default for older code/preferences.
+            PreferenceKeys.clearNotificationsHotKey:
+                HotKey.defaultClear.encodedString
         ])
 
         migrateClearDesktopHotKeyDefaultIfNeeded()
-    }
-
-    static var hideDockIcon: Bool {
-        UserDefaults.standard.bool(forKey: PreferenceKeys.hideDockIcon)
     }
 
     static var enableGlobalHotkeys: Bool {
@@ -118,13 +117,10 @@ enum AppPreferences {
         )
     }
 }
-
 enum DockIconController {
-    static func apply(hideDockIcon: Bool) {
-        if hideDockIcon {
-            NSApplication.shared.setActivationPolicy(.accessory)
-        } else {
-            NSApplication.shared.setActivationPolicy(.regular)
-        }
+    static func enforceMenuBarOnly() {
+        NSApplication.shared.setActivationPolicy(
+            .accessory
+        )
     }
 }

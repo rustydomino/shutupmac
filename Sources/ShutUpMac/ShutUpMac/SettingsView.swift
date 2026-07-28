@@ -22,7 +22,6 @@ struct SettingsView: View {
             ) -> Void
         ) -> Void
 
-    @AppStorage(PreferenceKeys.hideDockIcon) private var hideDockIcon = true
     @AppStorage(PreferenceKeys.enableGlobalHotkeys) private var enableGlobalHotkeys = true
     @AppStorage(PreferenceKeys.clearMostRecentNotificationHotKey) private var clearMostRecentNotificationHotKey = HotKey.defaultClearMostRecent.encodedString
     @AppStorage(PreferenceKeys.clearVisibleNotificationsHotKey) private var clearVisibleNotificationsHotKey = HotKey.defaultClearDesktop.encodedString
@@ -31,7 +30,6 @@ struct SettingsView: View {
 
     @State private var launchAtLogin = LaunchAtLoginController.isEnabled
     @State private var cliInstallCommand = CLIInstallCommandBuilder.makeCommand()
-    @State private var dockIconChangeNeedsRestart = false
 
     @State private var databaseLoggingEnabled =
         AppPreferences.notilogDatabaseLoggingEnabled
@@ -41,17 +39,6 @@ struct SettingsView: View {
 
     @State private var databaseLoggingErrorMessage:
         String?
-
-    private var showDockIcon: Binding<Bool> {
-        Binding(
-            get: {
-                !hideDockIcon
-            },
-            set: { newValue in
-                hideDockIcon = !newValue
-            }
-        )
-    }
 
     private var databaseLoggingBinding:
         Binding<Bool> {
@@ -90,19 +77,6 @@ struct SettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
 
-            Toggle("Show Dock icon", isOn: showDockIcon)
-
-            Text("When enabled, ShutUpMac appears in the Dock and app switcher like a regular Mac app. When disabled, it runs as a menu-bar-only utility.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            if dockIconChangeNeedsRestart {
-                Text("ShutUpMac will return to menu-bar-only mode the next time it launches.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Divider()
 
             Toggle("Enable global hotkeys", isOn: $enableGlobalHotkeys)
 
@@ -334,18 +308,6 @@ struct SettingsView: View {
             databaseLoggingEnabled =
                 AppPreferences
                     .notilogDatabaseLoggingEnabled
-        }
-        .onChange(of: hideDockIcon) { _, newValue in
-            if newValue {
-                // Turning off "Show Dock icon" moves the app back to menu-bar-only mode.
-                // Applying that while Settings is open is visually janky, so save the
-                // preference now and apply it cleanly at next launch from ShutUpMacApp.init().
-                dockIconChangeNeedsRestart = true
-            } else {
-                // Showing the Dock icon is safe to apply immediately.
-                dockIconChangeNeedsRestart = false
-                DockIconController.apply(hideDockIcon: false)
-            }
         }
         .onChange(of: enableGlobalHotkeys) { _, newValue in
             if newValue {

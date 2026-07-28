@@ -10,7 +10,7 @@ struct ShutUpMacApp: App {
 
     init() {
         AppPreferences.registerDefaults()
-        DockIconController.apply(hideDockIcon: AppPreferences.hideDockIcon)
+        DockIconController.enforceMenuBarOnly()
 
         TestNotificationSender.shared.start()
 

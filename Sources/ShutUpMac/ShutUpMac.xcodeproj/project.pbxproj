@@ -46,6 +46,13 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		2783D3B330194B8500C0DD30 /* Exceptions for "ShutUpMac" folder in "ShutUpMac" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 27D386B03002E8CC00DC4586 /* ShutUpMac */;
+		};
 		27DD8BA93004715C001B042B /* Exceptions for "ShutUpMac" folder in "ShutUpMacCLI" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -69,6 +76,7 @@
 		27D386B33002E8CC00DC4586 /* ShutUpMac */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
+				2783D3B330194B8500C0DD30 /* Exceptions for "ShutUpMac" folder in "ShutUpMac" target */,
 				27DD8BA93004715C001B042B /* Exceptions for "ShutUpMac" folder in "ShutUpMacCLI" target */,
 			);
 			path = ShutUpMac;
@@ -496,8 +504,10 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShutUpMac/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ShutUpMac;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_LSUIElement = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -539,8 +549,10 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShutUpMac/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ShutUpMac;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_LSUIElement = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

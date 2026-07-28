@@ -144,33 +144,11 @@ final class TestNotificationSender: NSObject, UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let handleClick = {
-            if AppPreferences.hideDockIcon {
-                self.repairMenuBarOnlyFocus()
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
-                    self.repairMenuBarOnlyFocus()
-                }
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    self.repairMenuBarOnlyFocus()
-                }
-            }
-
-            completionHandler()
-        }
-
-        if Thread.isMainThread {
-            handleClick()
-        } else {
-            DispatchQueue.main.async {
-                handleClick()
-            }
-        }
+        completionHandler()
     }
 
     private func repairMenuBarOnlyFocus() {
-        DockIconController.apply(hideDockIcon: true)
+        DockIconController.enforceMenuBarOnly()
         NSApplication.shared.deactivate()
         NSApplication.shared.hide(nil)
     }
