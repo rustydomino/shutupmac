@@ -31,6 +31,266 @@ private final class StubAutomationConfigurationActivator:
 }
 
 final class ShutUpMacTests: XCTestCase {
+
+    func testNotilogRedactionPolicyIsDisabledWhenMasterSettingIsOff() {
+        let policy = AppPreferences.makeNotilogRedactionPolicy(
+            enabled: false,
+            redactTitle: true,
+            redactSubtitle: true,
+            redactBody: true
+        )
+
+        XCTAssertEqual(
+            policy,
+            .disabled
+        )
+    }
+
+    func testActivityItemFactoryLeavesContentsUnchangedWhenRedactionDisabled()
+        throws {
+
+        let timestamp = Date(
+            timeIntervalSince1970: 100
+        )
+
+        let sourceEvent = NotificationEvent(
+            type: .appeared,
+            notification: VisibleNotification(
+                key:
+                    "AXNotificationCenterAlert"
+                    + "|activity-factory-disabled",
+                app: "Test App",
+                title: "Secret title",
+                subtitle: "Secret subtitle",
+                body: "Secret body"
+            ),
+            timestamp: timestamp
+        )
+
+        let result = NotificationMonitoringResult(
+            completedActionVerifications: [],
+            recoveredEvents: [],
+            events: [
+                CoordinatedNotificationEvent(
+                    event: sourceEvent,
+                    matchedRules: [],
+                    actionResults: []
+                )
+            ]
+        )
+
+        let items = ActivityItemFactory.makeItems(
+            from: result,
+            verificationTimestamp: Date(
+                timeIntervalSince1970: 200
+            ),
+            redactionPolicy: .disabled
+        )
+
+        XCTAssertEqual(items.count, 1)
+
+        let item = try XCTUnwrap(items.first)
+        let notification = try XCTUnwrap(
+            item.notification
+        )
+
+        XCTAssertEqual(item.timestamp, timestamp)
+        XCTAssertEqual(
+            item.kind.rawValue,
+            "notificationAppeared"
+        )
+        XCTAssertEqual(
+            item.summary,
+            "Appeared — Test App: Secret title"
+        )
+
+        XCTAssertEqual(
+            notification.key,
+            sourceEvent.notification.key
+        )
+        XCTAssertEqual(notification.app, "Test App")
+        XCTAssertEqual(notification.title, "Secret title")
+        XCTAssertEqual(
+            notification.subtitle,
+            "Secret subtitle"
+        )
+        XCTAssertEqual(notification.body, "Secret body")
+
+        XCTAssertEqual(
+            sourceEvent.notification.title,
+            "Secret title"
+        )
+        XCTAssertEqual(
+            sourceEvent.notification.subtitle,
+            "Secret subtitle"
+        )
+        XCTAssertEqual(
+            sourceEvent.notification.body,
+            "Secret body"
+        )
+    }
+
+    func testActivityItemFactoryAppliesSelectedRedactionFields()
+        throws {
+
+        let timestamp = Date(
+            timeIntervalSince1970: 300
+        )
+
+        let sourceEvent = NotificationEvent(
+            type: .appeared,
+            notification: VisibleNotification(
+                key:
+                    "AXNotificationCenterAlert"
+                    + "|activity-factory-redacted",
+                app: "Test App",
+                title: "Secret title",
+                subtitle: "Visible subtitle",
+                body: "Secret body"
+            ),
+            timestamp: timestamp
+        )
+
+        let result = NotificationMonitoringResult(
+            completedActionVerifications: [],
+            recoveredEvents: [],
+            events: [
+                CoordinatedNotificationEvent(
+                    event: sourceEvent,
+                    matchedRules: [],
+                    actionResults: []
+                )
+            ]
+        )
+
+        let items = ActivityItemFactory.makeItems(
+            from: result,
+            verificationTimestamp: Date(
+                timeIntervalSince1970: 400
+            ),
+            redactionPolicy: RedactionPolicy(
+                fields: [
+                    .title,
+                    .body
+                ]
+            )
+        )
+
+        XCTAssertEqual(items.count, 1)
+
+        let item = try XCTUnwrap(items.first)
+        let notification = try XCTUnwrap(
+            item.notification
+        )
+
+        XCTAssertEqual(item.timestamp, timestamp)
+        XCTAssertEqual(
+            item.kind.rawValue,
+            "notificationAppeared"
+        )
+        XCTAssertEqual(
+            item.summary,
+            "Appeared — Test App: [REDACTED]"
+        )
+
+        XCTAssertEqual(notification.app, "Test App")
+        XCTAssertEqual(notification.title, "[REDACTED]")
+        XCTAssertEqual(
+            notification.subtitle,
+            "Visible subtitle"
+        )
+        XCTAssertEqual(notification.body, "[REDACTED]")
+
+        XCTAssertEqual(
+            sourceEvent.notification.app,
+            "Test App"
+        )
+        XCTAssertEqual(
+            sourceEvent.notification.title,
+            "Secret title"
+        )
+        XCTAssertEqual(
+            sourceEvent.notification.subtitle,
+            "Visible subtitle"
+        )
+        XCTAssertEqual(
+            sourceEvent.notification.body,
+            "Secret body"
+        )
+    }
+
+    func testNotilogRedactionPolicyMapsSelectedContentFields() {
+        let cases: [
+            (
+                name: String,
+                redactTitle: Bool,
+                redactSubtitle: Bool,
+                redactBody: Bool,
+                expectedFields: Set<RedactionField>
+            )
+        ] = [
+            (
+                name: "title only",
+                redactTitle: true,
+                redactSubtitle: false,
+                redactBody: false,
+                expectedFields: [.title]
+            ),
+            (
+                name: "subtitle only",
+                redactTitle: false,
+                redactSubtitle: true,
+                redactBody: false,
+                expectedFields: [.subtitle]
+            ),
+            (
+                name: "body only",
+                redactTitle: false,
+                redactSubtitle: false,
+                redactBody: true,
+                expectedFields: [.body]
+            ),
+            (
+                name: "all GUI fields",
+                redactTitle: true,
+                redactSubtitle: true,
+                redactBody: true,
+                expectedFields: [
+                    .title,
+                    .subtitle,
+                    .body
+                ]
+            )
+        ]
+
+        for testCase in cases {
+            let policy = AppPreferences.makeNotilogRedactionPolicy(
+                enabled: true,
+                redactTitle: testCase.redactTitle,
+                redactSubtitle: testCase.redactSubtitle,
+                redactBody: testCase.redactBody
+            )
+
+            XCTAssertEqual(
+                policy,
+                RedactionPolicy(
+                    fields: testCase.expectedFields
+                ),
+                testCase.name
+            )
+
+            XCTAssertFalse(
+                policy.redacts(.app),
+                "\(testCase.name) unexpectedly redacts app"
+            )
+
+            XCTAssertFalse(
+                policy.redacts(.attachments),
+                "\(testCase.name) unexpectedly redacts attachments"
+            )
+        }
+    }
+
     func testRepeatedRuleIsIncludedOnlyOnce() throws {
         let ruleID = UUID()
 

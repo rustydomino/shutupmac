@@ -117,6 +117,116 @@ final class NotificationEventPersistenceCoordinatorTests: XCTestCase {
         )
     }
 
+    func testReplacingRedactionPolicyAffectsOnlySubsequentWrites() throws {
+        let databaseURL = temporaryDatabaseURL()
+
+        defer {
+            try? FileManager.default.removeItem(at: databaseURL)
+        }
+
+        let store = try NotificationStore(
+            path: databaseURL.path
+        )
+
+        let coordinator = NotificationEventPersistenceCoordinator(
+            store: store,
+            session: testSession(),
+            redactionPolicy: .disabled
+        )
+
+        try coordinator.persist(
+            [
+                sampleEvent(
+                    key: "alert-A",
+                    title: "First secret title",
+                    body: "First secret body"
+                )
+            ]
+        )
+
+        coordinator.replaceRedactionPolicy(
+            RedactionPolicy(
+                fields: [.title, .body]
+            )
+        )
+
+        try coordinator.persist(
+            [
+                sampleEvent(
+                    key: "alert-B",
+                    title: "Second secret title",
+                    body: "Second secret body"
+                )
+            ]
+        )
+
+        coordinator.replaceRedactionPolicy(.disabled)
+
+        try coordinator.persist(
+            [
+                sampleEvent(
+                    key: "alert-C",
+                    title: "Third secret title",
+                    body: "Third secret body"
+                )
+            ]
+        )
+
+        let storedEvents = try store.recentEvents(limit: 10)
+            .map(\.event)
+
+        XCTAssertEqual(storedEvents.count, 3)
+
+        let firstEvent = try XCTUnwrap(
+            storedEvents.first {
+                $0.notification.key == "alert-A"
+            }
+        )
+
+        let secondEvent = try XCTUnwrap(
+            storedEvents.first {
+                $0.notification.key == "alert-B"
+            }
+        )
+
+        let thirdEvent = try XCTUnwrap(
+            storedEvents.first {
+                $0.notification.key == "alert-C"
+            }
+        )
+
+        XCTAssertEqual(
+            firstEvent.notification.title,
+            "First secret title"
+        )
+        XCTAssertEqual(
+            firstEvent.notification.body,
+            "First secret body"
+        )
+
+        XCTAssertEqual(
+            secondEvent.notification.title,
+            "[REDACTED]"
+        )
+        XCTAssertEqual(
+            secondEvent.notification.body,
+            "[REDACTED]"
+        )
+        XCTAssertEqual(
+            secondEvent.notification.app,
+            "Notigen"
+        )
+
+        XCTAssertEqual(
+            thirdEvent.notification.title,
+            "Third secret title"
+        )
+        XCTAssertEqual(
+            thirdEvent.notification.body,
+            "Third secret body"
+        )
+    }
+
     func testEmptyBatchDoesNotInsertRecords() throws {
         let databaseURL = temporaryDatabaseURL()
 

@@ -197,6 +197,164 @@ final class ActionResultCoordinatorTests: XCTestCase {
         )
     }
 
+    func testReplacingRedactionPolicyAffectsOnlySubsequentActionWrites() throws {
+        let databaseURL = temporaryDatabaseURL()
+
+        defer {
+            try? FileManager.default.removeItem(at: databaseURL)
+        }
+
+        let store = try NotificationStore(
+            path: databaseURL.path
+        )
+
+        let coordinator = ActionResultCoordinator(
+            store: store,
+            session: testSession(),
+            redactionPolicy: .disabled,
+            cycleProcessor: MonitoringCycleProcessor(),
+            dismissalVerificationDelay: 2
+        )
+
+        let firstResult = sampleResult(
+            notificationKey: "alert-A",
+            title: "First secret title",
+            body: "First secret body",
+            message: "First detailed message",
+            stdout: "First secret stdout",
+            stderr: "First secret stderr"
+        )
+
+        let firstCoordinatedResult = try XCTUnwrap(
+            coordinator.process(
+                [firstResult],
+                at: Date(timeIntervalSince1970: 10)
+            ).first
+        )
+
+        coordinator.replaceRedactionPolicy(
+            RedactionPolicy(
+                fields: [.title, .body]
+            )
+        )
+
+        let secondResult = sampleResult(
+            notificationKey: "alert-B",
+            title: "Second secret title",
+            body: "Second secret body",
+            message: "Second detailed message",
+            stdout: "Second secret stdout",
+            stderr: "Second secret stderr"
+        )
+
+        let secondCoordinatedResult = try XCTUnwrap(
+            coordinator.process(
+                [secondResult],
+                at: Date(timeIntervalSince1970: 20)
+            ).first
+        )
+
+        let records = try store.recentActionRuns(limit: 10)
+
+        XCTAssertEqual(records.count, 2)
+
+        let firstRecord = records[0]
+
+        XCTAssertEqual(
+            firstRecord.notification.key,
+            "alert-A"
+        )
+        XCTAssertEqual(
+            firstRecord.notification.title,
+            "First secret title"
+        )
+        XCTAssertEqual(
+            firstRecord.notification.body,
+            "First secret body"
+        )
+        XCTAssertEqual(
+            firstRecord.message,
+            "First detailed message"
+        )
+        XCTAssertEqual(
+            firstRecord.stdout,
+            "First secret stdout"
+        )
+        XCTAssertEqual(
+            firstRecord.stderr,
+            "First secret stderr"
+        )
+
+        let secondRecord = records[1]
+
+        XCTAssertEqual(
+            secondRecord.notification.key,
+            "alert-B"
+        )
+        XCTAssertEqual(
+            secondRecord.notification.app,
+            "Notigen"
+        )
+        XCTAssertEqual(
+            secondRecord.notification.title,
+            "[REDACTED]"
+        )
+        XCTAssertEqual(
+            secondRecord.notification.body,
+            "[REDACTED]"
+        )
+        XCTAssertEqual(
+            secondRecord.message,
+            "status: succeeded, exit code: 0"
+        )
+        XCTAssertEqual(
+            secondRecord.stdout,
+            "[SUPPRESSED BY REDACTION]"
+        )
+        XCTAssertEqual(
+            secondRecord.stderr,
+            "[SUPPRESSED BY REDACTION]"
+        )
+
+        XCTAssertEqual(
+            firstCoordinatedResult.result.event.notification.title,
+            "First secret title"
+        )
+        XCTAssertEqual(
+            firstCoordinatedResult.result.message,
+            "First detailed message"
+        )
+        XCTAssertEqual(
+            firstCoordinatedResult.result.stdout,
+            "First secret stdout"
+        )
+        XCTAssertEqual(
+            firstCoordinatedResult.result.stderr,
+            "First secret stderr"
+        )
+
+        XCTAssertEqual(
+            secondCoordinatedResult.result.event.notification.title,
+            "Second secret title"
+        )
+        XCTAssertEqual(
+            secondCoordinatedResult.result.event.notification.body,
+            "Second secret body"
+        )
+        XCTAssertEqual(
+            secondCoordinatedResult.result.message,
+            "Second detailed message"
+        )
+        XCTAssertEqual(
+            secondCoordinatedResult.result.stdout,
+            "Second secret stdout"
+        )
+        XCTAssertEqual(
+            secondCoordinatedResult.result.stderr,
+            "Second secret stderr"
+        )
+    }
+
     func testResultWithoutPendingVerificationIsNotScheduled() throws {
         let cycleProcessor = MonitoringCycleProcessor()
 

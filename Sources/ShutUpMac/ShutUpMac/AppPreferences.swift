@@ -111,21 +111,35 @@ enum AppPreferences {
     }
 
     static var notilogRedactionPolicy: RedactionPolicy {
-        guard notilogRedactionEnabled else {
+        makeNotilogRedactionPolicy(
+            enabled: notilogRedactionEnabled,
+            redactTitle: notilogRedactTitle,
+            redactSubtitle: notilogRedactSubtitle,
+            redactBody: notilogRedactBody
+        )
+    }
+
+    static func makeNotilogRedactionPolicy(
+        enabled: Bool,
+        redactTitle: Bool,
+        redactSubtitle: Bool,
+        redactBody: Bool
+    ) -> RedactionPolicy {
+        guard enabled else {
             return .disabled
         }
 
         var fields: Set<RedactionField> = []
 
-        if notilogRedactTitle {
+        if redactTitle {
             fields.insert(.title)
         }
 
-        if notilogRedactSubtitle {
+        if redactSubtitle {
             fields.insert(.subtitle)
         }
 
-        if notilogRedactBody {
+        if redactBody {
             fields.insert(.body)
         }
 
