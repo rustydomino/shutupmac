@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 @main
 struct ShutUpMacApp: App {
@@ -31,13 +31,21 @@ struct ShutUpMacApp: App {
             )
         }
         .defaultSize(width: 760, height: 500)
-        
-    Window("ShutUpMac Settings", id: "settings") {
-        SettingsView(
-            automationConfigurationStore:
+
+        Window("ShutUpMac Rules", id: "rules") {
+            RulesView(
+                store: applicationDelegate
+                    .automationConfigurationStore
+            )
+        }
+        .defaultSize(width: 760, height: 500)
+
+        Window("ShutUpMac Settings", id: "settings") {
+            SettingsView(
+                automationConfigurationStore:
                 applicationDelegate
                     .automationConfigurationStore,
-                
+
                 saveAutomationConfiguration: { candidate in
                     applicationDelegate
                         .saveAutomationConfiguration(
@@ -49,14 +57,13 @@ struct ShutUpMacApp: App {
                         .reloadAutomationConfiguration()
                 },
                 setNotilogDatabaseLoggingEnabled: {
-                        enabled,
-                        completion in
-
-                        applicationDelegate
-                            .setNotilogDatabaseLoggingEnabled(
-                                enabled,
-                                completion: completion
-                            )
+                    enabled,
+                    completion in
+                    applicationDelegate
+                        .setNotilogDatabaseLoggingEnabled(
+                            enabled,
+                            completion: completion
+                        )
                 },
                 replaceNotilogRedactionPolicy: { policy in
                     applicationDelegate
@@ -64,9 +71,8 @@ struct ShutUpMacApp: App {
                             policy
                         )
                 }
-
-        )
-    }
+            )
+        }
 
         .windowResizability(.contentSize)
 
@@ -171,7 +177,12 @@ struct ShutUpMacMenu: View {
             showActivityWindow()
         }
         .keyboardShortcut("1", modifiers: [.command])
-        
+
+        Button("Rules…") {
+            showRulesWindow()
+        }
+        .keyboardShortcut("2", modifiers: [.command])
+
         Button("Settings…") {
             showSettingsWindow()
         }
@@ -202,13 +213,34 @@ struct ShutUpMacMenu: View {
                     where: { window in
                         window.title == "ShutUpMac Activity"
                     }
-                ) {
+                )
+            {
                 activityWindow.makeKeyAndOrderFront(nil)
                 activityWindow.orderFrontRegardless()
             }
         }
     }
-    
+
+    private func showRulesWindow() {
+        openWindow(id: "rules")
+
+        DispatchQueue.main.async {
+            NSApplication.shared.activate(
+                ignoringOtherApps: true
+            )
+
+            if let rulesWindow =
+                NSApplication.shared.windows.first(
+                    where: { window in
+                        window.title == "ShutUpMac Rules"
+                    }
+                ) {
+                rulesWindow.makeKeyAndOrderFront(nil)
+                rulesWindow.orderFrontRegardless()
+            }
+        }
+    }
+
     private func showSettingsWindow() {
         openWindow(id: "settings")
 
@@ -277,7 +309,8 @@ struct ShutUpMacMenu: View {
         let bundleID = Bundle.main.bundleIdentifier ?? ""
 
         if let appSpecificURL = URL(string: "\(notificationsPath)?id=\(bundleID)"),
-           NSWorkspace.shared.open(appSpecificURL) {
+           NSWorkspace.shared.open(appSpecificURL)
+        {
             return
         }
 

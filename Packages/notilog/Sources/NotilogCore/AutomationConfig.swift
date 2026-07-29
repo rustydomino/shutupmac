@@ -24,7 +24,24 @@ public struct AutomationRuleConfig: Codable {
     public let name: String
     public let enabled: Bool?
     public let match: NotificationMatchConfig
+    public let exceptions: [NotificationExceptionConfig]?
     public let actions: [NotificationActionConfig]
+
+    public init(
+        id: UUID,
+        name: String,
+        enabled: Bool? = nil,
+        match: NotificationMatchConfig,
+        exceptions: [NotificationExceptionConfig]? = nil,
+        actions: [NotificationActionConfig]
+    ) {
+        self.id = id
+        self.name = name
+        self.enabled = enabled
+        self.match = match
+        self.exceptions = exceptions
+        self.actions = actions
+    }
 
     public func notificationRule() throws -> NotificationRule {
         NotificationRule(
@@ -32,6 +49,9 @@ public struct AutomationRuleConfig: Codable {
             name: name,
             enabled: enabled ?? true,
             criteria: match.criteria(),
+            exceptions: (exceptions ?? []).map {
+                $0.exception()
+                },
             actions: try actions.map { try $0.action() }
         )
     }
@@ -61,6 +81,18 @@ public struct NotificationMatchConfig: Codable {
             bodyContains: bodyContains,
             anyTextContains: anyTextContains,
             caseSensitive: caseSensitive ?? false
+        )
+    }
+}
+
+public struct NotificationExceptionConfig: Codable {
+    public let field: NotificationExceptionField
+    public let contains: String
+
+    public func exception() -> NotificationException {
+        NotificationException(
+            field: field,
+            searchText: contains
         )
     }
 }

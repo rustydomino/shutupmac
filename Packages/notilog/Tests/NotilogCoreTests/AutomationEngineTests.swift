@@ -55,6 +55,84 @@ final class AutomationEngineTests: XCTestCase {
         XCTAssertTrue(matches.isEmpty)
     }
 
+    func testMatchingAnyExceptionPreventsRuleMatch() {
+        let event = sampleEvent(
+            type: .appeared,
+            app: "Microsoft Teams",
+            title: "Message from Alice",
+            body: "Here is the weekly update."
+        )
+
+        let rule = NotificationRule(
+            id: UUID(),
+            name: "Dismiss Teams messages",
+            criteria: NotificationMatchCriteria(
+                appEquals: "Microsoft Teams"
+            ),
+            exceptions: [
+                NotificationException(
+                    field: .title,
+                    searchText: "Mike"
+                ),
+                NotificationException(
+                    field: .title,
+                    searchText: "Alice"
+                )
+            ],
+            actions: [
+                .dryRunLog(
+                    message: "would dismiss Teams message"
+                )
+            ]
+        )
+
+        let engine = AutomationEngine(rules: [rule])
+        let matches = engine.evaluate(event)
+
+        XCTAssertTrue(matches.isEmpty)
+    }
+
+    func testRuleMatchesWhenNoExceptionMatches() {
+        let event = sampleEvent(
+            type: .appeared,
+            app: "Microsoft Teams",
+            title: "Message from Charlie",
+            body: "Here is the weekly update."
+        )
+
+        let rule = NotificationRule(
+            id: UUID(),
+            name: "Dismiss Teams messages",
+            criteria: NotificationMatchCriteria(
+                appEquals: "Microsoft Teams"
+            ),
+            exceptions: [
+                NotificationException(
+                    field: .title,
+                    searchText: "Mike"
+                ),
+                NotificationException(
+                    field: .title,
+                    searchText: "Alice"
+                )
+            ],
+            actions: [
+                .dryRunLog(
+                    message: "would dismiss Teams message"
+                )
+            ]
+        )
+
+        let engine = AutomationEngine(rules: [rule])
+        let matches = engine.evaluate(event)
+
+        XCTAssertEqual(matches.count, 1)
+        XCTAssertEqual(
+            matches[0].ruleName,
+            "Dismiss Teams messages"
+        )
+    }
+
     func testDisabledRuleDoesNotMatch() {
         let event = sampleEvent(
             type: .appeared,
