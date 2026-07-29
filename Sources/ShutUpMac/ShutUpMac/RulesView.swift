@@ -258,6 +258,34 @@ private struct RuleDetailView: View {
                     )
                 }
 
+                if let exceptions = rule.exceptions,
+                   !exceptions.isEmpty {
+
+                    GroupBox("Except when") {
+                        VStack(
+                            alignment: .leading,
+                            spacing: 10
+                        ) {
+                            ForEach(
+                                Array(exceptions.enumerated()),
+                                id: \.offset
+                            ) { _, exception in
+                                RulePropertyRow(
+                                    label: exceptionFieldName(
+                                        exception.field
+                                    ),
+                                    value:
+                                        "contains “\(exception.contains)”"
+                                )
+                            }
+                        }
+                        .frame(
+                            maxWidth: .infinity,
+                            alignment: .leading
+                        )
+                    }
+                }
+
                 GroupBox("Actions") {
                     VStack(
                         alignment: .leading,
@@ -300,6 +328,21 @@ private struct RuleDetailView: View {
             || rule.match.subtitleContains != nil
             || rule.match.bodyContains != nil
             || rule.match.anyTextContains != nil
+    }
+
+    private func exceptionFieldName(
+        _ field: NotificationExceptionField
+    ) -> String {
+        switch field {
+        case .title:
+            return "Title"
+
+        case .subtitle:
+            return "Subtitle"
+
+        case .body:
+            return "Body"
+        }
     }
 
     private func actionSummary(

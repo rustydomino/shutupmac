@@ -49,6 +49,107 @@ final class AutomationConfigTests: XCTestCase {
         XCTAssertTrue(rules[0].matches(event))
     }
 
+    func testDecodesRuleExceptions() throws {
+        let json = """
+        {
+          "rules": [
+            {
+              "id": "00000000-0000-0000-0000-000000000006",
+              "name": "Dismiss routine Teams messages",
+              "enabled": true,
+              "match": {
+                "eventTypes": ["appeared"],
+                "appEquals": "Microsoft Teams",
+                "caseSensitive": false
+              },
+              "exceptions": [
+                {
+                  "field": "title",
+                  "contains": "Mike"
+                },
+                {
+                  "field": "title",
+                  "contains": "Alice"
+                },
+                {
+                  "field": "body",
+                  "contains": "urgent"
+                }
+              ],
+              "actions": [
+                {
+                  "type": "shutupmac_dismiss"
+                }
+              ]
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let config = try JSONDecoder().decode(
+            AutomationConfig.self,
+            from: json
+        )
+
+        let rules = try config.notificationRules()
+        let rule = try XCTUnwrap(rules.first)
+
+        XCTAssertEqual(rule.exceptions.count, 3)
+
+        XCTAssertEqual(
+            rule.exceptions[0],
+            NotificationException(
+                field: .title,
+                searchText: "Mike"
+            )
+        )
+
+        XCTAssertEqual(
+            rule.exceptions[1],
+            NotificationException(
+                field: .title,
+                searchText: "Alice"
+            )
+        )
+
+        XCTAssertEqual(
+            rule.exceptions[2],
+            NotificationException(
+                field: .body,
+                searchText: "urgent"
+            )
+        )
+
+        XCTAssertFalse(
+            rule.matches(
+                sampleEvent(
+                    app: "Microsoft Teams",
+                    title: "Message from Alice"
+                )
+            )
+        )
+
+        XCTAssertFalse(
+            rule.matches(
+                sampleEvent(
+                    app: "Microsoft Teams",
+                    title: "Message from Charlie",
+                    body: "This is URGENT."
+                )
+            )
+        )
+
+        XCTAssertTrue(
+            rule.matches(
+                sampleEvent(
+                    app: "Microsoft Teams",
+                    title: "Message from Charlie",
+                    body: "Weekly update"
+                )
+            )
+        )
+    }
+
     func testDisabledRuleConfigDoesNotMatch() throws {
         let json = """
         {
