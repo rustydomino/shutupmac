@@ -395,6 +395,84 @@ final class AutomationConfigTests: XCTestCase {
         XCTAssertEqual(config.rules[1].enabled, true)
     }
 
+    func testAddingRuleAppendsWithoutChangingOriginalConfiguration()
+        throws {
+        let existingID = UUID(
+            uuidString:
+                "00000000-0000-0000-0000-000000000301"
+        )!
+
+        let addedID = UUID(
+            uuidString:
+                "00000000-0000-0000-0000-000000000302"
+        )!
+
+        let json = """
+        {
+        "rules": [
+            {
+            "id": "\(existingID.uuidString)",
+            "name": "Existing rule",
+            "enabled": true,
+            "match": {
+                "eventTypes": ["appeared"],
+                "appEquals": "Mail"
+            },
+            "actions": [
+                {
+                "type": "shutupmac_dismiss"
+                }
+            ]
+            },
+            {
+            "id": "\(addedID.uuidString)",
+            "name": "Added rule",
+            "enabled": false,
+            "match": {
+                "eventTypes": ["appeared"],
+                "titleContains": "Newsletter"
+            },
+            "actions": [
+                {
+                "type": "shutupmac_dismiss"
+                }
+            ]
+            }
+        ]
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(
+            AutomationConfig.self,
+            from: json
+        )
+
+        let original = AutomationConfig(
+            rules: [decoded.rules[0]]
+        )
+
+        let updated = original.addingRule(
+            decoded.rules[1]
+        )
+
+        XCTAssertEqual(original.rules.count, 1)
+        XCTAssertEqual(original.rules[0].id, existingID)
+
+        XCTAssertEqual(updated.rules.count, 2)
+        XCTAssertEqual(updated.rules[0].id, existingID)
+        XCTAssertEqual(updated.rules[1].id, addedID)
+
+        XCTAssertEqual(
+            updated.rules[1].name,
+            "Added rule"
+        )
+        XCTAssertEqual(updated.rules[1].enabled, false)
+        XCTAssertEqual(
+            updated.rules[1].match.titleContains,
+            "Newsletter"
+        )
+    }
+
     func testDecodesExactTextMatchFields() throws {
         let ruleID = UUID(
             uuidString:

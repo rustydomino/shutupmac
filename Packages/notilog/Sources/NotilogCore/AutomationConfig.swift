@@ -2,34 +2,43 @@ import Foundation
 
 public struct AutomationConfig:
     Codable,
-    @unchecked Sendable {
+    @unchecked Sendable
+{
     public let rules: [AutomationRuleConfig]
 
     public init(rules: [AutomationRuleConfig] = []) {
         self.rules = rules
     }
 
-public func settingRuleEnabled(
-    id: UUID,
-    enabled: Bool
-) -> AutomationConfig {
-    AutomationConfig(
-        rules: rules.map { rule in
-            guard rule.id == id else {
-                return rule
-            }
+    public func settingRuleEnabled(
+        id: UUID,
+        enabled: Bool
+    ) -> AutomationConfig {
+        AutomationConfig(
+            rules: rules.map { rule in
+                guard rule.id == id else {
+                    return rule
+                }
 
-            return AutomationRuleConfig(
-                id: rule.id,
-                name: rule.name,
-                enabled: enabled,
-                match: rule.match,
-                exceptions: rule.exceptions,
-                actions: rule.actions
-            )
-        }
-    )
-}
+                return AutomationRuleConfig(
+                    id: rule.id,
+                    name: rule.name,
+                    enabled: enabled,
+                    match: rule.match,
+                    exceptions: rule.exceptions,
+                    actions: rule.actions
+                )
+            }
+        )
+    }
+
+    public func addingRule(
+        _ rule: AutomationRuleConfig
+    ) -> AutomationConfig {
+        AutomationConfig(
+            rules: rules + [rule]
+        )
+    }
 
     public static func load(from url: URL) throws -> AutomationConfig {
         let data = try Data(contentsOf: url)
@@ -66,15 +75,15 @@ public struct AutomationRuleConfig: Codable {
     }
 
     public func notificationRule() throws -> NotificationRule {
-        NotificationRule(
+        try NotificationRule(
             id: id,
             name: name,
             enabled: enabled ?? true,
             criteria: match.criteria(),
             exceptions: (exceptions ?? []).map {
                 $0.exception()
-                },
-            actions: try actions.map { try $0.action() }
+            },
+            actions: actions.map { try $0.action() }
         )
     }
 }
@@ -144,7 +153,6 @@ public struct NotificationMatchConfig: Codable {
             caseSensitive: caseSensitive ?? false
         )
     }
-
 }
 
 public struct NotificationExceptionConfig: Codable {
@@ -164,6 +172,18 @@ public struct NotificationActionConfig: Codable {
     public let message: String?
     public let command: String?
     public let arguments: [String]?
+
+    public init(
+        type: String,
+        message: String? = nil,
+        command: String? = nil,
+        arguments: [String]? = nil
+    ) {
+        self.type = type
+        self.message = message
+        self.command = command
+        self.arguments = arguments
+    }
 
     public func action() throws -> NotificationAction {
         switch type {
@@ -202,7 +222,7 @@ public enum AutomationConfigError: Error, Equatable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .unknownActionType(let type):
+        case let .unknownActionType(type):
             return "Unknown action type: \(type)"
 
         case .missingExecCommand:

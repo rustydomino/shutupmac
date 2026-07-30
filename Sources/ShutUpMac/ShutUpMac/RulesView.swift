@@ -100,7 +100,17 @@ struct RulesView: View {
             }
         }
         .sheet(isPresented: $isPresentingRuleEditor) {
-            RuleEditorPlaceholderView()
+            RuleEditorView { rule in
+                guard let configuration =
+                        store.configuration else {
+                    return
+                }
+
+                let candidate = configuration.addingRule(rule)
+
+                saveAutomationConfiguration(candidate)
+                selectedRuleID = rule.id
+            }
         }
 
     }
@@ -224,20 +234,219 @@ struct RulesView: View {
     }
 }
 
-private struct RuleEditorPlaceholderView: View {
+private enum TextMatchOperator:
+    String,
+    CaseIterable,
+    Identifiable {
+    case equals
+    case contains
+
+    var id: Self {
+        self
+    }
+
+    var label: String {
+        switch self {
+        case .equals:
+            return "is exactly"
+
+        case .contains:
+            return "contains"
+        }
+    }
+}
+
+private struct RuleEditorView: View {
     @Environment(\.dismiss)
     private var dismiss
 
-    var body: some View {
-        VStack(spacing: 20) {
-            Text("Add Rule")
-                .font(.title2)
-                .fontWeight(.semibold)
+    let onAdd: (AutomationRuleConfig) -> Void
 
-            Text(
-                "The rule editor form will be added next."
-            )
-            .foregroundStyle(.secondary)
+    @State private var name = ""
+    @State private var isEnabled = true
+
+    @State private var app = ""
+
+    @State private var titleOperator:
+        TextMatchOperator = .contains
+
+    @State private var title = ""
+
+    @State private var subtitleOperator:
+        TextMatchOperator = .contains
+
+    @State private var subtitle = ""
+
+    @State private var bodyOperator:
+        TextMatchOperator = .contains
+
+    @State private var bodyText = ""
+
+    @State private var isCaseSensitive = false
+
+    private var trimmedName: String {
+        trimmed(name)
+    }
+
+    private var hasMatchCondition: Bool {
+        [
+            app,
+            title,
+            subtitle,
+            bodyText
+        ]
+        .contains { !trimmed($0).isEmpty }
+    }
+
+    private var canAddRule: Bool {
+        !trimmedName.isEmpty && hasMatchCondition
+    }
+
+    private var candidateRule: AutomationRuleConfig {
+        AutomationRuleConfig(
+            id: UUID(),
+            name: trimmedName,
+            enabled: isEnabled,
+            match: NotificationMatchConfig(
+                eventTypes: [.appeared],
+                appEquals: optionalText(app),
+                titleEquals:
+                    titleOperator == .equals
+                    ? optionalText(title)
+                    : nil,
+                titleContains:
+                    titleOperator == .contains
+                    ? optionalText(title)
+                    : nil,
+                subtitleEquals:
+                    subtitleOperator == .equals
+                    ? optionalText(subtitle)
+                    : nil,
+                subtitleContains:
+                    subtitleOperator == .contains
+                    ? optionalText(subtitle)
+                    : nil,
+                bodyEquals:
+                    bodyOperator == .equals
+                    ? optionalText(bodyText)
+                    : nil,
+                bodyContains:
+                    bodyOperator == .contains
+                    ? optionalText(bodyText)
+                    : nil,
+                caseSensitive: isCaseSensitive
+            ),
+            actions: [
+                NotificationActionConfig(
+                    type: "shutupmac_dismiss"
+                )
+            ]
+        )
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Form {
+                Section("Rule") {
+                    TextField(
+                        "Name",
+                        text: $name,
+                        prompt: Text("Rule name")
+                    )
+
+                    Toggle(
+                        "Enabled",
+                        isOn: $isEnabled
+                    )
+                }
+
+                Section("Matches") {
+                    LabeledContent("App") {
+                        TextField(
+                            "App",
+                            text: $app,
+                            prompt: Text(
+                                "Exact app name"
+                            )
+                        )
+                    }
+
+                    LabeledContent("Title") {
+                        HStack {
+                            operatorPicker(
+                                selection:
+                                    $titleOperator,
+                                accessibilityLabel:
+                                    "Title match operator"
+                            )
+
+                            TextField(
+                                "Title",
+                                text: $title,
+                                prompt: Text(
+                                    "Title text"
+                                )
+                            )
+                        }
+                    }
+
+                    LabeledContent("Subtitle") {
+                        HStack {
+                            operatorPicker(
+                                selection:
+                                    $subtitleOperator,
+                                accessibilityLabel:
+                                    "Subtitle match operator"
+                            )
+
+                            TextField(
+                                "Subtitle",
+                                text: $subtitle,
+                                prompt: Text(
+                                    "Subtitle text"
+                                )
+                            )
+                        }
+                    }
+
+                    LabeledContent("Body") {
+                        HStack {
+                            operatorPicker(
+                                selection:
+                                    $bodyOperator,
+                                accessibilityLabel:
+                                    "Body match operator"
+                            )
+
+                            TextField(
+                                "Body",
+                                text: $bodyText,
+                                prompt: Text(
+                                    "Body text"
+                                )
+                            )
+                        }
+                    }
+
+                    Toggle(
+                        "Case-sensitive matching",
+                        isOn: $isCaseSensitive
+                    )
+                    .toggleStyle(.checkbox)
+                }
+
+                Section {
+                    Text(
+                        "App names are matched exactly. "
+                        + "Empty match fields are ignored."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .formStyle(.grouped)
+
+            Divider()
 
             HStack {
                 Spacer()
@@ -246,13 +455,57 @@ private struct RuleEditorPlaceholderView: View {
                     dismiss()
                 }
                 .keyboardShortcut(.cancelAction)
+
+                Button("Add") {
+                    onAdd(candidateRule)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canAddRule)
+            }
+            .padding()
+        }
+        .frame(
+            width: 620,
+            height: 520
+        )
+    }
+
+    private func optionalText(
+        _ value: String
+    ) -> String? {
+        let value = trimmed(value)
+
+        return value.isEmpty
+            ? nil
+            : value
+    }
+
+    private func trimmed(
+        _ value: String
+    ) -> String {
+        value.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+    }
+
+    private func operatorPicker(
+        selection: Binding<TextMatchOperator>,
+        accessibilityLabel: String
+    ) -> some View {
+        Picker(
+            accessibilityLabel,
+            selection: selection
+        ) {
+            ForEach(
+                TextMatchOperator.allCases
+            ) { matchOperator in
+                Text(matchOperator.label)
+                    .tag(matchOperator)
             }
         }
-        .padding(24)
-        .frame(
-            width: 480,
-            height: 220
-        )
+        .labelsHidden()
+        .frame(width: 110)
     }
 }
 
