@@ -181,6 +181,14 @@ public struct NotificationExceptionConfig: Codable {
     public let field: NotificationExceptionField
     public let contains: String
 
+    public init(
+        field: NotificationExceptionField,
+        contains: String
+    ) {
+        self.field = field
+        self.contains = contains
+    }
+
     public func exception() -> NotificationException {
         NotificationException(
             field: field,

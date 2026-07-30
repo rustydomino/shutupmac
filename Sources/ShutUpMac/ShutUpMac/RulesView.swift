@@ -14,6 +14,9 @@ struct RulesView: View {
     @State private var ruleBeingEdited:
         AutomationRuleConfig?
 
+    @State private var rulePendingDeletion:
+        AutomationRuleConfig?   
+
     private var rules: [AutomationRuleConfig] {
         store.configuration?.rules ?? []
     }
@@ -112,6 +115,27 @@ struct RulesView: View {
                             .usesAdvancedConfiguration == true
                 )
 
+                Button(role: .destructive) {
+                    guard let selectedRule,
+                        !selectedRule
+                            .usesAdvancedConfiguration else {
+                        return
+                    }
+
+                    rulePendingDeletion = selectedRule
+                } label: {
+                    Label(
+                        "Delete Rule",
+                        systemImage: "trash"
+                    )
+                }
+                .help("Delete selected rule")
+                .disabled(
+                    selectedRule == nil
+                        || selectedRule?
+                            .usesAdvancedConfiguration == true
+                )
+
                 Button {
                     ruleBeingEdited = nil
                     isPresentingRuleEditor = true
@@ -155,6 +179,36 @@ struct RulesView: View {
             }
         }
 
+        .confirmationDialog(
+            "Delete Rule?",
+            isPresented: Binding(
+                get: {
+                    rulePendingDeletion != nil
+                },
+                set: { isPresented in
+                    if !isPresented {
+                        rulePendingDeletion = nil
+                    }
+                }
+            ),
+            titleVisibility: .visible,
+            presenting: rulePendingDeletion
+        ) { rule in
+            Button(
+                "Delete “\(rule.name)”",
+                role: .destructive
+            ) {
+                deleteRule(rule)
+                rulePendingDeletion = nil
+            }
+
+            Button("Cancel", role: .cancel) {
+                rulePendingDeletion = nil
+            }
+        } message: { _ in
+            Text("This action cannot be undone.")
+        }
+
     }
 
     private func repairSelection() {
@@ -183,6 +237,22 @@ struct RulesView: View {
             enabled: !rule.isEnabled
         )
 
+        saveAutomationConfiguration(candidate)
+    }
+
+    private func deleteRule(
+        _ rule: AutomationRuleConfig
+    ) {
+        guard !rule.usesAdvancedConfiguration,
+            let configuration = store.configuration else {
+            return
+        }
+
+        let candidate = configuration.removingRule(
+            id: rule.id
+        )
+
+        selectedRuleID = nil
         saveAutomationConfiguration(candidate)
     }
 
@@ -304,6 +374,9 @@ private struct RuleEditorView: View {
 
     private let ruleID: UUID
     private let isEditing: Bool
+    private let existingExceptions:
+        [NotificationExceptionConfig]?
+
     let onSave: (AutomationRuleConfig) -> Void
 
     @State private var name: String
@@ -337,6 +410,8 @@ private struct RuleEditorView: View {
         ruleID = rule?.id ?? UUID()
         isEditing = rule != nil
         self.onSave = onSave
+
+        existingExceptions = rule?.exceptions
 
         let titleMatch = Self.editorMatch(
             equals: rule?.match.titleEquals,
@@ -448,6 +523,22 @@ private struct RuleEditorView: View {
                     : nil,
                 caseSensitive: isCaseSensitive
             ),
+            private var candidateRule: AutomationRuleConfig {
+                AutomationRuleConfig(
+                    id: ruleID,
+                    name: trimmedName,
+                    enabled: isEnabled,
+                    match: NotificationMatchConfig(
+                        // existing match construction
+                    ),
+                    exceptions: existingExceptions,
+                    actions: [
+                        NotificationActionConfig(
+                            type: "shutupmac_dismiss"
+                        )
+                    ]
+                )
+            }
             actions: [
                 NotificationActionConfig(
                     type: "shutupmac_dismiss"
