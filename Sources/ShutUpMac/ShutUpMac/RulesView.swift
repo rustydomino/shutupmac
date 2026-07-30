@@ -5,6 +5,9 @@ struct RulesView: View {
     @ObservedObject
     var store: AutomationConfigurationStore
 
+    let saveAutomationConfiguration:
+        (AutomationConfig) -> Void
+
     @State private var selectedRuleID: UUID?
 
     private var rules: [AutomationRuleConfig] {
@@ -96,26 +99,71 @@ struct RulesView: View {
         selectedRuleID = rules.first?.id
     }
 
+    private func toggleRuleEnabled(
+        _ rule: AutomationRuleConfig
+    ) {
+        guard !rule.usesAdvancedConfiguration,
+            let configuration = store.configuration else {
+            return
+        }
+
+        let candidate = configuration.settingRuleEnabled(
+            id: rule.id,
+            enabled: !rule.isEnabled
+        )
+
+        saveAutomationConfiguration(candidate)
+    }
+
     private var ruleList: some View {
         List(selection: $selectedRuleID) {
             ForEach(rules, id: \.id) { rule in
                 HStack(spacing: 8) {
-                    Image(
-                        systemName:
+                    if rule.usesAdvancedConfiguration {
+                        Image(
+                            systemName:
+                                rule.isEnabled
+                                ? "checkmark.circle.fill"
+                                : "circle"
+                        )
+                        .foregroundStyle(
                             rule.isEnabled
-                            ? "checkmark.circle.fill"
-                            : "circle"
-                    )
-                    .foregroundStyle(
-                        rule.isEnabled
-                        ? .primary
-                        : .secondary
-                    )
-                    .accessibilityLabel(
-                        rule.isEnabled
-                        ? "Enabled"
-                        : "Disabled"
-                    )
+                            ? .primary
+                            : .secondary
+                        )
+                        .accessibilityLabel(
+                            rule.isEnabled
+                            ? "Enabled"
+                            : "Disabled"
+                        )
+                    } else {
+                        Button {
+                            toggleRuleEnabled(rule)
+                        } label: {
+                            Image(
+                                systemName:
+                                    rule.isEnabled
+                                    ? "checkmark.circle.fill"
+                                    : "circle"
+                            )
+                            .foregroundStyle(
+                                rule.isEnabled
+                                    ? .primary
+                                    : .secondary
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .help(
+                            rule.isEnabled
+                                ? "Disable rule"
+                                : "Enable rule"
+                        )
+                        .accessibilityLabel(
+                            rule.isEnabled
+                                ? "Disable rule"
+                                : "Enable rule"
+                        )
+                    }
 
                     Text(rule.name)
                         .lineLimit(1)

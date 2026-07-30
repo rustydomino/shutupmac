@@ -35,9 +35,16 @@ struct ShutUpMacApp: App {
         Window("ShutUpMac Rules", id: "rules") {
             RulesView(
                 store: applicationDelegate
-                    .automationConfigurationStore
+                    .automationConfigurationStore,
+
+                saveAutomationConfiguration: { candidate in
+                    applicationDelegate
+                        .saveAutomationConfiguration(
+                            candidate
+                        )
+                }
             )
-        }
+        }        
         .defaultSize(width: 760, height: 500)
 
         Window("ShutUpMac Settings", id: "settings") {

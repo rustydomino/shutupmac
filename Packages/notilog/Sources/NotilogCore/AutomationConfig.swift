@@ -9,6 +9,28 @@ public struct AutomationConfig:
         self.rules = rules
     }
 
+public func settingRuleEnabled(
+    id: UUID,
+    enabled: Bool
+) -> AutomationConfig {
+    AutomationConfig(
+        rules: rules.map { rule in
+            guard rule.id == id else {
+                return rule
+            }
+
+            return AutomationRuleConfig(
+                id: rule.id,
+                name: rule.name,
+                enabled: enabled,
+                match: rule.match,
+                exceptions: rule.exceptions,
+                actions: rule.actions
+            )
+        }
+    )
+}
+
     public static func load(from url: URL) throws -> AutomationConfig {
         let data = try Data(contentsOf: url)
         return try JSONDecoder().decode(AutomationConfig.self, from: data)

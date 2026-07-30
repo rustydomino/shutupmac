@@ -291,6 +291,110 @@ final class AutomationConfigTests: XCTestCase {
         )
     }
 
+    func testSettingRuleEnabledPreservesRuleConfigurationAndOrder()
+        throws {
+        let firstID = UUID(
+            uuidString:
+                "00000000-0000-0000-0000-000000000101"
+        )!
+
+        let targetID = UUID(
+            uuidString:
+                "00000000-0000-0000-0000-000000000102"
+        )!
+
+        let json = """
+        {
+        "rules": [
+            {
+            "id": "\(firstID.uuidString)",
+            "name": "First rule",
+            "enabled": true,
+            "match": {
+                "eventTypes": ["appeared"]
+            },
+            "actions": [
+                {
+                "type": "shutupmac_dismiss"
+                }
+            ]
+            },
+            {
+            "id": "\(targetID.uuidString)",
+            "name": "Target rule",
+            "enabled": true,
+            "match": {
+                "eventTypes": ["appeared"],
+                "appContains": "Mail",
+                "titleContains": "Newsletter",
+                "bodyContains": "unsubscribe",
+                "caseSensitive": true
+            },
+            "exceptions": [
+                {
+                "field": "title",
+                "contains": "Important"
+                }
+            ],
+            "actions": [
+                {
+                "type": "shutupmac_dismiss"
+                }
+            ]
+            }
+        ]
+        }
+        """.data(using: .utf8)!
+
+        let config = try JSONDecoder().decode(
+            AutomationConfig.self,
+            from: json
+        )
+
+        let updated = config.settingRuleEnabled(
+            id: targetID,
+            enabled: false
+        )
+
+        XCTAssertEqual(updated.rules.count, 2)
+        XCTAssertEqual(updated.rules[0].id, firstID)
+        XCTAssertEqual(updated.rules[1].id, targetID)
+
+        XCTAssertEqual(updated.rules[0].enabled, true)
+
+        let rule = updated.rules[1]
+
+        XCTAssertEqual(rule.name, "Target rule")
+        XCTAssertEqual(rule.enabled, false)
+
+        XCTAssertEqual(rule.match.eventTypes, [.appeared])
+        XCTAssertEqual(rule.match.appContains, "Mail")
+        XCTAssertEqual(
+            rule.match.titleContains,
+            "Newsletter"
+        )
+        XCTAssertEqual(
+            rule.match.bodyContains,
+            "unsubscribe"
+        )
+        XCTAssertEqual(rule.match.caseSensitive, true)
+
+        let exception = try XCTUnwrap(
+            rule.exceptions?.first
+        )
+
+        XCTAssertEqual(exception.field, .title)
+        XCTAssertEqual(exception.contains, "Important")
+
+        XCTAssertEqual(rule.actions.count, 1)
+        XCTAssertEqual(
+            rule.actions[0].type,
+            "shutupmac_dismiss"
+        )
+
+        XCTAssertEqual(config.rules[1].enabled, true)
+    }
+
     private func sampleEvent(
         type: NotificationEventType = .appeared,
         key: String = "AXNotificationCenterAlert|test-id",
