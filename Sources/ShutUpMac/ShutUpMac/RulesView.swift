@@ -190,6 +190,25 @@ private struct RuleDetailView: View {
                     )
                 }
 
+                if rule.usesAdvancedEventMatching {
+                    AdvancedRuleNotice(
+                        title: "Advanced matching",
+                        message:
+                            "This rule matches on events other than "
+                            + "notification appearance, which are not "
+                            + "supported by the Rules Editor."
+                    )
+                }
+
+                if rule.usesAdvancedActions {
+                    AdvancedRuleNotice(
+                        title: "Advanced actions",
+                        message:
+                            "This rule uses advanced actions that "
+                            + "are not supported by the Rules Editor."
+                    )
+                }               
+
                 GroupBox("Matches") {
                     VStack(
                         alignment: .leading,
@@ -286,29 +305,30 @@ private struct RuleDetailView: View {
                     }
                 }
 
-                GroupBox("Actions") {
-                    VStack(
-                        alignment: .leading,
-                        spacing: 10
-                    ) {
-                        ForEach(
-                            Array(rule.actions.enumerated()),
-                            id: \.offset
-                        ) { _, action in
-                            Label(
-                                actionSummary(action),
-                                systemImage:
-                                    actionSystemImage(action)
-                            )
-                            .textSelection(.enabled)
+                if rule.usesAdvancedActions {
+                    GroupBox("Advanced actions") {
+                        VStack(
+                            alignment: .leading,
+                            spacing: 10
+                        ) {
+                            ForEach(
+                                Array(rule.actions.enumerated()),
+                                id: \.offset
+                            ) { _, action in
+                                Label(
+                                    actionSummary(action),
+                                    systemImage:
+                                        actionSystemImage(action)
+                                )
+                                .textSelection(.enabled)
+                            }
                         }
+                        .frame(
+                            maxWidth: .infinity,
+                            alignment: .leading
+                        )
                     }
-                    .frame(
-                        maxWidth: .infinity,
-                        alignment: .leading
-                    )
                 }
-
                 Spacer()
             }
             .padding(20)
@@ -391,6 +411,39 @@ private struct RuleDetailView: View {
     }
 }
 
+private struct AdvancedRuleNotice: View {
+    let title: String
+    let message: String
+
+    var body: some View {
+        GroupBox(title) {
+            HStack(
+                alignment: .top,
+                spacing: 10
+            ) {
+                Image(
+                    systemName:
+                        "exclamationmark.triangle.fill"
+                )
+                .foregroundStyle(.orange)
+
+                Text(message)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
+
+                Spacer()
+            }
+            .frame(
+                maxWidth: .infinity,
+                alignment: .leading
+            )
+        }
+    }
+}
+
 private struct RulePropertyRow: View {
     let label: String
     let value: String
@@ -411,9 +464,37 @@ private struct RulePropertyRow: View {
         }
     }
 }
-
 private extension AutomationRuleConfig {
     var isEnabled: Bool {
         enabled ?? true
+    }
+
+    var usesAdvancedConfiguration: Bool {
+        usesAdvancedEventMatching
+            || usesAdvancedActions
+    }
+
+    var usesAdvancedEventMatching: Bool {
+        guard let eventTypes = match.eventTypes else {
+            return false
+        }
+
+        return eventTypes.count != 1
+            || eventTypes.first != .appeared
+    }
+
+    var usesAdvancedActions: Bool {
+        guard actions.count == 1,
+              let action = actions.first else {
+            return true
+        }
+
+        guard action.type == "shutupmac_dismiss" else {
+            return true
+        }
+
+        return action.command != nil
+            || action.message != nil
+            || !(action.arguments ?? []).isEmpty
     }
 }
