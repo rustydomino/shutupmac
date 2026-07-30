@@ -40,6 +40,28 @@ public struct AutomationConfig:
         )
     }
 
+    public func replacingRule(
+        _ replacement: AutomationRuleConfig
+    ) -> AutomationConfig {
+        AutomationConfig(
+            rules: rules.map { rule in
+                rule.id == replacement.id
+                    ? replacement
+                    : rule
+            }
+        )
+    }
+
+    public func removingRule(
+        id: UUID
+    ) -> AutomationConfig {
+        AutomationConfig(
+            rules: rules.filter { rule in
+                rule.id != id
+            }
+        )
+    }
+
     public static func load(from url: URL) throws -> AutomationConfig {
         let data = try Data(contentsOf: url)
         return try JSONDecoder().decode(AutomationConfig.self, from: data)

@@ -11,6 +11,9 @@ struct RulesView: View {
     @State private var selectedRuleID: UUID?
     @State private var isPresentingRuleEditor = false
 
+    @State private var ruleBeingEdited:
+        AutomationRuleConfig?
+
     private var rules: [AutomationRuleConfig] {
         store.configuration?.rules ?? []
     }
@@ -86,8 +89,31 @@ struct RulesView: View {
         }
 
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
                 Button {
+                    guard let selectedRule,
+                        !selectedRule
+                            .usesAdvancedConfiguration else {
+                        return
+                    }
+
+                    ruleBeingEdited = selectedRule
+                    isPresentingRuleEditor = true
+                } label: {
+                    Label(
+                        "Edit Rule",
+                        systemImage: "pencil"
+                    )
+                }
+                .help("Edit selected rule")
+                .disabled(
+                    selectedRule == nil
+                        || selectedRule?
+                            .usesAdvancedConfiguration == true
+                )
+
+                Button {
+                    ruleBeingEdited = nil
                     isPresentingRuleEditor = true
                 } label: {
                     Label(
@@ -97,16 +123,32 @@ struct RulesView: View {
                 }
                 .help("Add rule")
                 .disabled(store.configuration == nil)
+                    }
+                }
+
+        .sheet(
+            isPresented: $isPresentingRuleEditor,
+            onDismiss: {
+                ruleBeingEdited = nil
             }
-        }
-        .sheet(isPresented: $isPresentingRuleEditor) {
-            RuleEditorView { rule in
+        ) {
+            RuleEditorView(
+                rule: ruleBeingEdited
+            ) { rule in
                 guard let configuration =
                         store.configuration else {
                     return
                 }
 
-                let candidate = configuration.addingRule(rule)
+                let candidate: AutomationConfig
+
+                if ruleBeingEdited == nil {
+                    candidate =
+                        configuration.addingRule(rule)
+                } else {
+                    candidate =
+                        configuration.replacingRule(rule)
+                }
 
                 saveAutomationConfiguration(candidate)
                 selectedRuleID = rule.id
@@ -260,29 +302,99 @@ private struct RuleEditorView: View {
     @Environment(\.dismiss)
     private var dismiss
 
-    let onAdd: (AutomationRuleConfig) -> Void
+    private let ruleID: UUID
+    private let isEditing: Bool
+    let onSave: (AutomationRuleConfig) -> Void
 
-    @State private var name = ""
-    @State private var isEnabled = true
+    @State private var name: String
+    @State private var isEnabled: Bool
 
-    @State private var app = ""
+    @State private var app: String
 
     @State private var titleOperator:
-        TextMatchOperator = .contains
+        TextMatchOperator
 
-    @State private var title = ""
+    @State private var title: String
 
     @State private var subtitleOperator:
-        TextMatchOperator = .contains
+        TextMatchOperator
 
-    @State private var subtitle = ""
+    @State private var subtitle: String
 
     @State private var bodyOperator:
-        TextMatchOperator = .contains
+        TextMatchOperator
 
-    @State private var bodyText = ""
+    @State private var bodyText: String
 
-    @State private var isCaseSensitive = false
+    @State private var isCaseSensitive: Bool
+
+    init(
+        rule: AutomationRuleConfig? = nil,
+        onSave: @escaping (
+            AutomationRuleConfig
+        ) -> Void
+    ) {
+        ruleID = rule?.id ?? UUID()
+        isEditing = rule != nil
+        self.onSave = onSave
+
+        let titleMatch = Self.editorMatch(
+            equals: rule?.match.titleEquals,
+            contains: rule?.match.titleContains
+        )
+
+        let subtitleMatch = Self.editorMatch(
+            equals: rule?.match.subtitleEquals,
+            contains: rule?.match.subtitleContains
+        )
+
+        let bodyMatch = Self.editorMatch(
+            equals: rule?.match.bodyEquals,
+            contains: rule?.match.bodyContains
+        )
+
+        _name = State(
+            initialValue: rule?.name ?? ""
+        )
+
+        _isEnabled = State(
+            initialValue: rule?.enabled ?? true
+        )
+
+        _app = State(
+            initialValue:
+                rule?.match.appEquals ?? ""
+        )
+
+        _titleOperator = State(
+            initialValue: titleMatch.operator
+        )
+
+        _title = State(
+            initialValue: titleMatch.text
+        )
+
+        _subtitleOperator = State(
+            initialValue: subtitleMatch.operator
+        )
+
+        _subtitle = State(
+            initialValue: subtitleMatch.text
+        )
+
+        _bodyOperator = State(
+            initialValue: bodyMatch.operator
+        )
+
+        _bodyText = State(
+            initialValue: bodyMatch.text
+        )
+
+        _isCaseSensitive = State(
+            initialValue:
+                rule?.match.caseSensitive ?? false
+        )
+    }
 
     private var trimmedName: String {
         trimmed(name)
@@ -304,7 +416,7 @@ private struct RuleEditorView: View {
 
     private var candidateRule: AutomationRuleConfig {
         AutomationRuleConfig(
-            id: UUID(),
+            id: ruleID,
             name: trimmedName,
             enabled: isEnabled,
             match: NotificationMatchConfig(
@@ -456,8 +568,8 @@ private struct RuleEditorView: View {
                 }
                 .keyboardShortcut(.cancelAction)
 
-                Button("Add") {
-                    onAdd(candidateRule)
+                Button(isEditing ? "Save" : "Add") {
+                    onSave(candidateRule)
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -468,6 +580,26 @@ private struct RuleEditorView: View {
         .frame(
             width: 620,
             height: 520
+        )
+    }
+
+    private static func editorMatch(
+        equals: String?,
+        contains: String?
+    ) -> (
+        operator: TextMatchOperator,
+        text: String
+    ) {
+        if let equals {
+            return (
+                operator: .equals,
+                text: equals
+            )
+        }
+
+        return (
+            operator: .contains,
+            text: contains ?? ""
         )
     }
 

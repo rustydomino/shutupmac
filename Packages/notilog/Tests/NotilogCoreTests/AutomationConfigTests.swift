@@ -395,6 +395,104 @@ final class AutomationConfigTests: XCTestCase {
         XCTAssertEqual(config.rules[1].enabled, true)
     }
 
+    func testReplacingRulePreservesOrderAndOriginalConfiguration() {
+        let firstID = UUID(
+            uuidString:
+                "00000000-0000-0000-0000-000000000401"
+        )!
+
+        let targetID = UUID(
+            uuidString:
+                "00000000-0000-0000-0000-000000000402"
+        )!
+
+        let firstRule = AutomationRuleConfig(
+            id: firstID,
+            name: "First rule",
+            enabled: true,
+            match: NotificationMatchConfig(
+                eventTypes: [.appeared],
+                appEquals: "Mail"
+            ),
+            actions: [
+                NotificationActionConfig(
+                    type: "shutupmac_dismiss"
+                )
+            ]
+        )
+
+        let originalTarget = AutomationRuleConfig(
+            id: targetID,
+            name: "Original target",
+            enabled: true,
+            match: NotificationMatchConfig(
+                eventTypes: [.appeared],
+                titleContains: "Newsletter"
+            ),
+            actions: [
+                NotificationActionConfig(
+                    type: "shutupmac_dismiss"
+                )
+            ]
+        )
+
+        let replacement = AutomationRuleConfig(
+            id: targetID,
+            name: "Edited target",
+            enabled: false,
+            match: NotificationMatchConfig(
+                eventTypes: [.appeared],
+                titleEquals: "Important message",
+                caseSensitive: true
+            ),
+            actions: [
+                NotificationActionConfig(
+                    type: "shutupmac_dismiss"
+                )
+            ]
+        )
+
+        let original = AutomationConfig(
+            rules: [
+                firstRule,
+                originalTarget
+            ]
+        )
+
+        let updated = original.replacingRule(
+            replacement
+        )
+
+        XCTAssertEqual(updated.rules.count, 2)
+
+        XCTAssertEqual(updated.rules[0].id, firstID)
+        XCTAssertEqual(updated.rules[1].id, targetID)
+
+        XCTAssertEqual(
+            updated.rules[1].name,
+            "Edited target"
+        )
+        XCTAssertEqual(updated.rules[1].enabled, false)
+        XCTAssertEqual(
+            updated.rules[1].match.titleEquals,
+            "Important message"
+        )
+        XCTAssertTrue(
+            updated.rules[1].match.caseSensitive
+                ?? false
+        )
+
+        XCTAssertEqual(
+            original.rules[1].name,
+            "Original target"
+        )
+        XCTAssertEqual(original.rules[1].enabled, true)
+        XCTAssertEqual(
+            original.rules[1].match.titleContains,
+            "Newsletter"
+        )
+    }
+
     func testAddingRuleAppendsWithoutChangingOriginalConfiguration()
         throws {
         let existingID = UUID(
