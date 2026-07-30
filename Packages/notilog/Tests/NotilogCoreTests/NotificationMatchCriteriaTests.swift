@@ -32,6 +32,54 @@ final class NotificationMatchCriteriaTests: XCTestCase {
         XCTAssertTrue(criteria.matches(notification))
     }
 
+    func testMatchesTitleEqualsIgnoringCaseByDefault() {
+        let notification = sampleNotification(
+            title: "Build Failed"
+        )
+
+        let criteria = NotificationMatchCriteria(
+            titleEquals: "build failed"
+        )
+
+        XCTAssertTrue(criteria.matches(notification))
+    }
+
+    func testTitleEqualsDoesNotMatchPartialTitle() {
+        let notification = sampleNotification(
+            title: "Build Failed"
+        )
+
+        let criteria = NotificationMatchCriteria(
+            titleEquals: "Build"
+        )
+
+        XCTAssertFalse(criteria.matches(notification))
+    }
+
+    func testMatchesSubtitleEquals() {
+        let notification = sampleNotification(
+            subtitle: "Update Available"
+        )
+
+        let criteria = NotificationMatchCriteria(
+            subtitleEquals: "update available"
+        )
+
+        XCTAssertTrue(criteria.matches(notification))
+    }
+
+    func testMatchesBodyEquals() {
+        let notification = sampleNotification(
+            body: "Restart required."
+        )
+
+        let criteria = NotificationMatchCriteria(
+            bodyEquals: "restart required."
+        )
+
+        XCTAssertTrue(criteria.matches(notification))
+    }
+
     func testMatchesTitleContains() {
         let notification = sampleNotification(
             title: "Microsoft Teams (work or school)"

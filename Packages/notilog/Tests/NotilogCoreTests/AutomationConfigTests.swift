@@ -395,6 +395,74 @@ final class AutomationConfigTests: XCTestCase {
         XCTAssertEqual(config.rules[1].enabled, true)
     }
 
+    func testDecodesExactTextMatchFields() throws {
+        let ruleID = UUID(
+            uuidString:
+                "00000000-0000-0000-0000-000000000201"
+        )!
+
+        let json = """
+        {
+        "rules": [
+            {
+            "id": "\(ruleID.uuidString)",
+            "name": "Exact text matching",
+            "enabled": true,
+            "match": {
+                "eventTypes": ["appeared"],
+                "appEquals": "Mail",
+                "titleEquals": "Build Failed",
+                "subtitleEquals": "Project Name",
+                "bodyEquals": "Compilation stopped.",
+                "caseSensitive": true
+            },
+            "actions": [
+                {
+                "type": "shutupmac_dismiss"
+                }
+            ]
+            }
+        ]
+        }
+        """.data(using: .utf8)!
+
+        let config = try JSONDecoder().decode(
+            AutomationConfig.self,
+            from: json
+        )
+
+        let rule = try XCTUnwrap(config.rules.first)
+        let match = rule.match
+
+        XCTAssertEqual(match.appEquals, "Mail")
+        XCTAssertEqual(match.titleEquals, "Build Failed")
+        XCTAssertEqual(
+            match.subtitleEquals,
+            "Project Name"
+        )
+        XCTAssertEqual(
+            match.bodyEquals,
+            "Compilation stopped."
+        )
+
+        let criteria = match.criteria()
+
+        XCTAssertEqual(criteria.appEquals, "Mail")
+        XCTAssertEqual(
+            criteria.titleEquals,
+            "Build Failed"
+        )
+        XCTAssertEqual(
+            criteria.subtitleEquals,
+            "Project Name"
+        )
+        XCTAssertEqual(
+            criteria.bodyEquals,
+            "Compilation stopped."
+        )
+        XCTAssertTrue(criteria.caseSensitive)
+    }
+
     private func sampleEvent(
         type: NotificationEventType = .appeared,
         key: String = "AXNotificationCenterAlert|test-id",

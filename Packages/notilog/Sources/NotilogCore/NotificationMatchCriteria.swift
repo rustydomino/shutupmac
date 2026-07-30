@@ -6,8 +6,13 @@ public struct NotificationMatchCriteria {
     public var appEquals: String?
     public var appContains: String?
 
+    public var titleEquals: String?
     public var titleContains: String?
+
+    public var subtitleEquals: String?
     public var subtitleContains: String?
+
+    public var bodyEquals: String?
     public var bodyContains: String?
 
     public var anyTextContains: String?
@@ -18,8 +23,11 @@ public struct NotificationMatchCriteria {
         eventTypes: [NotificationEventType]? = nil,
         appEquals: String? = nil,
         appContains: String? = nil,
+        titleEquals: String? = nil,
         titleContains: String? = nil,
+        subtitleEquals: String? = nil,
         subtitleContains: String? = nil,
+        bodyEquals: String? = nil,
         bodyContains: String? = nil,
         anyTextContains: String? = nil,
         caseSensitive: Bool = false
@@ -27,9 +35,16 @@ public struct NotificationMatchCriteria {
         self.eventTypes = eventTypes
         self.appEquals = appEquals
         self.appContains = appContains
+        
+        self.titleEquals = titleEquals
         self.titleContains = titleContains
+
+        self.subtitleEquals = subtitleEquals
         self.subtitleContains = subtitleContains
+
+        self.bodyEquals = bodyEquals
         self.bodyContains = bodyContains
+
         self.anyTextContains = anyTextContains
         self.caseSensitive = caseSensitive
     }
@@ -51,11 +66,26 @@ public struct NotificationMatchCriteria {
             return false
         }
 
+        if let titleEquals,
+        !equals(notification.title, titleEquals) {
+            return false
+        }
+
         if let titleContains, !contains(notification.title, titleContains) {
             return false
         }
 
+        if let subtitleEquals,
+        !equals(notification.subtitle, subtitleEquals) {
+            return false
+        }
+
         if let subtitleContains, !contains(notification.subtitle, subtitleContains) {
+            return false
+        }
+
+        if let bodyEquals,
+        !equals(notification.body, bodyEquals) {
             return false
         }
 

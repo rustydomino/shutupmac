@@ -85,26 +85,66 @@ public struct NotificationMatchConfig: Codable {
     public let appEquals: String?
     public let appContains: String?
 
+    public let titleEquals: String?
     public let titleContains: String?
+
+    public let subtitleEquals: String?
     public let subtitleContains: String?
+
+    public let bodyEquals: String?
     public let bodyContains: String?
 
     public let anyTextContains: String?
 
     public let caseSensitive: Bool?
 
+    public init(
+        eventTypes: [NotificationEventType]? = nil,
+        appEquals: String? = nil,
+        appContains: String? = nil,
+        titleEquals: String? = nil,
+        titleContains: String? = nil,
+        subtitleEquals: String? = nil,
+        subtitleContains: String? = nil,
+        bodyEquals: String? = nil,
+        bodyContains: String? = nil,
+        anyTextContains: String? = nil,
+        caseSensitive: Bool? = nil
+    ) {
+        self.eventTypes = eventTypes
+
+        self.appEquals = appEquals
+        self.appContains = appContains
+
+        self.titleEquals = titleEquals
+        self.titleContains = titleContains
+
+        self.subtitleEquals = subtitleEquals
+        self.subtitleContains = subtitleContains
+
+        self.bodyEquals = bodyEquals
+        self.bodyContains = bodyContains
+
+        self.anyTextContains = anyTextContains
+        self.caseSensitive = caseSensitive
+    }
+
     public func criteria() -> NotificationMatchCriteria {
         NotificationMatchCriteria(
             eventTypes: eventTypes,
             appEquals: appEquals,
             appContains: appContains,
+            titleEquals: titleEquals,
             titleContains: titleContains,
+            subtitleEquals: subtitleEquals,
             subtitleContains: subtitleContains,
+            bodyEquals: bodyEquals,
             bodyContains: bodyContains,
             anyTextContains: anyTextContains,
             caseSensitive: caseSensitive ?? false
         )
     }
+
 }
 
 public struct NotificationExceptionConfig: Codable {

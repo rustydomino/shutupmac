@@ -9,6 +9,7 @@ struct RulesView: View {
         (AutomationConfig) -> Void
 
     @State private var selectedRuleID: UUID?
+    @State private var isPresentingRuleEditor = false
 
     private var rules: [AutomationRuleConfig] {
         store.configuration?.rules ?? []
@@ -82,6 +83,24 @@ struct RulesView: View {
         }
         .onChange(of: rules.map(\.id)) { _, _ in
             repairSelection()
+        }
+
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    isPresentingRuleEditor = true
+                } label: {
+                    Label(
+                        "Add Rule",
+                        systemImage: "plus"
+                    )
+                }
+                .help("Add rule")
+                .disabled(store.configuration == nil)
+            }
+        }
+        .sheet(isPresented: $isPresentingRuleEditor) {
+            RuleEditorPlaceholderView()
         }
 
     }
@@ -205,6 +224,38 @@ struct RulesView: View {
     }
 }
 
+private struct RuleEditorPlaceholderView: View {
+    @Environment(\.dismiss)
+    private var dismiss
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Add Rule")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            Text(
+                "The rule editor form will be added next."
+            )
+            .foregroundStyle(.secondary)
+
+            HStack {
+                Spacer()
+
+                Button("Cancel") {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+            }
+        }
+        .padding(24)
+        .frame(
+            width: 480,
+            height: 220
+        )
+    }
+}
+
 private struct RuleDetailView: View {
     let rule: AutomationRuleConfig
 
@@ -240,11 +291,21 @@ private struct RuleDetailView: View {
 
                 if rule.usesAdvancedEventMatching {
                     AdvancedRuleNotice(
-                        title: "Advanced matching",
+                        title: "Advanced event matching",
                         message:
                             "This rule matches on events other than "
                             + "notification appearance, which are not "
                             + "supported by the Rules Editor."
+                    )
+                }
+
+                if rule.usesAdvancedFieldMatching {
+                    AdvancedRuleNotice(
+                        title: "Advanced field matching",
+                        message:
+                            "This rule uses match fields or "
+                            + "operators that are not supported "
+                            + "by the Rules Editor."
                     )
                 }
 
@@ -276,6 +337,13 @@ private struct RuleDetailView: View {
                             )
                         }
 
+                        if let value = rule.match.titleEquals {
+                            RulePropertyRow(
+                                label: "Title",
+                                value: "is “\(value)”"
+                            )
+                        }
+
                         if let value = rule.match.titleContains {
                             RulePropertyRow(
                                 label: "Title",
@@ -283,10 +351,24 @@ private struct RuleDetailView: View {
                             )
                         }
 
+                        if let value = rule.match.subtitleEquals {
+                            RulePropertyRow(
+                                label: "Subtitle",
+                                value: "is “\(value)”"
+                            )
+                        }
+
                         if let value = rule.match.subtitleContains {
                             RulePropertyRow(
                                 label: "Subtitle",
                                 value: "contains “\(value)”"
+                            )
+                        }
+
+                        if let value = rule.match.bodyEquals {
+                            RulePropertyRow(
+                                label: "Body",
+                                value: "is “\(value)”"
                             )
                         }
 
@@ -392,8 +474,11 @@ private struct RuleDetailView: View {
         rule.match.eventTypes != nil
             || rule.match.appEquals != nil
             || rule.match.appContains != nil
+            || rule.match.titleEquals != nil
             || rule.match.titleContains != nil
+            || rule.match.subtitleEquals != nil
             || rule.match.subtitleContains != nil
+            || rule.match.bodyEquals != nil
             || rule.match.bodyContains != nil
             || rule.match.anyTextContains != nil
     }
@@ -519,16 +604,36 @@ private extension AutomationRuleConfig {
 
     var usesAdvancedConfiguration: Bool {
         usesAdvancedEventMatching
+            || usesAdvancedFieldMatching
             || usesAdvancedActions
     }
 
     var usesAdvancedEventMatching: Bool {
-        guard let eventTypes = match.eventTypes else {
-            return false
-        }
+        match.eventTypes != [.appeared]
+    }
 
-        return eventTypes.count != 1
-            || eventTypes.first != .appeared
+    var usesAdvancedFieldMatching: Bool {
+        match.appContains != nil
+            || match.anyTextContains != nil
+            || hasBothOperators(
+                equals: match.titleEquals,
+                contains: match.titleContains
+            )
+            || hasBothOperators(
+                equals: match.subtitleEquals,
+                contains: match.subtitleContains
+            )
+            || hasBothOperators(
+                equals: match.bodyEquals,
+                contains: match.bodyContains
+            )
+    }
+
+    private func hasBothOperators(
+        equals: String?,
+        contains: String?
+    ) -> Bool {
+        equals != nil && contains != nil
     }
 
     var usesAdvancedActions: Bool {
