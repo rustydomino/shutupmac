@@ -42,6 +42,9 @@ nonisolated final class NotilogMonitoringController:
     private let automationMode:
         AutomationExecutionMode
 
+    private let dismissalHandler:
+        NotificationDismissalHandler?
+
     private var loggingEnabled: Bool
     private var redactionPolicy: RedactionPolicy
 
@@ -69,6 +72,8 @@ nonisolated final class NotilogMonitoringController:
         redactionPolicy: RedactionPolicy = .disabled,
         automationMode:
             AutomationExecutionMode = .disabled,
+        dismissalHandler:
+            NotificationDismissalHandler? = nil,
         interval: TimeInterval = 1.0,
         onHistoricalRecords: @escaping
             @MainActor @Sendable (
@@ -83,6 +88,7 @@ nonisolated final class NotilogMonitoringController:
         self.loggingEnabled = loggingEnabled
         self.redactionPolicy = redactionPolicy
         self.automationMode = automationMode
+        self.dismissalHandler = dismissalHandler
         self.interval = interval
         self.onHistoricalRecords = onHistoricalRecords
         self.onActivityItems = onActivityItems
@@ -104,7 +110,9 @@ nonisolated final class NotilogMonitoringController:
                     redactionPolicy:
                         self.redactionPolicy,
                     automationMode:
-                        self.automationMode
+                        self.automationMode,
+                    dismissalHandler:
+                        self.dismissalHandler
                 )
 
                 do {

@@ -256,6 +256,76 @@ final class NotificationAutomationProcessorTests: XCTestCase {
         )
     }
 
+    func testMultipleMatchingDismissRulesInvokeInjectedHandlerOnce() {
+        let firstRule = matchingRule(
+            name: "First dismiss rule",
+            actions: [
+                .shutUpMacDismiss(
+                    command: "/usr/bin/false"
+                )
+            ]
+        )
+
+        let secondRule = matchingRule(
+            name: "Second dismiss rule",
+            actions: [
+                .shutUpMacDismiss(
+                    command: "/usr/bin/false"
+                )
+            ]
+        )
+
+        var receivedKeys: [String] = []
+
+        let runner = ActionRunner(
+            dismissalHandler: { key in
+                receivedKeys.append(key)
+
+                return NotificationDismissalResult(
+                    succeeded: true,
+                    message: "dismissed in process",
+                    exitCode: 0
+                )
+            }
+        )
+
+        let processor = NotificationAutomationProcessor(
+            engine: AutomationEngine(
+                rules: [
+                    firstRule,
+                    secondRule
+                ]
+            ),
+            runner: runner
+        )
+
+        let result = processor.processDetailed(
+            event: sampleEvent(
+                key: "alert-A"
+            ),
+            mode: .runActions
+        )
+
+        XCTAssertEqual(
+            result.matchedRules.map(\.ruleName),
+            [
+                "First dismiss rule",
+                "Second dismiss rule"
+            ]
+        )
+
+        XCTAssertEqual(receivedKeys, ["alert-A"])
+        XCTAssertEqual(result.actionResults.count, 1)
+        XCTAssertEqual(
+            result.actionResults[0].ruleName,
+            "First dismiss rule"
+        )
+        XCTAssertEqual(
+            result.actionResults[0].status,
+            .succeeded
+        )
+    }
+
     func testDisabledRulesDoNotProduceResults() {
         let disabledRule = NotificationRule(
             id: UUID(),

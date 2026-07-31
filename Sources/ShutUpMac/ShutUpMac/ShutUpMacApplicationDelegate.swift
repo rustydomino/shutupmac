@@ -25,6 +25,32 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
                 AppPreferences
                     .notilogRedactionPolicy,
             automationMode: .runActions,
+            dismissalHandler: { notificationKey in
+                guard let key = NotificationAXKey(
+                    rawValue: notificationKey
+                ) else {
+                    return NotificationDismissalResult(
+                        succeeded: false,
+                        message:
+                            "Invalid notification AX key: "
+                            + notificationKey,
+                        exitCode: 1
+                    )
+                }
+
+                let result =
+                    ShutUpMac
+                        .dismissVisibleNotificationResult(
+                            matching: key
+                        )
+
+                return NotificationDismissalResult(
+                    succeeded:
+                        result.succeeded && result.didClear,
+                    message: result.message,
+                    exitCode: result.exitCode
+                )
+            },
             onHistoricalRecords: { [weak self] records in                
                 self?.activityStore.loadHistoricalRecords(
                     records

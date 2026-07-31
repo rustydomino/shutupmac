@@ -286,6 +286,44 @@ func testRunExecCapturesStderr() {
         )
     }
 
+    func testRunShutUpMacDismissUsesInjectedHandler() {
+        let notificationKey = "AXNotificationCenterAlert|ABC-123"
+        var receivedNotificationKey: String?
+
+        let event = sampleEvent(key: notificationKey)
+
+        let match = AutomationMatch(
+            ruleName: "Dismiss notification",
+            action: .shutUpMacDismiss(
+                command: "/usr/bin/false"
+            ),
+            event: event
+        )
+
+        let runner = ActionRunner(
+            dismissalHandler: { key in
+                receivedNotificationKey = key
+
+                return NotificationDismissalResult(
+                    succeeded: true,
+                    message: "dismissed in process",
+                    exitCode: 0
+                )
+            }
+        )
+
+        let result = runner.run(match)
+
+        XCTAssertEqual(receivedNotificationKey, notificationKey)
+        XCTAssertEqual(result.status, .succeeded)
+        XCTAssertEqual(result.message, "dismissed in process")
+        XCTAssertEqual(result.exitCode, Int32(0))
+        XCTAssertEqual(
+            result.verificationStatus,
+            .probablySucceeded
+        )
+    }
+
     func testShutUpMacNoVisibleProgressAwaitsVerification() throws {
         let scriptURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(

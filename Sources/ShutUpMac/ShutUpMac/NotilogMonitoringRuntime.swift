@@ -34,6 +34,7 @@ nonisolated final class NotilogMonitoringRuntime {
         loggingEnabled: Bool = true,
         redactionPolicy: RedactionPolicy = .disabled,
         automationMode: AutomationExecutionMode = .disabled,
+        dismissalHandler: NotificationDismissalHandler? = nil,
         dismissalVerificationDelay: TimeInterval = 2.0
     ) throws {
         try runtimePaths.ensureDirectoriesExist()
@@ -71,8 +72,13 @@ nonisolated final class NotilogMonitoringRuntime {
             )
         }
 
+        let actionRunner = ActionRunner(
+            dismissalHandler: dismissalHandler
+        )
+
         let automationProcessor = NotificationAutomationProcessor(
-            engine: automationEngine
+            engine: automationEngine,
+            runner: actionRunner
         )
 
         let session = ObservationSession()
