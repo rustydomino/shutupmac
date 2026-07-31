@@ -24,6 +24,7 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
             redactionPolicy:
                 AppPreferences
                     .notilogRedactionPolicy,
+            automationMode: .runActions,
             onHistoricalRecords: { [weak self] records in                
                 self?.activityStore.loadHistoricalRecords(
                     records
