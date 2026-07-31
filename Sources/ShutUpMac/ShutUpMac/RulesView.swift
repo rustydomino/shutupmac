@@ -1,5 +1,5 @@
-import SwiftUI
 import NotilogCore
+import SwiftUI
 
 struct RulesView: View {
     @ObservedObject
@@ -15,7 +15,7 @@ struct RulesView: View {
         AutomationRuleConfig?
 
     @State private var rulePendingDeletion:
-        AutomationRuleConfig?   
+        AutomationRuleConfig?
 
     private var rules: [AutomationRuleConfig] {
         store.configuration?.rules ?? []
@@ -95,8 +95,9 @@ struct RulesView: View {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     guard let selectedRule,
-                        !selectedRule
-                            .usesAdvancedConfiguration else {
+                          !selectedRule
+                          .usesAdvancedConfiguration
+                    else {
                         return
                     }
 
@@ -112,13 +113,14 @@ struct RulesView: View {
                 .disabled(
                     selectedRule == nil
                         || selectedRule?
-                            .usesAdvancedConfiguration == true
+                        .usesAdvancedConfiguration == true
                 )
 
                 Button(role: .destructive) {
                     guard let selectedRule,
-                        !selectedRule
-                            .usesAdvancedConfiguration else {
+                          !selectedRule
+                          .usesAdvancedConfiguration
+                    else {
                         return
                     }
 
@@ -133,7 +135,7 @@ struct RulesView: View {
                 .disabled(
                     selectedRule == nil
                         || selectedRule?
-                            .usesAdvancedConfiguration == true
+                        .usesAdvancedConfiguration == true
                 )
 
                 Button {
@@ -147,8 +149,8 @@ struct RulesView: View {
                 }
                 .help("Add rule")
                 .disabled(store.configuration == nil)
-                    }
-                }
+            }
+        }
 
         .sheet(
             isPresented: $isPresentingRuleEditor,
@@ -160,7 +162,8 @@ struct RulesView: View {
                 rule: ruleBeingEdited
             ) { rule in
                 guard let configuration =
-                        store.configuration else {
+                    store.configuration
+                else {
                     return
                 }
 
@@ -208,7 +211,6 @@ struct RulesView: View {
         } message: { _ in
             Text("This action cannot be undone.")
         }
-
     }
 
     private func repairSelection() {
@@ -217,7 +219,8 @@ struct RulesView: View {
                where: { rule in
                    rule.id == selectedRuleID
                }
-           ) {
+           )
+        {
             return
         }
 
@@ -228,7 +231,8 @@ struct RulesView: View {
         _ rule: AutomationRuleConfig
     ) {
         guard !rule.usesAdvancedConfiguration,
-            let configuration = store.configuration else {
+              let configuration = store.configuration
+        else {
             return
         }
 
@@ -244,7 +248,8 @@ struct RulesView: View {
         _ rule: AutomationRuleConfig
     ) {
         guard !rule.usesAdvancedConfiguration,
-            let configuration = store.configuration else {
+              let configuration = store.configuration
+        else {
             return
         }
 
@@ -263,19 +268,19 @@ struct RulesView: View {
                     if rule.usesAdvancedConfiguration {
                         Image(
                             systemName:
-                                rule.isEnabled
+                            rule.isEnabled
                                 ? "checkmark.circle.fill"
                                 : "circle"
                         )
                         .foregroundStyle(
                             rule.isEnabled
-                            ? .primary
-                            : .secondary
+                                ? .primary
+                                : .secondary
                         )
                         .accessibilityLabel(
                             rule.isEnabled
-                            ? "Enabled"
-                            : "Disabled"
+                                ? "Enabled"
+                                : "Disabled"
                         )
                     } else {
                         Button {
@@ -283,7 +288,7 @@ struct RulesView: View {
                         } label: {
                             Image(
                                 systemName:
-                                    rule.isEnabled
+                                rule.isEnabled
                                     ? "checkmark.circle.fill"
                                     : "circle"
                             )
@@ -310,8 +315,8 @@ struct RulesView: View {
                         .lineLimit(1)
                         .foregroundStyle(
                             rule.isEnabled
-                            ? .primary
-                            : .secondary
+                                ? .primary
+                                : .secondary
                         )
 
                     Spacer()
@@ -349,7 +354,8 @@ struct RulesView: View {
 private enum TextMatchOperator:
     String,
     CaseIterable,
-    Identifiable {
+    Identifiable
+{
     case equals
     case contains
 
@@ -368,14 +374,30 @@ private enum TextMatchOperator:
     }
 }
 
+private struct RuleExceptionDraft:
+    Identifiable
+{
+    let id: UUID
+    var field: NotificationExceptionField
+    var text: String
+
+    init(
+        id: UUID = UUID(),
+        field: NotificationExceptionField,
+        text: String
+    ) {
+        self.id = id
+        self.field = field
+        self.text = text
+    }
+}
+
 private struct RuleEditorView: View {
     @Environment(\.dismiss)
     private var dismiss
 
     private let ruleID: UUID
     private let isEditing: Bool
-    private let existingExceptions:
-        [NotificationExceptionConfig]?
 
     let onSave: (AutomationRuleConfig) -> Void
 
@@ -401,6 +423,9 @@ private struct RuleEditorView: View {
 
     @State private var isCaseSensitive: Bool
 
+    @State private var exceptionDrafts:
+        [RuleExceptionDraft]
+
     init(
         rule: AutomationRuleConfig? = nil,
         onSave: @escaping (
@@ -410,8 +435,6 @@ private struct RuleEditorView: View {
         ruleID = rule?.id ?? UUID()
         isEditing = rule != nil
         self.onSave = onSave
-
-        existingExceptions = rule?.exceptions
 
         let titleMatch = Self.editorMatch(
             equals: rule?.match.titleEquals,
@@ -438,7 +461,7 @@ private struct RuleEditorView: View {
 
         _app = State(
             initialValue:
-                rule?.match.appEquals ?? ""
+            rule?.match.appEquals ?? ""
         )
 
         _titleOperator = State(
@@ -467,7 +490,17 @@ private struct RuleEditorView: View {
 
         _isCaseSensitive = State(
             initialValue:
-                rule?.match.caseSensitive ?? false
+            rule?.match.caseSensitive ?? false
+        )
+
+        _exceptionDrafts = State(
+            initialValue:
+            (rule?.exceptions ?? []).map {
+                RuleExceptionDraft(
+                    field: $0.field,
+                    text: $0.contains
+                )
+            }
         )
     }
 
@@ -480,13 +513,33 @@ private struct RuleEditorView: View {
             app,
             title,
             subtitle,
-            bodyText
+            bodyText,
         ]
         .contains { !trimmed($0).isEmpty }
     }
 
     private var canAddRule: Bool {
         !trimmedName.isEmpty && hasMatchCondition
+    }
+
+    private var candidateExceptions:
+        [NotificationExceptionConfig]?
+    {
+        let exceptions = exceptionDrafts.compactMap {
+            draft -> NotificationExceptionConfig? in
+            guard let text = optionalText(draft.text) else {
+                return nil
+            }
+
+            return NotificationExceptionConfig(
+                field: draft.field,
+                contains: text
+            )
+        }
+
+        return exceptions.isEmpty
+            ? nil
+            : exceptions
     }
 
     private var candidateRule: AutomationRuleConfig {
@@ -498,51 +551,36 @@ private struct RuleEditorView: View {
                 eventTypes: [.appeared],
                 appEquals: optionalText(app),
                 titleEquals:
-                    titleOperator == .equals
+                titleOperator == .equals
                     ? optionalText(title)
                     : nil,
                 titleContains:
-                    titleOperator == .contains
+                titleOperator == .contains
                     ? optionalText(title)
                     : nil,
                 subtitleEquals:
-                    subtitleOperator == .equals
+                subtitleOperator == .equals
                     ? optionalText(subtitle)
                     : nil,
                 subtitleContains:
-                    subtitleOperator == .contains
+                subtitleOperator == .contains
                     ? optionalText(subtitle)
                     : nil,
                 bodyEquals:
-                    bodyOperator == .equals
+                bodyOperator == .equals
                     ? optionalText(bodyText)
                     : nil,
                 bodyContains:
-                    bodyOperator == .contains
+                bodyOperator == .contains
                     ? optionalText(bodyText)
                     : nil,
                 caseSensitive: isCaseSensitive
             ),
-            private var candidateRule: AutomationRuleConfig {
-                AutomationRuleConfig(
-                    id: ruleID,
-                    name: trimmedName,
-                    enabled: isEnabled,
-                    match: NotificationMatchConfig(
-                        // existing match construction
-                    ),
-                    exceptions: existingExceptions,
-                    actions: [
-                        NotificationActionConfig(
-                            type: "shutupmac_dismiss"
-                        )
-                    ]
-                )
-            }
+            exceptions: candidateExceptions,
             actions: [
                 NotificationActionConfig(
                     type: "shutupmac_dismiss"
-                )
+                ),
             ]
         )
     }
@@ -578,9 +616,9 @@ private struct RuleEditorView: View {
                         HStack {
                             operatorPicker(
                                 selection:
-                                    $titleOperator,
+                                $titleOperator,
                                 accessibilityLabel:
-                                    "Title match operator"
+                                "Title match operator"
                             )
 
                             TextField(
@@ -597,9 +635,9 @@ private struct RuleEditorView: View {
                         HStack {
                             operatorPicker(
                                 selection:
-                                    $subtitleOperator,
+                                $subtitleOperator,
                                 accessibilityLabel:
-                                    "Subtitle match operator"
+                                "Subtitle match operator"
                             )
 
                             TextField(
@@ -616,9 +654,9 @@ private struct RuleEditorView: View {
                         HStack {
                             operatorPicker(
                                 selection:
-                                    $bodyOperator,
+                                $bodyOperator,
                                 accessibilityLabel:
-                                    "Body match operator"
+                                "Body match operator"
                             )
 
                             TextField(
@@ -638,10 +676,84 @@ private struct RuleEditorView: View {
                     .toggleStyle(.checkbox)
                 }
 
+                Section("Except when") {
+                    if exceptionDrafts.isEmpty {
+                        Text("No exceptions")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    ForEach($exceptionDrafts) { $draft in
+                        HStack {
+                            Picker(
+                                "Field",
+                                selection:
+                                    exceptionFieldBinding(
+                                        for: $draft
+                                    )
+                            ) {
+                                Text("Title")
+                                    .tag("title")
+
+                                Text("Subtitle")
+                                    .tag("subtitle")
+
+                                Text("Body")
+                                    .tag("body")
+                            }
+                            .labelsHidden()
+                            .frame(width: 100)
+
+                            TextField(
+                                "Exception text",
+                                text: $draft.text,
+                                prompt: Text("Text to ignore")
+                            )
+
+                            Button {
+                                removeException(
+                                    id: draft.id
+                                )
+                            } label: {
+                                Image(
+                                    systemName: "minus.circle"
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .help("Remove exception")
+                            .accessibilityLabel(
+                                "Remove exception"
+                            )
+                        }
+                    }
+
+                    Button {
+                        exceptionDrafts.append(
+                            RuleExceptionDraft(
+                                field: .title,
+                                text: ""
+                            )
+                        )
+                    } label: {
+                        Label(
+                            "Add Exception",
+                            systemImage: "plus"
+                        )
+                    }
+
+                    Text(
+                        "Any matching exception prevents this "
+                        + "rule from dismissing the notification. "
+                        + "Exceptions use contains matching and "
+                        + "the rule’s case-sensitivity setting."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
                 Section {
                     Text(
                         "App names are matched exactly. "
-                        + "Empty match fields are ignored."
+                            + "Empty match fields are ignored."
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -692,6 +804,36 @@ private struct RuleEditorView: View {
             operator: .contains,
             text: contains ?? ""
         )
+    }
+
+    private func exceptionFieldBinding(
+        for draft: Binding<RuleExceptionDraft>
+    ) -> Binding<String> {
+        Binding(
+            get: {
+                draft.wrappedValue
+                    .field
+                    .rawValue
+            },
+            set: { rawValue in
+                guard let field =
+                        NotificationExceptionField(
+                            rawValue: rawValue
+                        ) else {
+                    return
+                }
+
+                draft.wrappedValue.field = field
+            }
+        )
+    }
+
+    private func removeException(
+        id: UUID
+    ) {
+        exceptionDrafts.removeAll {
+            $0.id == id
+        }
     }
 
     private func optionalText(
@@ -754,7 +896,7 @@ private struct RuleDetailView: View {
                             ? "Enabled"
                             : "Disabled",
                         systemImage:
-                            rule.isEnabled
+                        rule.isEnabled
                             ? "checkmark.circle.fill"
                             : "circle"
                     )
@@ -769,7 +911,7 @@ private struct RuleDetailView: View {
                     AdvancedRuleNotice(
                         title: "Advanced event matching",
                         message:
-                            "This rule matches on events other than "
+                        "This rule matches on events other than "
                             + "notification appearance, which are not "
                             + "supported by the Rules Editor."
                     )
@@ -779,7 +921,7 @@ private struct RuleDetailView: View {
                     AdvancedRuleNotice(
                         title: "Advanced field matching",
                         message:
-                            "This rule uses match fields or "
+                        "This rule uses match fields or "
                             + "operators that are not supported "
                             + "by the Rules Editor."
                     )
@@ -789,10 +931,10 @@ private struct RuleDetailView: View {
                     AdvancedRuleNotice(
                         title: "Advanced actions",
                         message:
-                            "This rule uses advanced actions that "
+                        "This rule uses advanced actions that "
                             + "are not supported by the Rules Editor."
                     )
-                }               
+                }
 
                 GroupBox("Matches") {
                     VStack(
@@ -875,7 +1017,6 @@ private struct RuleDetailView: View {
                         )
                         .toggleStyle(.checkbox)
                         .allowsHitTesting(false)
-
                     }
                     .frame(
                         maxWidth: .infinity,
@@ -884,8 +1025,8 @@ private struct RuleDetailView: View {
                 }
 
                 if let exceptions = rule.exceptions,
-                   !exceptions.isEmpty {
-
+                   !exceptions.isEmpty
+                {
                     GroupBox("Except when") {
                         VStack(
                             alignment: .leading,
@@ -900,7 +1041,7 @@ private struct RuleDetailView: View {
                                         exception.field
                                     ),
                                     value:
-                                        "contains “\(exception.contains)”"
+                                    "contains “\(exception.contains)”"
                                 )
                             }
                         }
@@ -924,7 +1065,7 @@ private struct RuleDetailView: View {
                                 Label(
                                     actionSummary(action),
                                     systemImage:
-                                        actionSystemImage(action)
+                                    actionSystemImage(action)
                                 )
                                 .textSelection(.enabled)
                             }
@@ -987,11 +1128,11 @@ private struct RuleDetailView: View {
         case "exec":
             let arguments =
                 action.arguments?.joined(separator: " ")
-                ?? ""
+                    ?? ""
 
             return [
                 action.command ?? "",
-                arguments
+                arguments,
             ]
             .filter { !$0.isEmpty }
             .joined(separator: " ")
@@ -1032,7 +1173,7 @@ private struct AdvancedRuleNotice: View {
             ) {
                 Image(
                     systemName:
-                        "exclamationmark.triangle.fill"
+                    "exclamationmark.triangle.fill"
                 )
                 .foregroundStyle(.orange)
 
@@ -1073,6 +1214,7 @@ private struct RulePropertyRow: View {
         }
     }
 }
+
 private extension AutomationRuleConfig {
     var isEnabled: Bool {
         enabled ?? true
@@ -1114,7 +1256,8 @@ private extension AutomationRuleConfig {
 
     var usesAdvancedActions: Bool {
         guard actions.count == 1,
-              let action = actions.first else {
+              let action = actions.first
+        else {
             return true
         }
 
