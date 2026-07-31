@@ -70,13 +70,26 @@ public final class NotificationAutomationProcessor {
             )
         }
 
-        let actionResults = matchedRules.flatMap { matchedRule in
-            matchedRule.actions.map { action in
+        var actionResults: [ActionRunResult] = []
+        var hasProcessedDismissAction = false
+
+        for matchedRule in matchedRules {
+            for action in matchedRule.actions {
+                if case .shutUpMacDismiss = action {
+                    guard !hasProcessedDismissAction else {
+                        continue
+                    }
+
+                    hasProcessedDismissAction = true
+                }
+
                 let match = AutomationMatch(
                     ruleName: matchedRule.ruleName,
                     action: action,
                     event: matchedRule.event
                 )
+
+                let result: ActionRunResult
 
                 switch mode {
                 case .disabled:
@@ -85,11 +98,13 @@ public final class NotificationAutomationProcessor {
                     )
 
                 case .dryRun:
-                    return runner.runDryRun(match)
+                    result = runner.runDryRun(match)
 
                 case .runActions:
-                    return runner.run(match)
+                    result = runner.run(match)
                 }
+
+                actionResults.append(result)
             }
         }
 

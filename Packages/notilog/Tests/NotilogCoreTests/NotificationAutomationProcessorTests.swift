@@ -196,6 +196,66 @@ final class NotificationAutomationProcessorTests: XCTestCase {
         )
     }
 
+    func testMultipleMatchingDismissRulesProduceOneDismissActionResult() {
+        let firstRule = matchingRule(
+            name: "First dismiss rule",
+            actions: [
+                .shutUpMacDismiss(
+                    command: "/usr/bin/true"
+                )
+            ]
+        )
+
+        let secondRule = matchingRule(
+            name: "Second dismiss rule",
+            actions: [
+                .shutUpMacDismiss(
+                    command: "/usr/bin/true"
+                )
+            ]
+        )
+
+        let processor = makeProcessor(
+            rules: [
+                firstRule,
+                secondRule
+            ]
+        )
+
+        let result = processor.processDetailed(
+            event: sampleEvent(
+                key: "alert-A"
+            ),
+            mode: .dryRun
+        )
+
+        XCTAssertEqual(
+            result.matchedRules.map(\.ruleName),
+            [
+                "First dismiss rule",
+                "Second dismiss rule"
+            ]
+        )
+
+        XCTAssertEqual(
+            result.actionResults.count,
+            1
+        )
+
+        XCTAssertEqual(
+            result.actionResults[0].ruleName,
+            "First dismiss rule"
+        )
+
+        XCTAssertEqual(
+            result.actionResults[0].resolvedAction,
+            .shutUpMacDismiss(
+                command: "/usr/bin/true",
+                notificationKey: "alert-A"
+            )
+        )
+    }
+
     func testDisabledRulesDoNotProduceResults() {
         let disabledRule = NotificationRule(
             id: UUID(),
