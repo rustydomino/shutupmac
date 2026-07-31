@@ -252,16 +252,21 @@ Current criteria:
 eventTypes
 appEquals
 appContains
+titleEquals
 titleContains
+subtitleEquals
 subtitleContains
+bodyEquals
 bodyContains
 anyTextContains
 caseSensitive
 ```
 
+Rules may also define title, subtitle, or body exceptions. All positive criteria are combined with AND. Exception rows are combined with OR, and any matching exception suppresses the rule's actions. Exact and contains matching share the rule-level case-sensitivity setting.
+
 One matching rule can produce multiple `AutomationMatch` values when it defines multiple actions.
 
-`NotificationAutomationProcessor` combines rule evaluation with execution-mode selection. It preserves rule-array and action-array order and returns `[ActionRunResult]` without printing or persisting them.
+`NotificationAutomationProcessor` combines rule evaluation with execution-mode selection. It preserves rule-array and action-array order and returns `[ActionRunResult]` without printing or persisting them. All matching rules remain represented in the detailed result, but only the first `shutupmac_dismiss` action for one notification event is executed; non-dismiss actions continue in configured order.
 
 ### Template Expansion
 
@@ -301,32 +306,37 @@ failed
 
 `shutupmac_dismiss` is a dedicated semantic action rather than a generic shell command that happens to invoke ShutUpMac.
 
-It resolves to:
+`ActionRunner` accepts an optional `NotificationDismissalHandler` dependency:
 
 ```text
-shutupmac-cli --dismiss-key <notification-key>
+handler supplied    -> host performs in-process dismissal
+no handler supplied -> run shutupmac-cli --dismiss-key <notification-key>
 ```
 
-The default helper path is:
+The embedded ShutUpMac app injects a closure that converts the raw key to `NotificationAXKey` and calls `ShutUpMac.dismissVisibleNotificationResult(matching:)`. This reuses the existing Accessibility dismissal engine without starting a helper process.
+
+The standalone CLI retains the external fallback. Its default helper path is:
 
 ```text
 /Applications/ShutUpMac.app/Contents/Helpers/shutupmac-cli
 ```
 
-A rule may override that path with its `command` field.
+A rule may override that fallback path with its `command` field.
+
+macOS can represent multiple notifications from one application as a single collapsed `AXNotificationCenterAlertStack`. The available stack action is Clear All, so dismissing a matching stacked notification can also clear older nonmatching notifications in that stack. This is a current Accessibility-tree limitation rather than a rule-evaluation distinction.
 
 ### Delayed Verification
 
-A successful dismissal request, or the known ShutUpMac "performed but no visible progress" response, schedules a delayed check approximately two seconds later.
+The external-helper fallback schedules a delayed check after an accepted dismissal request. The known ShutUpMac "performed but no visible progress" response is recorded as `uncertain` with `pending` verification.
 
-The verifier compares the original notification key against the next visible notification set:
+The verifier compares the original notification key against a later visible-notification set:
 
 ```text
 key absent  → probably_succeeded
 key present → definitely_failed
 ```
 
-This is intentionally conservative. AX observation can establish that a key remained visible, but absence is treated as probable rather than absolute proof of the cause.
+The embedded ShutUpMac handler can instead return a terminal result immediately. A reported clear becomes `succeeded` with `probably_succeeded`; a reported failure becomes `failed` with `definitely_failed`. Absence is still described as probable rather than absolute proof of the cause.
 
 `ActionVerificationProcessor` owns pending verification state and evaluates checks that are due during a later scan. `CompletedActionVerificationCoordinator` optionally updates the corresponding `action_runs.verification_status` row.
 
@@ -427,7 +437,7 @@ The CLI owns:
 - Verification-status persistence.
 - The ordering of recovered events, current events, actions, and verification results.
 
-This boundary allows the ShutUpMac app or another GUI to host the same monitor while choosing a different lifecycle and presentation layer.
+The ShutUpMac app is now a production host of this boundary. It supplies a timer-driven lifecycle, Activity presentation, runtime configuration replacement, live persistence/redaction policy, and the in-process dismissal handler. Other hosts can choose different lifecycle, presentation, and dismissal dependencies without changing `NotilogCore`.
 
 ## Error and Execution Model
 
@@ -462,9 +472,9 @@ Coverage includes:
 
 CLI-level output and option interactions are still validated with process-level smoke tests. The CLI now rejects malformed positive-integer options and missing `--config` values instead of silently falling back.
 
-## Future GUI
+## GUI Hosting
 
-A future GUI, including the ShutUpMac app, can host `NotilogCore` directly:
+The ShutUpMac app hosts `NotilogCore` directly:
 
 ```text
       ┌───────────────────────────┐
@@ -478,21 +488,20 @@ A future GUI, including the ShutUpMac app, can host `NotilogCore` directly:
                NotilogCore
 ```
 
-The GUI may provide rule construction, history browsing, aggregate notification analytics, privacy controls, and action diagnostics. It should not duplicate event derivation, matching, action execution, persistence coordination, or dismissal verification.
+The current GUI provides history browsing, live privacy controls, and a deliberately limited ordinary-rule editor. Advanced rules remain visible but read-only. Future GUI work may add Activity details, structured filters, aggregate analytics, and richer action diagnostics. It should not duplicate event derivation, matching, action execution, persistence coordination, or dismissal verification.
 
 The current monitor API is synchronous and nonblocking only in the lifecycle sense: it processes one supplied scan and returns. A host remains responsible for scheduling repeated scans and deciding how cancellation should work.
 
 ## Current Boundaries and Likely Next Work
 
-- Integrate `NotificationMonitor` into the ShutUpMac app when the app is ready to own watcher lifecycle.
-- Add a cancellable app-host lifecycle without changing the one-cycle core API.
-- Build a read-only Activity viewer before a full rule editor.
+- Add app-level automated regression coverage for logging, redaction, runtime configuration replacement, and Rules presentation.
+- Add Activity details and structured filters for app, rule, status, and time range.
 - Decide how stale `pending` verifications should be handled across process restart.
 - Audit whether raw notification keys and AX identifiers require hashing or optional redaction.
+- Investigate individual child dismissal inside expanded notification stacks only if a dependable AX path emerges; do not assume collapsed stacks can be targeted precisely.
 - Add attachment extraction only with an explicit persistence and privacy policy.
-- Add richer history filtering and structured output formats.
 - Consider asynchronous action execution only if blocking actions become a practical problem.
-- Keep the CLI as a supported host and debugging surface rather than removing it.
+- Keep the CLI as a supported host and advanced/debugging surface rather than removing it.
 
 ## Guiding Philosophy
 

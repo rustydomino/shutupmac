@@ -1,6 +1,6 @@
 # Notilog TODO
 
-_Last updated: 2026-07-28_
+_Last updated: 2026-07-31_
 
 ## Completed foundations
 
@@ -23,13 +23,19 @@ _Last updated: 2026-07-28_
 - [x] Add a GUI switch for enabling and disabling notification logging while rules and actions continue.
 - [x] Add GUI redaction controls for title, subtitle, and body.
 - [x] Apply GUI redaction to subsequent Activity rows and SQLite writes without restarting monitoring.
+- [x] Add stable UUIDs to automation configuration rules and preserve identity/order during GUI edits.
+- [x] Build the Rules viewer and ordinary-rule editor with enable/disable, add, edit, delete, exact/contains matching, and exceptions.
+- [x] Keep advanced event matching, field matching, and actions visible but read-only in the GUI.
+- [x] Suppress duplicate dismissal attempts when multiple rules match one notification event.
+- [x] Inject in-process dismissal into the ShutUpMac app while retaining the external-helper fallback for standalone hosts.
+- [x] Complete manual runtime regression testing for exceptions, disabled rules, exact/contains and case-sensitive matching, logging-disabled automation, redaction boundaries, edit preservation, advanced-rule safety, config-save rollback, and restart persistence.
 
 ## Immediate next steps
 
-- [ ] Commit the GUI redaction and documentation changes.
-- [ ] Add app-level tests for preference-to-policy mapping, live policy replacement, and Activity redaction.
+- [ ] Commit the in-process dismissal, regression-test, and documentation changes.
+- [ ] Add app-level automated tests for preference-to-policy mapping, live policy replacement, Activity redaction, runtime configuration rollback, and Rules presentation.
 - [ ] Add process-level tests for CLI option parsing and exit codes so malformed-option behavior is automated.
-- [ ] Choose the next GUI milestone: Activity details/filters or the first read-only Rules view.
+- [ ] Choose the next GUI milestone: Activity details/structured filters or Rules-window visual polish.
 
 ## Library and host integration
 
@@ -38,6 +44,7 @@ _Last updated: 2026-07-28_
 - [x] Preserve the CLI as a supported debugging and operational host.
 - [x] Load historical appearance records and publish live monitoring results to the Activity store.
 - [x] Allow the app host to replace automation configuration, logging state, and redaction policy at runtime.
+- [x] Allow a host to inject notification dismissal while preserving the CLI's external-helper fallback.
 - [ ] Decide whether the app and CLI should share a factory/builder for monitor dependency assembly.
 - [ ] Add structured host events only if callback-based presentation becomes awkward in the GUI.
 
@@ -109,7 +116,10 @@ _Last updated: 2026-07-28_
 
 ## ShutUpMac integration cleanup
 
-- [ ] Change ShutUpMac to return clearer machine-readable outcome distinctions.
+- [x] Use the in-process ShutUpMac dismissal API when Notilog runs inside the app.
+- [x] Keep the external `shutupmac-cli --dismiss-key` path as the standalone fallback.
+- [x] Prevent multiple matching dismissal rules from issuing duplicate dismissal attempts for one event.
+- [ ] Change the standalone ShutUpMac CLI to return clearer machine-readable outcome distinctions.
 - [ ] Prefer distinct exit codes over parsing English stderr text, for example:
   - `0`: immediate progress observed
   - `1`: dismissal could not be performed
@@ -128,11 +138,12 @@ _Last updated: 2026-07-28_
 | Action status | Verification status | Meaning |
 |---|---|---|
 | `dry_run` | `nil` | No action executed |
-| `succeeded` | `pending` | ShutUpMac reported immediate success; delayed check required |
+| `succeeded` | `pending` | External helper accepted the request; delayed check required |
 | `uncertain` | `pending` | ShutUpMac acted but saw no immediate progress |
-| `failed` | `nil` | ShutUpMac could not perform the action |
-| `succeeded` or `uncertain` | `probably_succeeded` | Exact key later disappeared |
-| `succeeded` or `uncertain` | `definitely_failed` | Exact key remained visible |
+| `succeeded` | `probably_succeeded` | In-process handler reported a clear, or a delayed check found the key absent |
+| `failed` | `definitely_failed` | In-process handler reported failure |
+| `succeeded` or `uncertain` | `definitely_failed` | Delayed check found the exact key still visible |
+| `failed` | `nil` | An action could not start or complete before dismissal verification applied |
 
 - [x] Avoid claiming definite success when an AX key disappears.
 - [x] Preserve `definitely_failed` when the exact key remains visible after the delay.
@@ -141,7 +152,7 @@ _Last updated: 2026-07-28_
 
 ## Database and data model cleanup
 
-- [ ] Add stable rule IDs; do not rely on editable rule names as identity.
+- [x] Add stable UUIDs to automation configuration rules; do not rely on editable rule names as configuration identity.
 - [ ] Store both stable rule ID and execution-time rule name in `action_runs`.
 - [ ] Add structured `action_type` to `action_runs`.
 - [ ] Avoid making future UI code parse human-readable action summaries.
@@ -162,6 +173,10 @@ _Last updated: 2026-07-28_
 - [x] Completed verification-status persistence.
 - [x] Full `NotificationMonitor` callback and result ordering.
 - [x] Temporary-database tests avoid the user's real Application Support directory.
+- [x] Exact title, subtitle, and body matching plus exception decoding/matching.
+- [x] Immutable configuration helpers for enable/disable, add, replace, and remove.
+- [x] Injected dismissal handler precedence and external-helper fallback.
+- [x] Duplicate matching dismissal rules invoke the injected handler only once.
 
 ### Remaining tests
 
@@ -193,19 +208,30 @@ _Last updated: 2026-07-28_
 
 ## Rules UX
 
-- [ ] Start with a read-only Rules viewer.
-- [ ] Show enabled state, match conditions, actions, storage policy, recent match count, and most recent result.
-- [ ] Add enable/disable control.
-- [ ] Add raw JSON editing as an escape hatch.
-- [ ] Add duplicate, delete, and validation before saving.
+- [x] Build the read-only Rules viewer.
+- [x] Show enabled state, positive match conditions, exceptions, advanced matching, and advanced actions.
+- [x] Add enable/disable control for ordinary rules.
+- [x] Add ordinary-rule creation, editing, deletion, validation, and atomic save-and-activate behavior.
+- [x] Preserve UUID, exceptions, and sidebar position during editing.
+- [x] Keep unsupported advanced rules read-only and prevent toggling or deletion through the GUI.
+- [ ] Polish the functional Rules-window layout and spacing.
+- [ ] Consider recent match count and most recent action result only after the Activity/details data path exists.
+- [ ] Keep raw JSON or CLI configuration as the escape hatch for advanced users rather than broadening the GUI prematurely.
 
 ## Rule builder
 
-- [ ] Prefer “Create rule from this notification” over an empty generic form.
-- [ ] Let the user choose which observed fields become match criteria.
+- [x] Provide a minimal generic form for ordinary dismissal rules.
+- [x] Support exact app matching; exact/contains title, subtitle, and body matching; case sensitivity; and contains-based exceptions.
+- [ ] Add “Create rule from this notification” as the preferred contextual workflow.
 - [ ] Show a historical match preview and allow inspection before enabling the rule.
-- [ ] Include storage policy after per-rule retention exists.
+- [ ] Include storage policy only if per-rule retention is added.
 - [ ] Eventually suggest automation for repeatedly dismissed notifications.
+
+## Known platform limitations
+
+- [x] Record that collapsed notification stacks are represented as one AX element with a Clear All action.
+- [x] Accept current stack-clearing behavior rather than silently skipping matching rules; Activity/database logging preserves the observed notifications when logging is enabled.
+- [ ] Investigate per-child dismissal only if expanded stacks expose stable, individually actionable child elements across supported macOS versions.
 
 ## Documentation and CLI help
 
@@ -215,6 +241,8 @@ _Last updated: 2026-07-28_
 - [x] Document `--no-logging`, `--quiet`, and `--redact` with examples.
 - [x] Document the library-first monitoring architecture and host/core boundary.
 - [x] Document the ShutUpMac Activity, logging, and GUI redaction behavior.
+- [x] Document the ordinary Rules GUI, advanced-rule read-only boundary, in-process dismissal, and standalone fallback.
+- [x] Record the AX stack limitation: a matching stacked notification may clear older nonmatching notifications in the same stack.
 - [x] Record that global truncation is intentionally out of scope for now.
 - [ ] State clearly whether console output may be retained by the user's terminal or shell environment.
 
@@ -227,10 +255,10 @@ _Last updated: 2026-07-28_
 5. [x] Build the first read-only Activity viewer with historical and live records.
 6. [x] Add live GUI control of notification logging.
 7. [x] Add live GUI redaction for title, subtitle, and body.
-8. [ ] Add app-level regression tests for logging, redaction, and Activity presentation.
+8. [ ] Add app-level automated regression tests for logging, redaction, Activity presentation, configuration rollback, and Rules presentation.
 9. [ ] Add Activity details and structured filtering.
-10. [ ] Build the read-only Rules viewer, followed by rule editing and rule creation.
-11. [ ] Add stable rule IDs and structured action identity.
+10. [x] Build the read-only Rules viewer, followed by ordinary-rule editing and creation.
+11. [x] Add stable configuration rule IDs; structured action identity in `action_runs` remains open.
 12. [ ] Resolve stale/pending verification behavior across restart.
 13. [ ] Add per-rule retention policies only after the global privacy pipeline remains stable.
 

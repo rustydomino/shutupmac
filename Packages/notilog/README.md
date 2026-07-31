@@ -103,7 +103,7 @@ An embedding host may supply a different application-support root or fully expli
 
 ## ShutUpMac App Host
 
-The ShutUpMac app currently uses the legacy Notilog runtime directory and owns the watcher lifecycle with a timer-driven host around `NotificationMonitor`. On launch it loads recent notification appearance records into the Activity window and then appends live monitoring results.
+The ShutUpMac app currently uses the legacy Notilog runtime directory and owns the watcher lifecycle with a timer-driven host around `NotificationMonitor`. On launch it loads recent notification appearance records into the Activity window and then appends live monitoring results. The app also hosts the Rules window and injects an in-process dismissal handler so `shutupmac_dismiss` actions do not launch the external helper.
 
 ShutUpMac Settings provides live controls for:
 
@@ -398,6 +398,7 @@ Example with two rules:
 {
   "rules": [
     {
+      "id": "7f8fa3fc-df90-4df8-93fd-ff7fe8cb3936",
       "name": "Dismiss Self Service+ Agent notifications",
       "enabled": true,
       "match": {
@@ -412,6 +413,7 @@ Example with two rules:
       ]
     },
     {
+      "id": "acd29f2c-42b5-4779-ae7b-b9bf43a71c53",
       "name": "Record update completion",
       "enabled": true,
       "match": {
@@ -442,17 +444,37 @@ Current match fields:
   "eventTypes": ["appeared"],
   "appEquals": "Mail",
   "appContains": "Self Service",
+  "titleEquals": "Build complete",
   "titleContains": "Microsoft Teams",
+  "subtitleEquals": "Deployment",
   "subtitleContains": "example",
+  "bodyEquals": "Update finished.",
   "bodyContains": "update is available",
   "anyTextContains": "search text",
   "caseSensitive": false
 }
 ```
 
-All specified criteria must match.
+All specified positive criteria must match. Exact title, subtitle, and body matching uses the same `caseSensitive` setting as contains matching.
 
-Matching is case-insensitive by default. Set `caseSensitive` to `true` for exact case behavior.
+Rules may also define exceptions:
+
+```json
+{
+  "exceptions": [
+    {
+      "field": "title",
+      "contains": "Important"
+    },
+    {
+      "field": "body",
+      "contains": "do not dismiss"
+    }
+  ]
+}
+```
+
+Exception rows are combined with OR. If any exception matches, the rule does not produce actions. Matching is case-insensitive by default; set `caseSensitive` to `true` for exact case behavior across positive criteria and exceptions.
 
 Current event types:
 
@@ -517,6 +539,10 @@ Dismisses the matched notification through ShutUpMac using the notification key:
 }
 ```
 
+`ActionRunner` accepts an optional host-provided dismissal handler. When supplied, the handler receives the notification AX key and the external command is not launched. The embedded ShutUpMac app uses this path to call `ShutUpMac.dismissVisibleNotificationResult(matching:)` directly.
+
+When no handler is supplied, such as in standalone `notilog-cli` operation, the action falls back to the helper command.
+
 Default helper:
 
 ```text
@@ -532,14 +558,19 @@ Override the helper path when needed:
 }
 ```
 
-Notilog schedules a delayed AX check after the dismissal request:
+For one notification event, all matching rules remain reported and non-dismiss actions still run in configured order, but only the first `shutupmac_dismiss` action is executed. This prevents duplicate dismissal attempts when multiple rules match the same event.
+
+Verification depends on the execution path:
+
+- The embedded ShutUpMac handler can report an immediate clear result. A confirmed clear is recorded as `probably_succeeded`; an immediate failure is recorded as `definitely_failed`.
+- The external-helper fallback normally schedules a delayed AX check:
 
 ```text
 notification key absent  → probably_succeeded
 notification key present → definitely_failed
 ```
 
-An immediate ShutUpMac response that says the action was performed but no visible progress was observed is treated as `uncertain` while awaiting delayed verification.
+An immediate ShutUpMac response that says the action was performed but no visible progress was observed is treated as `uncertain` with `pending` verification while awaiting the delayed check.
 
 ## Template Variables
 
@@ -570,13 +601,15 @@ uncertain
 failed
 ```
 
-Delayed ShutUpMac verification status:
+Dismissal verification status:
 
 ```text
 pending
 probably_succeeded
 definitely_failed
 ```
+
+The in-process ShutUpMac host may return a terminal verification status immediately. The external-helper path uses `pending` until a later scan checks whether the original AX key remains visible.
 
 ## SQLite Storage
 
@@ -621,7 +654,8 @@ LIMIT 10;
 - Redaction affects new output and writes; it does not sanitize old database rows.
 - External actions may store, transmit, or print data they receive.
 - Pending dismissal verification is in memory and is not resumed after process restart.
-- The CLI remains the current operational interface; direct ShutUpMac app hosting and GUI views are future work.
+- macOS may expose multiple notifications from one app as one collapsed AX stack. Dismissing a matching stack can clear older nonmatching notifications in that stack because individual collapsed children are not dependably targetable through the current Accessibility tree.
+- The ShutUpMac app and `notilog-cli` are both supported hosts. The app provides Activity, privacy controls, and a deliberately limited Rules editor; the CLI remains the broader diagnostic and advanced-configuration surface.
 
 ## License
 
