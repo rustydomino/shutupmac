@@ -15,9 +15,6 @@ struct ShutUpMacManagementView: View {
     let saveAutomationConfiguration:
         (AutomationConfig) -> Void
 
-    let reloadAutomationConfiguration:
-        () -> Void
-
     let setNotilogDatabaseLoggingEnabled:
         (
             Bool,
@@ -35,13 +32,7 @@ struct ShutUpMacManagementView: View {
     var body: some View {
         TabView(selection: $navigation.selectedTab) {
             SettingsView(
-                automationConfigurationStore:
-                    automationConfigurationStore,
-                saveAutomationConfiguration:
-                    saveAutomationConfiguration,
-                reloadAutomationConfiguration:
-                    reloadAutomationConfiguration,
-                setNotilogDatabaseLoggingEnabled:
+               setNotilogDatabaseLoggingEnabled:
                     setNotilogDatabaseLoggingEnabled,
                 replaceNotilogRedactionPolicy:
                     replaceNotilogRedactionPolicy

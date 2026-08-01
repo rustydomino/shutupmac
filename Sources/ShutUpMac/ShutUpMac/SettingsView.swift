@@ -3,16 +3,6 @@ import ServiceManagement
 import NotilogCore
 
 struct SettingsView: View {
-    @ObservedObject
-    var automationConfigurationStore:
-        AutomationConfigurationStore
-
-    let saveAutomationConfiguration:
-        (AutomationConfig) -> Void 
-
-    let reloadAutomationConfiguration:
-        () -> Void
-
     let setNotilogDatabaseLoggingEnabled:
         (
             Bool,

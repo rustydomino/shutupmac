@@ -17,14 +17,13 @@ struct RulesView: View {
     private var notilogRulesAutoDismissEnabled = true
 
     @State private var selectedRuleID: UUID?
-    @State private var isPresentingRuleEditor = false
 
-    @State private var ruleBeingEdited:
-        AutomationRuleConfig?
+    @State private var isCreatingRule = false
+
+    @State private var editorRevision = UUID()
 
     @State private var rulePendingDeletion:
         AutomationRuleConfig?
-
     private var rules: [AutomationRuleConfig] {
         store.configuration?.rules ?? []
     }
@@ -94,7 +93,7 @@ struct RulesView: View {
                         "ShutUpMac could not load the rules configuration."
                     )
                 )
-            } else if rules.isEmpty {
+            } else if rules.isEmpty && !isCreatingRule {
                 ContentUnavailableView(
                     "No Rules",
                     systemImage: "list.bullet.rectangle",
@@ -109,6 +108,11 @@ struct RulesView: View {
                     ruleDetail
                 }
             }
+
+        Divider()
+
+        rulesActionBar
+
         }
         .frame(
             minWidth: 700,
@@ -132,97 +136,6 @@ struct RulesView: View {
                 enabled
             )
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    guard let selectedRule,
-                          !selectedRule
-                          .usesAdvancedConfiguration
-                    else {
-                        return
-                    }
-
-                    ruleBeingEdited = selectedRule
-                    isPresentingRuleEditor = true
-                } label: {
-                    Label(
-                        "Edit Rule",
-                        systemImage: "pencil"
-                    )
-                }
-                .help("Edit selected rule")
-                .disabled(
-                    selectedRule == nil
-                        || selectedRule?
-                        .usesAdvancedConfiguration == true
-                )
-
-                Button(role: .destructive) {
-                    guard let selectedRule,
-                          !selectedRule
-                          .usesAdvancedConfiguration
-                    else {
-                        return
-                    }
-
-                    rulePendingDeletion = selectedRule
-                } label: {
-                    Label(
-                        "Delete Rule",
-                        systemImage: "trash"
-                    )
-                }
-                .help("Delete selected rule")
-                .disabled(
-                    selectedRule == nil
-                        || selectedRule?
-                        .usesAdvancedConfiguration == true
-                )
-
-                Button {
-                    ruleBeingEdited = nil
-                    isPresentingRuleEditor = true
-                } label: {
-                    Label(
-                        "Add Rule",
-                        systemImage: "plus"
-                    )
-                }
-                .help("Add rule")
-                .disabled(store.configuration == nil)
-            }
-        }
-
-        .sheet(
-            isPresented: $isPresentingRuleEditor,
-            onDismiss: {
-                ruleBeingEdited = nil
-            }
-        ) {
-            RuleEditorView(
-                rule: ruleBeingEdited
-            ) { rule in
-                guard let configuration =
-                    store.configuration
-                else {
-                    return
-                }
-
-                let candidate: AutomationConfig
-
-                if ruleBeingEdited == nil {
-                    candidate =
-                        configuration.addingRule(rule)
-                } else {
-                    candidate =
-                        configuration.replacingRule(rule)
-                }
-
-                saveAutomationConfiguration(candidate)
-                selectedRuleID = rule.id
-            }
-        }
-
         .confirmationDialog(
             "Delete Rule?",
             isPresented: Binding(
@@ -252,6 +165,53 @@ struct RulesView: View {
         } message: { _ in
             Text("This action cannot be undone.")
         }
+    }
+
+    private var rulesActionBar: some View {
+        HStack(spacing: 12) {
+            ControlGroup {
+                Button {
+                    selectedRuleID = nil
+                    editorRevision = UUID()
+                    isCreatingRule = true
+                } label: {
+                    Label(
+                        "Add Rule",
+                        systemImage: "plus"
+                    )
+                }
+                .help("Add rule")
+                .disabled(store.configuration == nil)
+
+                Button(role: .destructive) {
+                    guard let selectedRule,
+                          !selectedRule
+                          .usesAdvancedConfiguration
+                    else {
+                        return
+                    }
+
+                    rulePendingDeletion = selectedRule
+                } label: {
+                    Label(
+                        "Delete Rule",
+                        systemImage: "minus"
+                    )
+                }
+                .help("Delete selected rule")
+                .disabled(
+                    isCreatingRule
+                        || selectedRule == nil
+                        || selectedRule?
+                        .usesAdvancedConfiguration == true
+                )
+            }
+            .labelStyle(.iconOnly)
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     private func repairSelection() {
@@ -302,21 +262,34 @@ struct RulesView: View {
         saveAutomationConfiguration(candidate)
     }
 
+    private var ruleSelection: Binding<UUID?> {
+        Binding(
+            get: {
+                selectedRuleID
+            },
+            set: { newSelection in
+                isCreatingRule = false
+                editorRevision = UUID()
+                selectedRuleID = newSelection
+            }
+        )
+    }
+
     private var ruleList: some View {
-        List(selection: $selectedRuleID) {
+        List(selection: ruleSelection) {
             ForEach(rules, id: \.id) { rule in
-                HStack(spacing: 8) {
+                 HStack(spacing: 8) {
                     if rule.usesAdvancedConfiguration {
                         Image(
                             systemName:
-                            rule.isEnabled
-                                ? "checkmark.circle.fill"
-                                : "circle"
+                                rule.isEnabled
+                                    ? "checkmark.circle.fill"
+                                    : "circle"
                         )
                         .foregroundStyle(
                             rule.isEnabled
-                                ? .primary
-                                : .secondary
+                                ? Color.primary
+                                : Color.secondary
                         )
                         .accessibilityLabel(
                             rule.isEnabled
@@ -329,14 +302,14 @@ struct RulesView: View {
                         } label: {
                             Image(
                                 systemName:
-                                rule.isEnabled
-                                    ? "checkmark.circle.fill"
-                                    : "circle"
+                                    rule.isEnabled
+                                        ? "checkmark.circle.fill"
+                                        : "circle"
                             )
                             .foregroundStyle(
                                 rule.isEnabled
-                                    ? .primary
-                                    : .secondary
+                                    ? Color.primary
+                                    : Color.secondary
                             )
                         }
                         .buttonStyle(.plain)
@@ -354,14 +327,26 @@ struct RulesView: View {
 
                     Text(rule.name)
                         .lineLimit(1)
+                        .truncationMode(.tail)
                         .foregroundStyle(
                             rule.isEnabled
-                                ? .primary
-                                : .secondary
+                                ? Color.primary
+                                : Color.secondary
                         )
 
-                    Spacer()
+                    Spacer(minLength: 8)
+
+                    if rule.usesAdvancedConfiguration {
+                        Image(systemName: "lock.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .help("Advanced rule; read only")
+                            .accessibilityLabel(
+                                "Advanced rule, read only"
+                            )
+                    }
                 }
+                .padding(.vertical, 2)               
                 .tag(rule.id)
             }
         }
@@ -374,14 +359,68 @@ struct RulesView: View {
 
     @ViewBuilder
     private var ruleDetail: some View {
-        if let selectedRule {
-            RuleDetailView(rule: selectedRule)
+        if isCreatingRule {
+            RuleEditorView(
+                rule: nil,
+                onCancel: {
+                    isCreatingRule = false
+                    repairSelection()
+                },
+                onSave: { rule in
+                    guard let configuration =
+                        store.configuration
+                    else {
+                        return
+                    }
+
+                    let candidate =
+                        configuration.addingRule(rule)
+
+                    saveAutomationConfiguration(candidate)
+
+                    selectedRuleID = rule.id
+                    isCreatingRule = false
+                    editorRevision = UUID()
+                }
+            )
+            .id(
+                "new-rule-\(editorRevision.uuidString)"
+            )
+        } else if let selectedRule {
+            if selectedRule.usesAdvancedConfiguration {
+                RuleDetailView(rule: selectedRule)
+            } else {
+                RuleEditorView(
+                    rule: selectedRule,
+                    onCancel: {
+                        editorRevision = UUID()
+                    },
+                    onSave: { rule in
+                        guard let configuration =
+                            store.configuration
+                        else {
+                            return
+                        }
+
+                        let candidate =
+                            configuration.replacingRule(rule)
+
+                        saveAutomationConfiguration(candidate)
+
+                        selectedRuleID = rule.id
+                    }
+                )
+                .id(
+                    "rule-\(selectedRule.id.uuidString)"
+                        + "-\(editorRevision.uuidString)"
+                )
+            }
         } else {
             ContentUnavailableView(
                 "Select a Rule",
                 systemImage: "list.bullet.rectangle",
                 description: Text(
-                    "Select a rule to view its match conditions and actions."
+                    "Select a rule to edit it."
                 )
             )
             .frame(
@@ -389,7 +428,7 @@ struct RulesView: View {
                 maxHeight: .infinity
             )
         }
-    }
+    }   
 }
 
 private enum TextMatchOperator:
@@ -433,13 +472,139 @@ private struct RuleExceptionDraft:
     }
 }
 
-private struct RuleEditorView: View {
-    @Environment(\.dismiss)
-    private var dismiss
+private struct RuleEditorExceptionSnapshot:
+    Equatable
+{
+    let field: String
+    let text: String
+}
 
+private struct RuleEditorSnapshot:
+    Equatable
+{
+    let name: String
+    let isEnabled: Bool
+
+    let appEquals: String?
+
+    let titleEquals: String?
+    let titleContains: String?
+
+    let subtitleEquals: String?
+    let subtitleContains: String?
+
+    let bodyEquals: String?
+    let bodyContains: String?
+
+    let isCaseSensitive: Bool
+
+    let exceptions:
+        [RuleEditorExceptionSnapshot]
+
+    static let empty = RuleEditorSnapshot(
+        name: "",
+        isEnabled: true,
+        appEquals: nil,
+        titleEquals: nil,
+        titleContains: nil,
+        subtitleEquals: nil,
+        subtitleContains: nil,
+        bodyEquals: nil,
+        bodyContains: nil,
+        isCaseSensitive: false,
+        exceptions: []
+    )
+
+    static func make(
+        from rule: AutomationRuleConfig?
+    ) -> RuleEditorSnapshot {
+        guard let rule else {
+            return .empty
+        }
+
+        return RuleEditorSnapshot(
+            name:
+                normalizedText(rule.name) ?? "",
+            isEnabled:
+                rule.enabled ?? true,
+            appEquals:
+                normalizedText(
+                    rule.match.appEquals
+                ),
+            titleEquals:
+                normalizedText(
+                    rule.match.titleEquals
+                ),
+            titleContains:
+                normalizedText(
+                    rule.match.titleContains
+                ),
+            subtitleEquals:
+                normalizedText(
+                    rule.match.subtitleEquals
+                ),
+            subtitleContains:
+                normalizedText(
+                    rule.match.subtitleContains
+                ),
+            bodyEquals:
+                normalizedText(
+                    rule.match.bodyEquals
+                ),
+            bodyContains:
+                normalizedText(
+                    rule.match.bodyContains
+                ),
+            isCaseSensitive:
+                rule.match.caseSensitive ?? false,
+            exceptions:
+                (rule.exceptions ?? []).compactMap {
+                    exception in
+
+                    guard let text =
+                        normalizedText(
+                            exception.contains
+                        )
+                    else {
+                        return nil
+                    }
+
+                    return RuleEditorExceptionSnapshot(
+                        field:
+                            exception.field.rawValue,
+                        text: text
+                    )
+                }
+        )
+    }
+
+    private static func normalizedText(
+        _ value: String?
+    ) -> String? {
+        guard let value else {
+            return nil
+        }
+
+        let normalized =
+            value.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+
+        return normalized.isEmpty
+            ? nil
+            : normalized
+    }
+}
+
+private struct RuleEditorView: View {
     private let ruleID: UUID
     private let isEditing: Bool
 
+    @State
+    private var initialSnapshot:
+        RuleEditorSnapshot
+
+    let onCancel: () -> Void
     let onSave: (AutomationRuleConfig) -> Void
 
     @State private var name: String
@@ -469,13 +634,22 @@ private struct RuleEditorView: View {
 
     init(
         rule: AutomationRuleConfig? = nil,
+        onCancel: @escaping () -> Void,
         onSave: @escaping (
             AutomationRuleConfig
         ) -> Void
     ) {
         ruleID = rule?.id ?? UUID()
         isEditing = rule != nil
+        self.onCancel = onCancel
         self.onSave = onSave
+
+        _initialSnapshot = State(
+            initialValue:
+                RuleEditorSnapshot.make(
+                    from: rule
+                )
+        )
 
         let titleMatch = Self.editorMatch(
             equals: rule?.match.titleEquals,
@@ -561,6 +735,17 @@ private struct RuleEditorView: View {
 
     private var canAddRule: Bool {
         !trimmedName.isEmpty && hasMatchCondition
+    }
+
+    private var hasChanges: Bool {
+        RuleEditorSnapshot.make(
+            from: candidateRule
+        ) != initialSnapshot
+    }
+
+    private var canSubmitRule: Bool {
+        canAddRule
+            && (!isEditing || hasChanges)
     }
 
     private var candidateExceptions:
@@ -807,23 +992,37 @@ private struct RuleEditorView: View {
             HStack {
                 Spacer()
 
-                Button("Cancel") {
-                    dismiss()
+                Button(
+                    isEditing
+                        ? "Revert"
+                        : "Cancel New Rule"
+                ) {
+                    onCancel()
                 }
                 .keyboardShortcut(.cancelAction)
 
-                Button(isEditing ? "Save" : "Add") {
+                Button(
+                    isEditing
+                        ? "Save Rule"
+                        : "Add Rule"
+                ) {
+                    let rule = candidateRule
+
                     onSave(candidateRule)
-                    dismiss()
+
+                    initialSnapshot =
+                        RuleEditorSnapshot.make(
+                            from: rule
+                        )
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(!canAddRule)
+                .disabled(!canSubmitRule)
             }
             .padding()
         }
         .frame(
-            width: 620,
-            height: 520
+            maxWidth: .infinity,
+            maxHeight: .infinity
         )
     }
 
