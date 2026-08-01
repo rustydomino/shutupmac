@@ -1,6 +1,11 @@
 import NotilogCore
 import SwiftUI
 
+private enum PendingRuleNavigation {
+    case select(UUID?)
+    case createNew
+}
+
 struct RulesView: View {
     @ObservedObject
     var store: AutomationConfigurationStore
@@ -21,6 +26,16 @@ struct RulesView: View {
     @State private var isCreatingRule = false
 
     @State private var editorRevision = UUID()
+
+    @State
+    private var hasUnsavedEditorChanges = false
+
+    @State
+    private var pendingNavigation:
+        PendingRuleNavigation?
+
+    @State
+    private var isPresentingDiscardAlert = false
 
     @State private var rulePendingDeletion:
         AutomationRuleConfig?
@@ -165,15 +180,42 @@ struct RulesView: View {
         } message: { _ in
             Text("This action cannot be undone.")
         }
+        .alert(
+            "Discard Unsaved Changes?",
+            isPresented:
+                $isPresentingDiscardAlert
+        ) {
+            Button("Cancel", role: .cancel) {
+                pendingNavigation = nil
+            }
+
+            Button(
+                "Discard Changes",
+                role: .destructive
+            ) {
+                guard let destination =
+                    pendingNavigation
+                else {
+                    return
+                }
+
+                pendingNavigation = nil
+                applyNavigation(destination)
+            }
+        } message: {
+            Text(
+                "Your unsaved rule changes will be lost."
+            )
+        }
     }
 
     private var rulesActionBar: some View {
         HStack(spacing: 12) {
             ControlGroup {
                 Button {
-                    selectedRuleID = nil
-                    editorRevision = UUID()
-                    isCreatingRule = true
+                    requestNavigation(
+                        to: .createNew
+                    )
                 } label: {
                     Label(
                         "Add Rule",
@@ -262,15 +304,50 @@ struct RulesView: View {
         saveAutomationConfiguration(candidate)
     }
 
+    private func requestNavigation(
+        to destination: PendingRuleNavigation
+    ) {
+        guard hasUnsavedEditorChanges else {
+            applyNavigation(destination)
+            return
+        }
+
+        pendingNavigation = destination
+        isPresentingDiscardAlert = true
+    }
+
+    private func applyNavigation(
+        _ destination: PendingRuleNavigation
+    ) {
+        hasUnsavedEditorChanges = false
+        editorRevision = UUID()
+
+        switch destination {
+        case let .select(ruleID):
+            isCreatingRule = false
+            selectedRuleID = ruleID
+
+        case .createNew:
+            selectedRuleID = nil
+            isCreatingRule = true
+        }
+    }
+
     private var ruleSelection: Binding<UUID?> {
         Binding(
             get: {
                 selectedRuleID
             },
             set: { newSelection in
-                isCreatingRule = false
-                editorRevision = UUID()
-                selectedRuleID = newSelection
+                guard isCreatingRule
+                        || newSelection != selectedRuleID
+                else {
+                    return
+                }
+
+                requestNavigation(
+                    to: .select(newSelection)
+                )
             }
         )
     }
@@ -362,7 +439,11 @@ struct RulesView: View {
         if isCreatingRule {
             RuleEditorView(
                 rule: nil,
+                onDirtyChange: { hasChanges in
+                    hasUnsavedEditorChanges = hasChanges
+                },
                 onCancel: {
+                    hasUnsavedEditorChanges = false
                     isCreatingRule = false
                     repairSelection()
                 },
@@ -378,6 +459,7 @@ struct RulesView: View {
 
                     saveAutomationConfiguration(candidate)
 
+                    hasUnsavedEditorChanges = false
                     selectedRuleID = rule.id
                     isCreatingRule = false
                     editorRevision = UUID()
@@ -392,7 +474,11 @@ struct RulesView: View {
             } else {
                 RuleEditorView(
                     rule: selectedRule,
+                    onDirtyChange: { hasChanges in
+                        hasUnsavedEditorChanges = hasChanges
+                    },
                     onCancel: {
+                        hasUnsavedEditorChanges = false
                         editorRevision = UUID()
                     },
                     onSave: { rule in
@@ -406,7 +492,8 @@ struct RulesView: View {
                             configuration.replacingRule(rule)
 
                         saveAutomationConfiguration(candidate)
-
+                        
+                        hasUnsavedEditorChanges = false
                         selectedRuleID = rule.id
                     }
                 )
@@ -604,6 +691,7 @@ private struct RuleEditorView: View {
     private var initialSnapshot:
         RuleEditorSnapshot
 
+    let onDirtyChange: (Bool) -> Void
     let onCancel: () -> Void
     let onSave: (AutomationRuleConfig) -> Void
 
@@ -634,6 +722,8 @@ private struct RuleEditorView: View {
 
     init(
         rule: AutomationRuleConfig? = nil,
+        onDirtyChange:
+            @escaping (Bool) -> Void,
         onCancel: @escaping () -> Void,
         onSave: @escaping (
             AutomationRuleConfig
@@ -641,6 +731,7 @@ private struct RuleEditorView: View {
     ) {
         ruleID = rule?.id ?? UUID()
         isEditing = rule != nil
+        self.onDirtyChange = onDirtyChange
         self.onCancel = onCancel
         self.onSave = onSave
 
@@ -1024,6 +1115,12 @@ private struct RuleEditorView: View {
             maxWidth: .infinity,
             maxHeight: .infinity
         )
+        .onAppear {
+            onDirtyChange(hasChanges)
+        }
+        .onChange(of: hasChanges) { _, hasChanges in
+            onDirtyChange(hasChanges)
+        }
     }
 
     private static func editorMatch(
