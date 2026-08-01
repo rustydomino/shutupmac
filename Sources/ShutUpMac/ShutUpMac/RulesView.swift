@@ -4,9 +4,14 @@ import SwiftUI
 private enum PendingRuleNavigation {
     case select(UUID?)
     case createNew
+    case createFromSeed(RuleEditorSeed)
 }
 
 struct RulesView: View {
+    
+    @ObservedObject
+    var navigation: ShutUpMacNavigation    
+
     @ObservedObject
     var store: AutomationConfigurationStore
 
@@ -24,6 +29,10 @@ struct RulesView: View {
     @State private var selectedRuleID: UUID?
 
     @State private var isCreatingRule = false
+
+    @State
+    private var ruleCreationSeed:
+        RuleEditorSeed?
 
     @State private var editorRevision = UUID()
 
@@ -140,9 +149,15 @@ struct RulesView: View {
             }
 
             repairSelection()
+            consumePendingRuleSeed()
         }
         .onChange(of: rules.map(\.id)) { _, _ in
             repairSelection()
+        }
+       .onChange(
+            of: navigation.pendingRuleSeed?.id
+        ) { _, _ in
+            consumePendingRuleSeed()
         }
         .onChange(
             of: notilogRulesAutoDismissEnabled
@@ -175,7 +190,15 @@ struct RulesView: View {
             }
 
             Button("Cancel", role: .cancel) {
-                rulePendingDeletion = nil
+                if let destination =
+                    pendingNavigation
+                {
+                    clearPendingRuleSeed(
+                        for: destination
+                    )
+                }
+
+                pendingNavigation = nil
             }
         } message: { _ in
             Text("This action cannot be undone.")
@@ -201,6 +224,9 @@ struct RulesView: View {
 
                 pendingNavigation = nil
                 applyNavigation(destination)
+                clearPendingRuleSeed(
+                    for: destination
+                )
             }
         } message: {
             Text(
@@ -304,11 +330,47 @@ struct RulesView: View {
         saveAutomationConfiguration(candidate)
     }
 
+    private func consumePendingRuleSeed() {
+        guard let seed =
+            navigation.pendingRuleSeed
+        else {
+            return
+        }
+
+        if case let .createFromSeed(pendingSeed) =
+            pendingNavigation,
+           pendingSeed.id == seed.id
+        {
+            return
+        }
+
+        requestNavigation(
+            to: .createFromSeed(seed)
+        )
+    }
+
+    private func clearPendingRuleSeed(
+        for destination: PendingRuleNavigation
+    ) {
+        guard case let .createFromSeed(seed) =
+            destination,
+              navigation.pendingRuleSeed?.id ==
+              seed.id
+        else {
+            return
+        }
+
+        navigation.pendingRuleSeed = nil
+    }
+
     private func requestNavigation(
         to destination: PendingRuleNavigation
     ) {
         guard hasUnsavedEditorChanges else {
             applyNavigation(destination)
+            clearPendingRuleSeed(
+                for: destination
+            )
             return
         }
 
@@ -324,10 +386,17 @@ struct RulesView: View {
 
         switch destination {
         case let .select(ruleID):
+            ruleCreationSeed = nil
             isCreatingRule = false
             selectedRuleID = ruleID
 
         case .createNew:
+            ruleCreationSeed = nil
+            selectedRuleID = nil
+            isCreatingRule = true
+
+        case let .createFromSeed(seed):
+            ruleCreationSeed = seed
             selectedRuleID = nil
             isCreatingRule = true
         }
@@ -439,11 +508,13 @@ struct RulesView: View {
         if isCreatingRule {
             RuleEditorView(
                 rule: nil,
+                seed: ruleCreationSeed,
                 onDirtyChange: { hasChanges in
                     hasUnsavedEditorChanges = hasChanges
                 },
                 onCancel: {
                     hasUnsavedEditorChanges = false
+                    ruleCreationSeed = nil
                     isCreatingRule = false
                     repairSelection()
                 },
@@ -460,13 +531,21 @@ struct RulesView: View {
                     saveAutomationConfiguration(candidate)
 
                     hasUnsavedEditorChanges = false
+                    ruleCreationSeed = nil
                     selectedRuleID = rule.id
                     isCreatingRule = false
                     editorRevision = UUID()
                 }
             )
             .id(
-                "new-rule-\(editorRevision.uuidString)"
+                "new-rule-"
+                    + (
+                        ruleCreationSeed?
+                            .id.uuidString
+                            ?? "blank"
+                    )
+                    + "-"
+                    + editorRevision.uuidString
             )
         } else if let selectedRule {
             if selectedRule.usesAdvancedConfiguration {
@@ -722,6 +801,7 @@ private struct RuleEditorView: View {
 
     init(
         rule: AutomationRuleConfig? = nil,
+        seed: RuleEditorSeed? = nil,
         onDirtyChange:
             @escaping (Bool) -> Void,
         onCancel: @escaping () -> Void,
@@ -729,7 +809,10 @@ private struct RuleEditorView: View {
             AutomationRuleConfig
         ) -> Void
     ) {
-        ruleID = rule?.id ?? UUID()
+        ruleID =
+            rule?.id
+                ?? seed?.id
+                ?? UUID()
         isEditing = rule != nil
         self.onDirtyChange = onDirtyChange
         self.onCancel = onCancel
@@ -744,12 +827,16 @@ private struct RuleEditorView: View {
 
         let titleMatch = Self.editorMatch(
             equals: rule?.match.titleEquals,
-            contains: rule?.match.titleContains
+            contains:
+                rule?.match.titleContains
+                    ?? seed?.titleContains
         )
 
         let subtitleMatch = Self.editorMatch(
             equals: rule?.match.subtitleEquals,
-            contains: rule?.match.subtitleContains
+            contains:
+                rule?.match.subtitleContains
+                    ?? seed?.subtitleContains
         )
 
         let bodyMatch = Self.editorMatch(
@@ -758,7 +845,10 @@ private struct RuleEditorView: View {
         )
 
         _name = State(
-            initialValue: rule?.name ?? ""
+            initialValue:
+                rule?.name
+                    ?? seed?.name
+                    ?? ""
         )
 
         _isEnabled = State(
@@ -767,7 +857,9 @@ private struct RuleEditorView: View {
 
         _app = State(
             initialValue:
-            rule?.match.appEquals ?? ""
+                rule?.match.appEquals
+                    ?? seed?.app
+                    ?? ""
         )
 
         _titleOperator = State(
@@ -1099,7 +1191,7 @@ private struct RuleEditorView: View {
                 ) {
                     let rule = candidateRule
 
-                    onSave(candidateRule)
+                    onSave(rule)
 
                     initialSnapshot =
                         RuleEditorSnapshot.make(

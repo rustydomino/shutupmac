@@ -57,7 +57,12 @@ struct ShutUpMacManagementView: View {
             .tag(ShutUpMacTab.hotKeys)
 
             ActivityView(
-                store: activityStore
+                store: activityStore,
+                createRuleFromNotification: { seed in
+                    navigation.beginRuleCreation(
+                        from: seed
+                    )
+                }
             )
             .tabItem {
                 Label(
@@ -69,6 +74,7 @@ struct ShutUpMacManagementView: View {
             .tag(ShutUpMacTab.activity)
 
             RulesView(
+                navigation: navigation,
                 store: automationConfigurationStore,
                 saveAutomationConfiguration:
                     saveAutomationConfiguration,
