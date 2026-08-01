@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 import NotilogCore
 @testable import ShutUpMac
@@ -31,6 +32,74 @@ private final class StubAutomationConfigurationActivator:
 }
 
 final class ShutUpMacTests: XCTestCase {
+
+    func testRulesAutoDismissDefaultsToEnabled() throws {
+        let suiteName =
+            "ShutUpMacTests.rulesAutoDismiss.default."
+            + UUID().uuidString
+
+        let defaults = try XCTUnwrap(
+            UserDefaults(
+                suiteName: suiteName
+            )
+        )
+
+        defer {
+            defaults.removePersistentDomain(
+                forName: suiteName
+            )
+        }
+
+        AppPreferences.registerDefaults(
+            in: defaults
+        )
+
+        XCTAssertTrue(
+            AppPreferences
+                .notilogRulesAutoDismissEnabled(
+                    in: defaults
+                )
+        )
+    }
+
+    func testStoredRulesAutoDismissValueOverridesDefault()
+        throws
+    {
+        let suiteName =
+            "ShutUpMacTests.rulesAutoDismiss.stored."
+            + UUID().uuidString
+
+        let defaults = try XCTUnwrap(
+            UserDefaults(
+                suiteName: suiteName
+            )
+        )
+
+        defer {
+            defaults.removePersistentDomain(
+                forName: suiteName
+            )
+        }
+
+        AppPreferences.registerDefaults(
+            in: defaults
+        )
+
+        defaults.set(
+            false,
+            forKey:
+                PreferenceKeys
+                    .notilogRulesAutoDismissEnabled
+        )
+
+        XCTAssertFalse(
+            AppPreferences
+                .notilogRulesAutoDismissEnabled(
+                    in: defaults
+                )
+        )
+    }
+
 
     func testNotilogRedactionPolicyIsDisabledWhenMasterSettingIsOff() {
         let policy = AppPreferences.makeNotilogRedactionPolicy(

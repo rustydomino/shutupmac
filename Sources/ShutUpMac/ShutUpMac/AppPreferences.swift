@@ -34,7 +34,16 @@ enum PreferenceKeys {
 
 enum AppPreferences {
     static func registerDefaults() {
-        UserDefaults.standard.register(defaults: [
+        registerDefaults(
+            in: .standard
+        )
+    }
+
+    static func registerDefaults(
+        in defaults: UserDefaults
+    ) {
+        defaults.register(defaults: [
+
             PreferenceKeys.enableGlobalHotkeys: true,
             PreferenceKeys.notilogDatabaseLoggingEnabled: true,
             PreferenceKeys.notilogRulesAutoDismissEnabled: true,
@@ -56,7 +65,9 @@ enum AppPreferences {
                 HotKey.defaultClear.encodedString
         ])
 
-        migrateClearDesktopHotKeyDefaultIfNeeded()
+        migrateClearDesktopHotKeyDefaultIfNeeded(
+            in: defaults
+        )
     }
 
     static var enableGlobalHotkeys: Bool {
@@ -72,13 +83,20 @@ enum AppPreferences {
     }
 
     static var notilogRulesAutoDismissEnabled: Bool {
-        UserDefaults.standard.bool(
+        notilogRulesAutoDismissEnabled(
+            in: .standard
+        )
+    }
+
+    static func notilogRulesAutoDismissEnabled(
+        in defaults: UserDefaults
+    ) -> Bool {
+        defaults.bool(
             forKey:
                 PreferenceKeys
                     .notilogRulesAutoDismissEnabled
         )
     }
-
 
     static var notilogDatabaseLoggingEnabled: Bool {
         UserDefaults.standard.bool(
@@ -192,8 +210,10 @@ enum AppPreferences {
         return HotKey.decode(storedValue) ?? .defaultClear
     }
 
-    private static func migrateClearDesktopHotKeyDefaultIfNeeded() {
-        let currentValue = UserDefaults.standard.string(
+    private static func migrateClearDesktopHotKeyDefaultIfNeeded(
+        in defaults: UserDefaults
+    )   {
+        let currentValue = defaults.string(
             forKey: PreferenceKeys.clearVisibleNotificationsHotKey
         )
 
@@ -201,7 +221,7 @@ enum AppPreferences {
             return
         }
 
-        UserDefaults.standard.set(
+        defaults.set(
             HotKey.defaultClearDesktop.encodedString,
             forKey: PreferenceKeys.clearVisibleNotificationsHotKey
         )
