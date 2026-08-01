@@ -8,6 +8,9 @@ struct ShutUpMacApp: App {
     )
     private var applicationDelegate
 
+    @StateObject
+    private var navigation = ShutUpMacNavigation()
+
     init() {
         AppPreferences.registerDefaults()
         DockIconController.enforceMenuBarOnly()
@@ -21,38 +24,22 @@ struct ShutUpMacApp: App {
 
     var body: some Scene {
         MenuBarExtra("ShutUpMac", image: "MenuBarIcon") {
-            ShutUpMacMenu()
+            ShutUpMacMenu(
+                navigation: navigation
+            )
         }
         .menuBarExtraStyle(.menu)
 
-        Window("ShutUpMac Activity", id: "activity") {
-            ActivityView(
-                store: applicationDelegate.activityStore
-            )
-        }
-        .defaultSize(width: 760, height: 500)
+       .defaultSize(width: 760, height: 500)
 
-        Window("ShutUpMac Rules", id: "rules") {
-            RulesView(
-                store: applicationDelegate
-                    .automationConfigurationStore,
-
-                saveAutomationConfiguration: { candidate in
-                    applicationDelegate
-                        .saveAutomationConfiguration(
-                            candidate
-                        )
-                }
-            )
-        }        
-        .defaultSize(width: 760, height: 500)
-
-        Window("ShutUpMac Settings", id: "settings") {
-            SettingsView(
+        Window("ShutUpMac", id: "management") {
+            ShutUpMacManagementView(
+                navigation: navigation,
+                activityStore:
+                    applicationDelegate.activityStore,
                 automationConfigurationStore:
-                applicationDelegate
-                    .automationConfigurationStore,
-
+                    applicationDelegate
+                        .automationConfigurationStore,
                 saveAutomationConfiguration: { candidate in
                     applicationDelegate
                         .saveAutomationConfiguration(
@@ -66,6 +53,7 @@ struct ShutUpMacApp: App {
                 setNotilogDatabaseLoggingEnabled: {
                     enabled,
                     completion in
+
                     applicationDelegate
                         .setNotilogDatabaseLoggingEnabled(
                             enabled,
@@ -74,6 +62,7 @@ struct ShutUpMacApp: App {
                 },
                 setNotilogRulesAutoDismissEnabled: {
                     enabled in
+
                     applicationDelegate
                         .setNotilogRulesAutoDismissEnabled(
                             enabled
@@ -87,8 +76,10 @@ struct ShutUpMacApp: App {
                 }
             )
         }
-
-        .windowResizability(.contentSize)
+        .defaultSize(
+            width: 960,
+            height: 700
+        )
 
         Window("About ShutUpMac", id: "about") {
             AboutView()
@@ -98,7 +89,11 @@ struct ShutUpMacApp: App {
 }
 
 struct ShutUpMacMenu: View {
-    @Environment(\.openWindow) private var openWindow
+    @ObservedObject
+    var navigation: ShutUpMacNavigation
+
+    @Environment(\.openWindow)
+    private var openWindow
 
     @AppStorage(PreferenceKeys.enableGlobalHotkeys)
     private var enableGlobalHotkeys = true
@@ -215,57 +210,37 @@ struct ShutUpMacMenu: View {
     }
 
     private func showActivityWindow() {
-        openWindow(id: "activity")
-
-        DispatchQueue.main.async {
-            NSApplication.shared.activate(
-                ignoringOtherApps: true
-            )
-
-            if let activityWindow =
-                NSApplication.shared.windows.first(
-                    where: { window in
-                        window.title == "ShutUpMac Activity"
-                    }
-                )
-            {
-                activityWindow.makeKeyAndOrderFront(nil)
-                activityWindow.orderFrontRegardless()
-            }
-        }
+        showManagementWindow(tab: .activity)
     }
 
     private func showRulesWindow() {
-        openWindow(id: "rules")
+        showManagementWindow(tab: .rules)
+    }
+
+    private func showSettingsWindow() {
+        showManagementWindow(tab: .general)
+    }
+
+    private func showManagementWindow(
+        tab: ShutUpMacTab
+    ) {
+        navigation.selectedTab = tab
+        openWindow(id: "management")
 
         DispatchQueue.main.async {
             NSApplication.shared.activate(
                 ignoringOtherApps: true
             )
 
-            if let rulesWindow =
+            if let managementWindow =
                 NSApplication.shared.windows.first(
                     where: { window in
-                        window.title == "ShutUpMac Rules"
+                        window.title == "ShutUpMac"
                     }
-                ) {
-                rulesWindow.makeKeyAndOrderFront(nil)
-                rulesWindow.orderFrontRegardless()
-            }
-        }
-    }
-
-    private func showSettingsWindow() {
-        openWindow(id: "settings")
-
-        DispatchQueue.main.async {
-            NSApplication.shared.activate(ignoringOtherApps: true)
-
-            if let settingsWindow = NSApplication.shared.windows.first(where: { window in
-                window.title == "ShutUpMac Settings"
-            }) {
-                settingsWindow.makeKeyAndOrderFront(nil)
-                settingsWindow.orderFrontRegardless()
+                )
+            {
+                managementWindow.makeKeyAndOrderFront(nil)
+                managementWindow.orderFrontRegardless()
             }
         }
     }

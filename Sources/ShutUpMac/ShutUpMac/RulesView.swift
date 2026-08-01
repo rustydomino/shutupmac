@@ -8,6 +8,14 @@ struct RulesView: View {
     let saveAutomationConfiguration:
         (AutomationConfig) -> Void
 
+    let setNotilogRulesAutoDismissEnabled:
+        (Bool) -> Void
+
+    @AppStorage(
+        PreferenceKeys.notilogRulesAutoDismissEnabled
+    )
+    private var notilogRulesAutoDismissEnabled = true
+
     @State private var selectedRuleID: UUID?
     @State private var isPresentingRuleEditor = false
 
@@ -33,6 +41,33 @@ struct RulesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+
+            VStack(
+                alignment: .leading,
+                spacing: 6
+            ) {
+                Toggle(
+                    "Enable rules-based auto-dismiss",
+                    isOn:
+                        $notilogRulesAutoDismissEnabled
+                )
+
+                Text(
+                    "When disabled, rules remain configured "
+                        + "but do not dismiss notifications."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            .frame(
+                maxWidth: .infinity,
+                alignment: .leading
+            )
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+
+            Divider()
+
             if let errorMessage = store.errorMessage {
                 HStack(alignment: .top, spacing: 8) {
                     Image(
@@ -90,7 +125,13 @@ struct RulesView: View {
         .onChange(of: rules.map(\.id)) { _, _ in
             repairSelection()
         }
-
+        .onChange(
+            of: notilogRulesAutoDismissEnabled
+        ) { _, enabled in
+            setNotilogRulesAutoDismissEnabled(
+                enabled
+            )
+        }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
