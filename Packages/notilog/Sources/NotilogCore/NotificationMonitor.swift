@@ -36,7 +36,7 @@ public final class NotificationMonitor {
     private let eventCoordinator:
         NotificationEventCoordinator
 
-    private let automationMode:
+    private var automationMode:
         AutomationExecutionMode
 
     public init(
@@ -55,6 +55,16 @@ public final class NotificationMonitor {
         self.eventCoordinator = eventCoordinator
         self.automationMode = automationMode
     }
+
+    /// Replaces the automation mode used by subsequent scans.
+    ///
+    /// The caller must synchronize this with processScan().
+    public func replaceAutomationMode(
+        _ automationMode: AutomationExecutionMode
+    ) {
+        self.automationMode = automationMode
+    }
+
 
     public func processScan(
         notifications: [VisibleNotification],

@@ -22,6 +22,9 @@ struct SettingsView: View {
             ) -> Void
         ) -> Void
 
+    let setNotilogRulesAutoDismissEnabled:
+        (Bool) -> Void
+
     let replaceNotilogRedactionPolicy:
         (RedactionPolicy) -> Void
 
@@ -43,6 +46,12 @@ struct SettingsView: View {
     @AppStorage(PreferenceKeys.testNotificationHotKey)
     private var testNotificationHotKey = 
         HotKey.defaultTestNotification.encodedString
+
+    @AppStorage(
+        PreferenceKeys.notilogRulesAutoDismissEnabled
+    )
+    private var notilogRulesAutoDismissEnabled = true
+
 
     @AppStorage(PreferenceKeys.notilogRedactionEnabled)
     private var notilogRedactionEnabled = false
@@ -406,6 +415,23 @@ private var redactSubtitleBinding:
             Text("Automation Configuration")
                 .font(.headline)
 
+            Toggle(
+                "Enable rules-based auto-dismiss",
+                isOn: $notilogRulesAutoDismissEnabled
+            )
+
+            Text(
+                "When disabled, notification monitoring and "
+                + "history logging continue, but configured "
+                + "dismissal rules do not run."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(
+                horizontal: false,
+                vertical: true
+            )
+
             Text(
                 automationConfigurationStore.configURL.path
             )
@@ -477,6 +503,21 @@ private var redactSubtitleBinding:
             databaseLoggingEnabled =
                 AppPreferences
                     .notilogDatabaseLoggingEnabled
+        }
+        .onAppear {
+            launchAtLogin =
+                LaunchAtLoginController.isEnabled
+
+            databaseLoggingEnabled =
+                AppPreferences
+                    .notilogDatabaseLoggingEnabled
+        }
+        .onChange(
+            of: notilogRulesAutoDismissEnabled
+        ) { _, enabled in
+            setNotilogRulesAutoDismissEnabled(
+                enabled
+            )
         }
         .onChange(of: enableGlobalHotkeys) { _, newValue in
             if newValue {

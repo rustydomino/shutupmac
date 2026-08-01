@@ -351,6 +351,117 @@ final class NotificationMonitorTests: XCTestCase {
         )
     }
 
+    func testReplaceAutomationModeAffectsSubsequentScans()
+        throws
+    {
+        let components = makeMonitor(
+            rules: [
+                matchingRule(
+                    name: "Log appeared notifications",
+                    eventTypes: [.appeared],
+                    actions: [
+                        .dryRunLog(message: "handled")
+                    ]
+                )
+            ],
+            automationMode: .disabled
+        )
+
+        let disabledResult =
+            try components.monitor.processScan(
+                notifications: [
+                    sampleNotification(key: "alert-A")
+                ],
+                at: Date(timeIntervalSince1970: 10),
+                actionTimestampProvider: {
+                    Date(timeIntervalSince1970: 10)
+                },
+                afterCompletedActionVerifications: {
+                    _ in
+                },
+                beforeAutomation: { _ in },
+                beforeActionResultCoordination: { _ in },
+                afterRecoveredEvents: { _ in }
+            )
+
+        XCTAssertEqual(disabledResult.events.count, 1)
+        XCTAssertTrue(
+            disabledResult.events[0].actionResults.isEmpty
+        )
+
+        components.monitor.replaceAutomationMode(
+            .dryRun
+        )
+
+        let enabledResult =
+            try components.monitor.processScan(
+                notifications: [
+                    sampleNotification(key: "alert-A"),
+                    sampleNotification(key: "alert-B")
+                ],
+                at: Date(timeIntervalSince1970: 11),
+                actionTimestampProvider: {
+                    Date(timeIntervalSince1970: 11)
+                },
+                afterCompletedActionVerifications: {
+                    _ in
+                },
+                beforeAutomation: { _ in },
+                beforeActionResultCoordination: { _ in },
+                afterRecoveredEvents: { _ in }
+            )
+
+        XCTAssertEqual(enabledResult.events.count, 1)
+        XCTAssertEqual(
+            enabledResult.events[0].event.notification.key,
+            "alert-B"
+        )
+        XCTAssertEqual(
+            enabledResult.events[0].actionResults.count,
+            1
+        )
+
+        components.monitor.replaceAutomationMode(
+            .disabled
+        )
+
+        let disabledAgainResult =
+            try components.monitor.processScan(
+                notifications: [
+                    sampleNotification(key: "alert-A"),
+                    sampleNotification(key: "alert-B"),
+                    sampleNotification(key: "alert-C")
+                ],
+                at: Date(timeIntervalSince1970: 12),
+                actionTimestampProvider: {
+                    Date(timeIntervalSince1970: 12)
+                },
+                afterCompletedActionVerifications: {
+                    _ in
+                },
+                beforeAutomation: { _ in },
+                beforeActionResultCoordination: { _ in },
+                afterRecoveredEvents: { _ in }
+            )
+
+        XCTAssertEqual(
+            disabledAgainResult.events.count,
+            1
+        )
+        XCTAssertEqual(
+            disabledAgainResult.events[0]
+                .event
+                .notification
+                .key,
+            "alert-C"
+        )
+        XCTAssertTrue(
+            disabledAgainResult.events[0]
+                .actionResults
+                .isEmpty
+        )
+    }
+
     private func makeMonitor(
         rules: [NotificationRule],
         automationMode: AutomationExecutionMode,

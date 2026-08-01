@@ -187,6 +187,20 @@ deinit {
         )
     }
 
+    /// Enables or disables rule action execution for subsequent cycles.
+    ///
+    /// Monitoring and persistence continue while automation is disabled.
+    /// The caller must invoke this on the same serial queue used for
+    /// processOneCycle().
+    func setRulesAutomationEnabled(
+        _ enabled: Bool
+    ) {
+        monitor.replaceAutomationMode(
+            enabled ? .runActions : .disabled
+        )
+    }
+
+
     /// Replaces the redaction policy used by subsequent database writes.
     ///
     /// The caller must invoke this on the same serial queue used for

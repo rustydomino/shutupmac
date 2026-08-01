@@ -24,7 +24,11 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
             redactionPolicy:
                 AppPreferences
                     .notilogRedactionPolicy,
-            automationMode: .runActions,
+            automationMode:
+                AppPreferences
+                    .notilogRulesAutoDismissEnabled
+                    ? .runActions
+                    : .disabled,
             dismissalHandler: { notificationKey in
                 guard let key = NotificationAXKey(
                     rawValue: notificationKey
@@ -101,6 +105,15 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
 
             completion(result)
         }
+    }
+
+    func setNotilogRulesAutoDismissEnabled(
+        _ enabled: Bool
+    ) {
+        notilogMonitoringController
+            .setRulesAutomationEnabled(
+                enabled
+            )
     }
 
     func replaceNotilogRedactionPolicy(

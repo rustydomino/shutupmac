@@ -72,6 +72,13 @@ struct ShutUpMacApp: App {
                             completion: completion
                         )
                 },
+                setNotilogRulesAutoDismissEnabled: {
+                    enabled in
+                    applicationDelegate
+                        .setNotilogRulesAutoDismissEnabled(
+                            enabled
+                        )
+                },
                 replaceNotilogRedactionPolicy: { policy in
                     applicationDelegate
                         .replaceNotilogRedactionPolicy(

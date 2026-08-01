@@ -39,7 +39,7 @@ nonisolated final class NotilogMonitoringController:
     private let interval: TimeInterval
     private let runtimePaths: NotilogRuntimePaths
     
-    private let automationMode:
+    private var automationMode:
         AutomationExecutionMode
 
     private let dismissalHandler:
@@ -199,6 +199,39 @@ nonisolated final class NotilogMonitoringController:
             print("Notilog monitoring stopped")
         }
     }
+
+    func setRulesAutomationEnabled(
+        _ enabled: Bool
+    ) {
+        queue.async { [weak self] in
+            guard let self else {
+                return
+            }
+
+            let automationMode:
+                AutomationExecutionMode =
+                    enabled
+                        ? .runActions
+                        : .disabled
+
+            self.automationMode = automationMode
+
+            self.runtime?
+                .setRulesAutomationEnabled(
+                    enabled
+                )
+
+            print(
+                "Notilog rules automation "
+                + (
+                    enabled
+                        ? "enabled"
+                        : "disabled"
+                )
+            )
+        }
+    }
+
 
     func replaceAutomationEngine(
         _ engine: AutomationEngine

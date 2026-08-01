@@ -8,6 +8,9 @@ enum PreferenceKeys {
     static let notilogDatabaseLoggingEnabled =
         "notilogDatabaseLoggingEnabled"
 
+    static let notilogRulesAutoDismissEnabled =
+        "notilogRulesAutoDismissEnabled"
+
     static let notilogRedactionEnabled =
         "notilogRedactionEnabled"
 
@@ -34,6 +37,7 @@ enum AppPreferences {
         UserDefaults.standard.register(defaults: [
             PreferenceKeys.enableGlobalHotkeys: true,
             PreferenceKeys.notilogDatabaseLoggingEnabled: true,
+            PreferenceKeys.notilogRulesAutoDismissEnabled: true,
             PreferenceKeys.notilogRedactionEnabled: false,
             PreferenceKeys.notilogRedactTitle: true,
             PreferenceKeys.notilogRedactSubtitle: true,
@@ -66,6 +70,15 @@ enum AppPreferences {
 
         return HotKey.decode(storedValue) ?? .defaultClearMostRecent
     }
+
+    static var notilogRulesAutoDismissEnabled: Bool {
+        UserDefaults.standard.bool(
+            forKey:
+                PreferenceKeys
+                    .notilogRulesAutoDismissEnabled
+        )
+    }
+
 
     static var notilogDatabaseLoggingEnabled: Bool {
         UserDefaults.standard.bool(

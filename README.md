@@ -16,9 +16,11 @@ GitHub page: https://github.com/rustydomino/shutupmac
 - Send a test notification
 - Configurable global hotkeys
 - Searchable Activity window backed by Notilog history and live monitoring
+- Rules window for viewing, enabling, creating, editing, and deleting ordinary notification-dismissal rules
+- Exact or contains matching for title, subtitle, and body, plus contains-based exceptions
 - Optional notification logging with live enable/disable control
 - Optional title, subtitle, and body redaction for Activity and persisted history
-- Runtime reload of `config.json` automation rules
+- Atomic save-and-activate updates for `config.json` automation rules
 - Optional launch at login
 - Built-in command line helper install command
 - Menu-bar-only operation without a Dock or app-switcher icon
@@ -61,6 +63,26 @@ Settings includes **Enable notification logging**:
 **Redact notification contents** is a suboption of notification logging. Title, subtitle, and body can be selected independently. Selected nonempty fields are replaced with `[REDACTED]` before they are written to SQLite or shown in Activity. The source application remains visible in the GUI. Policy changes apply to subsequent records immediately; previously stored rows are not rewritten.
 
 The redaction controls retain their saved selections when logging is disabled. At least one content field must remain selected while redaction is enabled.
+
+## Notification rules
+
+The **Rules** window provides a deliberately small GUI for ordinary notification-dismissal rules. An ordinary GUI rule:
+
+- Matches notification appearance events only.
+- Performs one plain `shutupmac_dismiss` action.
+- Supports exact application matching.
+- Supports exact or contains matching for title, subtitle, and body.
+- Combines positive match fields with AND and ignores empty fields.
+- Requires at least one positive match field.
+- Supports title, subtitle, and body exceptions using contains matching.
+- Combines exception rows with OR; any matching exception prevents dismissal.
+- Applies one rule-level case-sensitivity setting to matches and exceptions.
+
+The Rules window can enable or disable, add, edit, and delete ordinary rules. Editing preserves the rule UUID and list position. Rules using advanced event matching, advanced field combinations, or advanced actions remain visible but read-only so the GUI does not silently discard configuration it does not understand.
+
+Inside the ShutUpMac app, matching dismissal rules call the existing Accessibility dismissal engine directly through a host-injected callback. The app does not launch `shutupmac-cli` for these actions. The standalone `notilog-cli` retains the external-helper fallback when no in-process handler is supplied.
+
+macOS may expose multiple notifications from one application as a single collapsed Accessibility stack. When a matching notification is represented by such a stack, the available AX action can clear the entire stack, including older nonmatching notifications from the same application. ShutUpMac records notification activity when logging is enabled, but the Accessibility API does not currently provide a dependable way to target one collapsed child notification.
 
 ## Command line helper
 
@@ -186,7 +208,7 @@ ShutUpMac/
 
 The `notilog-cli` executable remains available for development, diagnostics, scripting, and direct testing.
 
-The ShutUpMac app hosts the Notilog watcher directly. It owns the polling lifecycle, loads historical notification records, publishes live activity, activates automation rules from `config.json`, and can change logging and redaction policy without restarting monitoring. The standalone `notilog-cli` remains available for diagnostics, scripting, and direct testing.
+The ShutUpMac app hosts the Notilog watcher directly. It owns the polling lifecycle, loads historical notification records, publishes live activity, activates automation rules from `config.json`, can change logging and redaction policy without restarting monitoring, and injects the in-process notification dismissal handler used by runtime automation. The standalone `notilog-cli` remains available for diagnostics, scripting, and direct testing.
 
 ### ShutUpMac dismissal engine
 
@@ -227,9 +249,17 @@ SettingsView.swift
 ActivityView.swift / ActivityStore.swift
   Searchable, sortable notification history and live Activity presentation
 
+RulesView.swift
+  Ordinary-rule viewer/editor, advanced-rule classification, validation,
+  exceptions, enable/disable controls, and read-only advanced-rule details
+
+AutomationConfigurationStore.swift
+  Atomic configuration persistence and runtime activation
+
 NotilogMonitoringController.swift / NotilogMonitoringRuntime.swift
   App-owned Notilog lifecycle, one-cycle processing, history loading,
-  automation activation, persistence control, and live privacy-policy updates
+  automation activation, persistence control, live privacy-policy updates,
+  and host-injected in-process dismissal
 
 AppPreferences.swift
   UserDefaults preference keys, defaults, and redaction-policy construction
@@ -338,7 +368,7 @@ CLI-only or advanced actions:
 - AX dump
 - Probe menus
 
-`--dismiss-key` is intended as an automation integration point. ShutUpMac does not need to know which tool generated the key; it only receives a runtime Accessibility key and attempts to dismiss the currently visible matching notification element.
+`--dismiss-key` remains a supported automation and diagnostic integration point for external tools and the standalone Notilog host. The embedded ShutUpMac runtime now avoids the helper subprocess and calls the same dismissal engine through an injected in-process handler.
 
 Notilog remains independently usable through `notilog-cli` and is also the active monitoring and automation subsystem embedded in the ShutUpMac app. Preserve the host/core boundary and avoid duplicating notification scanning, persistence, rule matching, privacy policy, or dismissal logic across app and CLI targets.
 
