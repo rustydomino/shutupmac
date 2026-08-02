@@ -26,10 +26,18 @@ struct ShutUpMacManagementView: View {
 
     let setNotilogRulesAutoDismissEnabled:
         (Bool) -> Void
+
     let requestDatabaseStatistics:
         (
             @escaping @MainActor @Sendable (
                 DatabaseStatisticsResult
+            ) -> Void
+        ) -> Void
+
+    let resetActivityDatabase:
+        (
+            @escaping @MainActor @Sendable (
+                ActivityDatabaseResetResult
             ) -> Void
         ) -> Void
 
@@ -63,29 +71,29 @@ struct ShutUpMacManagementView: View {
     var body: some View {
         TabView(selection: selectedTabBinding) {
             SettingsView(
-               setNotilogDatabaseLoggingEnabled:
-                    setNotilogDatabaseLoggingEnabled,
+                setNotilogDatabaseLoggingEnabled:
+                setNotilogDatabaseLoggingEnabled,
                 replaceNotilogRedactionPolicy:
-                    replaceNotilogRedactionPolicy
+                replaceNotilogRedactionPolicy
             )
             .tabItem {
                 Label(
                     ShutUpMacTab.general.title,
                     systemImage:
-                        ShutUpMacTab.general.systemImage
+                    ShutUpMacTab.general.systemImage
                 )
             }
             .tag(ShutUpMacTab.general)
 
             HotKeySettingsView()
-            .tabItem {
-                Label(
-                    ShutUpMacTab.hotKeys.title,
-                    systemImage:
+                .tabItem {
+                    Label(
+                        ShutUpMacTab.hotKeys.title,
+                        systemImage:
                         ShutUpMacTab.hotKeys.systemImage
-                )
-            }
-            .tag(ShutUpMacTab.hotKeys)
+                    )
+                }
+                .tag(ShutUpMacTab.hotKeys)
 
             ActivityView(
                 store: activityStore,
@@ -99,7 +107,7 @@ struct ShutUpMacManagementView: View {
                 Label(
                     ShutUpMacTab.activity.title,
                     systemImage:
-                        ShutUpMacTab.activity.systemImage
+                    ShutUpMacTab.activity.systemImage
                 )
             }
             .tag(ShutUpMacTab.activity)
@@ -108,31 +116,33 @@ struct ShutUpMacManagementView: View {
                 navigation: navigation,
                 store: automationConfigurationStore,
                 saveAutomationConfiguration:
-                    saveAutomationConfiguration,
+                saveAutomationConfiguration,
                 setNotilogRulesAutoDismissEnabled:
-                    setNotilogRulesAutoDismissEnabled
+                setNotilogRulesAutoDismissEnabled
             )
             .tabItem {
                 Label(
                     ShutUpMacTab.rules.title,
                     systemImage:
-                        ShutUpMacTab.rules.systemImage
+                    ShutUpMacTab.rules.systemImage
                 )
             }
-           .tag(ShutUpMacTab.rules)
+            .tag(ShutUpMacTab.rules)
 
             AdvancedView(
                 requestDatabaseStatistics:
-                    requestDatabaseStatistics
+                requestDatabaseStatistics,
+                resetActivityDatabase:
+                resetActivityDatabase
             )
-                .tabItem {
-                    Label(
-                        ShutUpMacTab.advanced.title,
-                        systemImage:
-                            ShutUpMacTab.advanced.systemImage
-                    )
-                }
-                .tag(ShutUpMacTab.advanced)
+            .tabItem {
+                Label(
+                    ShutUpMacTab.advanced.title,
+                    systemImage:
+                    ShutUpMacTab.advanced.systemImage
+                )
+            }
+            .tag(ShutUpMacTab.advanced)
         }
         .frame(
             minWidth: 960,

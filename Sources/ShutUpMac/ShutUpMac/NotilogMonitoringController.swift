@@ -24,6 +24,13 @@ enum DatabaseStatisticsResult:
     case failed(String)
 }
 
+enum ActivityDatabaseResetResult:
+    Sendable
+{
+    case reset
+    case failed(String)
+}
+
 protocol AutomationConfigurationActivating:
     Sendable {
 
@@ -304,6 +311,72 @@ nonisolated final class NotilogMonitoringController:
                         completion,
                         message
                     ] in
+                        completion(
+                            .failed(message)
+                        )
+                }
+            }
+        }
+    }
+
+    func resetActivityDatabase(
+        completion: @escaping
+            @MainActor @Sendable (
+                ActivityDatabaseResetResult
+            ) -> Void
+    ) {
+        queue.async { [weak self] in
+            guard let self else {
+                return
+            }
+
+            guard let runtime = self.runtime else {
+                Task { @MainActor in
+                    completion(
+                        .failed(
+                            "Notilog monitoring is not running."
+                        )
+                    )
+                }
+
+                return
+            }
+
+            do {
+                try runtime.resetDatabase()
+
+                self.historyErrorMessage = nil
+                self.cycleErrorActive = false
+
+                Task {
+                    @MainActor [
+                        onHistoricalRecords =
+                            self.onHistoricalRecords,
+                        onMonitoringError =
+                            self.onMonitoringError,
+                        completion
+                    ] in
+                        onHistoricalRecords([])
+                        onMonitoringError(nil)
+                        completion(.reset)
+                }
+            } catch {
+                let message =
+                    "Could not reset the Activity database: "
+                    + String(describing: error)
+
+                Self.logger.error(
+                    "\(message, privacy: .public)"
+                )
+
+                Task {
+                    @MainActor [
+                        onMonitoringError =
+                            self.onMonitoringError,
+                        completion,
+                        message
+                    ] in
+                        onMonitoringError(message)
                         completion(
                             .failed(message)
                         )

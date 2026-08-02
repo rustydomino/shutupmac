@@ -72,6 +72,14 @@ struct ShutUpMacApp: App {
                             completion: completion
                         )
                 },
+                resetActivityDatabase: {
+                    completion in
+
+                    applicationDelegate
+                        .resetActivityDatabase(
+                            completion: completion
+                        )
+                },
                 replaceNotilogRedactionPolicy: { policy in
                     applicationDelegate
                         .replaceNotilogRedactionPolicy(

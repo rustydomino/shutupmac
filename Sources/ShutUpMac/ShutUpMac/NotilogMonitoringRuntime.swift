@@ -350,6 +350,146 @@ deinit {
         return try store.statistics()
     }
 
+    /// Replaces the Activity database while preserving the current
+    /// scanner, automation configuration, and monitoring-process lock.
+    ///
+    /// The caller must invoke this on the same serial queue used for
+    /// processOneCycle().
+    func resetDatabase() throws {
+        let shouldResumeLogging = loggingEnabled
+        let previousSession = session
+
+        if shouldResumeLogging {
+            try store?.endSession(
+                previousSession
+            )
+        }
+
+        replacePersistence(
+            store: nil,
+            session: previousSession
+        )
+
+        // Releasing the final store reference closes SQLite before
+        // the database and sidecar files are removed.
+        store = nil
+
+        do {
+            try removeDatabaseFiles()
+
+            try openReplacementDatabase(
+                resumeLogging:
+                    shouldResumeLogging
+            )
+        } catch {
+            let resetError = error
+
+            // If removal failed before the old database disappeared,
+            // make a best-effort attempt to reopen it so monitoring
+            // can continue normally.
+            do {
+                try openReplacementDatabase(
+                    resumeLogging:
+                        shouldResumeLogging
+                )
+            } catch {
+                loggingEnabled = false
+                store = nil
+
+                replacePersistence(
+                    store: nil,
+                    session: previousSession
+                )
+            }
+
+            throw resetError
+        }
+    }
+
+    private func openReplacementDatabase(
+        resumeLogging: Bool
+    ) throws {
+        let replacementStore =
+            try NotificationStore(
+                path: runtimePaths.database.path
+            )
+
+        let replacementSession =
+            ObservationSession()
+
+        if resumeLogging {
+            try replacementStore.startSession(
+                replacementSession
+            )
+        }
+
+        store = replacementStore
+        session = replacementSession
+        loggingEnabled = resumeLogging
+
+        replacePersistence(
+            store:
+                resumeLogging
+                    ? replacementStore
+                    : nil,
+            session: replacementSession
+        )
+    }
+
+    private func replacePersistence(
+        store: NotificationStore?,
+        session: ObservationSession
+    ) {
+        completedVerificationCoordinator
+            .replaceStore(store)
+
+        actionResultCoordinator
+            .replacePersistence(
+                store: store,
+                session: session
+            )
+
+        eventPersistenceCoordinator
+            .replacePersistence(
+                store: store,
+                session: session
+            )
+    }
+
+    private func removeDatabaseFiles()
+        throws
+    {
+        let databasePath =
+            runtimePaths.database.path
+
+        let databaseFiles = [
+            runtimePaths.database,
+            URL(
+                fileURLWithPath:
+                    databasePath + "-wal"
+            ),
+            URL(
+                fileURLWithPath:
+                    databasePath + "-shm"
+            ),
+        ]
+
+        let fileManager =
+            FileManager.default
+
+        for fileURL in databaseFiles {
+            guard fileManager.fileExists(
+                atPath: fileURL.path
+            ) else {
+                continue
+            }
+
+            try fileManager.removeItem(
+                at: fileURL
+            )
+        }
+    }
+
     private static func loadAutomationEngine(
         configURL: URL
     ) throws -> AutomationEngine {

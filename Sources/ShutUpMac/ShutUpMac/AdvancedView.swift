@@ -10,12 +10,23 @@ struct AdvancedView: View {
             ) -> Void
         ) -> Void
 
+    let resetActivityDatabase:
+        (
+            @escaping @MainActor @Sendable (
+                ActivityDatabaseResetResult
+            ) -> Void
+        ) -> Void
+
     @State private var statistics:
         NotificationStoreStatistics?
 
     @State private var errorMessage: String?
     @State private var hasLoadedStatistics = false
     @State private var isLoading = false
+
+    @State private var isShowingResetConfirmation = false
+    @State private var isResettingDatabase = false
+    @State private var resetErrorMessage: String?
 
     private var databaseFileURL: URL {
         NotilogRuntimePaths
@@ -165,12 +176,68 @@ struct AdvancedView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            Section("Maintenance") {
+                Text(
+                    "Resetting can help recover from Activity "
+                        + "database problems. It permanently deletes "
+                        + "notification and action history and creates "
+                        + "a new database. Rules and settings are not "
+                        + "affected. Back up the database first if you "
+                        + "may need the existing history."
+                )
+                .foregroundStyle(.secondary)
+                .fixedSize(
+                    horizontal: false,
+                    vertical: true
+                )
+
+                Button(
+                    "Reset Activity Database…",
+                    role: .destructive
+                ) {
+                    isShowingResetConfirmation = true
+                }
+                .disabled(isResettingDatabase)
+
+                if let resetErrorMessage {
+                    Label(
+                        "Database reset failed",
+                        systemImage:
+                            "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(.red)
+                    .help(resetErrorMessage)
+                }
+            }
+
         }
         .formStyle(.grouped)
         .frame(
             maxWidth: .infinity,
             maxHeight: .infinity
         )
+        .alert(
+            "Reset Activity Database?",
+            isPresented:
+                $isShowingResetConfirmation
+        ) {
+            Button("Cancel", role: .cancel) {}
+
+            Button(
+                "Reset Database",
+                role: .destructive
+            ) {
+                performDatabaseReset()
+            }
+        } message: {
+            Text(
+                "This permanently removes all Activity history "
+                    + "and creates a new database. Rules and "
+                    + "settings are not affected. This action "
+                    + "cannot be undone."
+            )
+        }
         .task {
             while !Task.isCancelled {
                 refreshDatabaseStatistics()
@@ -178,6 +245,32 @@ struct AdvancedView: View {
                 try? await Task.sleep(
                     for: .seconds(1)
                 )
+            }
+        }
+    }
+
+    @MainActor
+    private func performDatabaseReset() {
+        guard !isResettingDatabase else {
+            return
+        }
+
+        isResettingDatabase = true
+        resetErrorMessage = nil
+
+        resetActivityDatabase { result in
+            isResettingDatabase = false
+
+            switch result {
+            case .reset:
+                statistics = nil
+                errorMessage = nil
+                hasLoadedStatistics = false
+
+                refreshDatabaseStatistics()
+
+            case let .failed(message):
+                resetErrorMessage = message
             }
         }
     }

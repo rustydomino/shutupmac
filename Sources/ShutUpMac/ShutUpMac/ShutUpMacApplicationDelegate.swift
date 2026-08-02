@@ -127,6 +127,18 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
             )
     }
 
+    func resetActivityDatabase(
+        completion: @escaping
+            @MainActor @Sendable (
+                ActivityDatabaseResetResult
+            ) -> Void
+    ) {
+        notilogMonitoringController
+            .resetActivityDatabase(
+                completion: completion
+            )
+    }
+
     func setNotilogRulesAutoDismissEnabled(
         _ enabled: Bool
     ) {
