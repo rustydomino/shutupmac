@@ -115,6 +115,18 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func requestDatabaseStatistics(
+        completion: @escaping
+            @MainActor @Sendable (
+                DatabaseStatisticsResult
+            ) -> Void
+    ) {
+        notilogMonitoringController
+            .requestDatabaseStatistics(
+                completion: completion
+            )
+    }
+
     func setNotilogRulesAutoDismissEnabled(
         _ enabled: Bool
     ) {

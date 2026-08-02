@@ -337,6 +337,19 @@ deinit {
         )
     }
 
+    /// Returns current database statistics when a database is open.
+    ///
+    /// A database may not exist when logging has always been disabled.
+    func databaseStatistics()
+        throws -> NotificationStoreStatistics?
+    {
+        guard let store else {
+            return nil
+        }
+
+        return try store.statistics()
+    }
+
     private static func loadAutomationEngine(
         configURL: URL
     ) throws -> AutomationEngine {

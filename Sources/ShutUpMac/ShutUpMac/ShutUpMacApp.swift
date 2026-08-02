@@ -64,6 +64,14 @@ struct ShutUpMacApp: App {
                             enabled
                         )
                 },
+                requestDatabaseStatistics: {
+                    completion in
+
+                    applicationDelegate
+                        .requestDatabaseStatistics(
+                            completion: completion
+                        )
+                },
                 replaceNotilogRedactionPolicy: { policy in
                     applicationDelegate
                         .replaceNotilogRedactionPolicy(

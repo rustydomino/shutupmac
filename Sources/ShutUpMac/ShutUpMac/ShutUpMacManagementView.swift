@@ -1,3 +1,4 @@
+import Dispatch
 import NotilogCore
 import SwiftUI
 
@@ -25,12 +26,42 @@ struct ShutUpMacManagementView: View {
 
     let setNotilogRulesAutoDismissEnabled:
         (Bool) -> Void
+    let requestDatabaseStatistics:
+        (
+            @escaping @MainActor @Sendable (
+                DatabaseStatisticsResult
+            ) -> Void
+        ) -> Void
 
     let replaceNotilogRedactionPolicy:
         (RedactionPolicy) -> Void
 
+    private var selectedTabBinding:
+        Binding<ShutUpMacTab>
+    {
+        let navigation = navigation
+
+        return Binding(
+            get: {
+                navigation.selectedTab
+            },
+            set: { selectedTab in
+                guard navigation.selectedTab
+                    != selectedTab
+                else {
+                    return
+                }
+
+                DispatchQueue.main.async {
+                    navigation.selectedTab =
+                        selectedTab
+                }
+            }
+        )
+    }
+
     var body: some View {
-        TabView(selection: $navigation.selectedTab) {
+        TabView(selection: selectedTabBinding) {
             SettingsView(
                setNotilogDatabaseLoggingEnabled:
                     setNotilogDatabaseLoggingEnabled,
@@ -89,6 +120,19 @@ struct ShutUpMacManagementView: View {
                 )
             }
            .tag(ShutUpMacTab.rules)
+
+            AdvancedView(
+                requestDatabaseStatistics:
+                    requestDatabaseStatistics
+            )
+                .tabItem {
+                    Label(
+                        ShutUpMacTab.advanced.title,
+                        systemImage:
+                            ShutUpMacTab.advanced.systemImage
+                    )
+                }
+                .tag(ShutUpMacTab.advanced)
         }
         .frame(
             minWidth: 960,

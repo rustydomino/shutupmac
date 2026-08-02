@@ -7,6 +7,7 @@ enum ShutUpMacTab: CaseIterable, Identifiable {
     case hotKeys
     case activity
     case rules
+    case advanced
 
     var id: Self {
         self
@@ -25,6 +26,9 @@ enum ShutUpMacTab: CaseIterable, Identifiable {
 
         case .rules:
             "Rules"
+
+        case .advanced:
+            "Advanced"
         }
     }
 
@@ -41,6 +45,9 @@ enum ShutUpMacTab: CaseIterable, Identifiable {
 
         case .rules:
             "list.bullet.rectangle"
+
+        case .advanced:
+            "slider.horizontal.3"
         }
     }
 }

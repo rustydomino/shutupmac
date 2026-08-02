@@ -1,9 +1,27 @@
 import Foundation
 import SQLite3
 
+public struct NotificationStoreStatistics:
+    Equatable,
+    Sendable
+{
+    public let notificationEventCount: Int
+    public let actionRunCount: Int
+    public let activeNotificationCount: Int
+    public let watchSessionCount: Int
+
+    public let oldestNotificationEventDate: Date?
+    public let newestNotificationEventDate: Date?
+    public let databaseStorageByteCount: Int64
+
+    public let notificationEventLimit: Int
+    public let actionRunLimit: Int
+}
+
 public final class NotificationStore {
     private static let maximumStoredTextLength = 4_096
 
+    private let databasePath: String
     private let notificationEventLimit: Int
     private let actionRunLimit: Int
 
@@ -27,6 +45,7 @@ public final class NotificationStore {
             "Action-run retention must be positive"
         )
 
+        self.databasePath = path
         self.notificationEventLimit =
             notificationEventLimit
         self.actionRunLimit = actionRunLimit
@@ -50,6 +69,42 @@ public final class NotificationStore {
 
         try pruneNotificationEventsIfNeeded()
         try pruneActionRunsIfNeeded()
+    }
+
+        public func statistics()
+        throws -> NotificationStoreStatistics
+    {
+        let eventDateRange =
+            try notificationEventDateRange()
+
+        return NotificationStoreStatistics(
+            notificationEventCount:
+                try rowCount(
+                    in: "notification_events"
+                ),
+            actionRunCount:
+                try rowCount(
+                    in: "action_runs"
+                ),
+            activeNotificationCount:
+                try rowCount(
+                    in: "active_notifications"
+                ),
+            watchSessionCount:
+                try rowCount(
+                    in: "watch_sessions"
+                ),
+            oldestNotificationEventDate:
+                eventDateRange.oldest,
+            newestNotificationEventDate:
+                eventDateRange.newest,
+            databaseStorageByteCount:
+                databaseStorageByteCount(),
+            notificationEventLimit:
+                notificationEventLimit,
+            actionRunLimit:
+                actionRunLimit
+        )
     }
 
     deinit {
@@ -952,6 +1007,91 @@ public final class NotificationStore {
 
         guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
             throw StoreError.createTableFailed(message: lastErrorMessage)
+        }
+    }
+
+    private func notificationEventDateRange()
+        throws -> (
+            oldest: Date?,
+            newest: Date?
+        )
+    {
+        let sql = """
+        SELECT
+            MIN(timestamp),
+            MAX(timestamp)
+        FROM notification_events;
+        """
+
+        var statement: OpaquePointer?
+
+        guard sqlite3_prepare_v2(
+            db,
+            sql,
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else {
+            throw StoreError.prepareFailed(
+                message: lastErrorMessage
+            )
+        }
+
+        defer {
+            sqlite3_finalize(statement)
+        }
+
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            throw StoreError.queryFailed(
+                message: lastErrorMessage
+            )
+        }
+
+        let formatter = ISO8601DateFormatter()
+
+        return (
+            oldest: formatter.date(
+                from: columnText(
+                    statement,
+                    index: 0
+                )
+            ),
+            newest: formatter.date(
+                from: columnText(
+                    statement,
+                    index: 1
+                )
+            )
+        )
+    }
+
+    private func databaseStorageByteCount()
+        -> Int64
+    {
+        let paths = [
+            databasePath,
+            databasePath + "-wal",
+            databasePath + "-shm",
+        ]
+
+        return paths.reduce(0) {
+            partialResult,
+            path in
+
+            guard
+                let attributes =
+                    try? FileManager.default
+                        .attributesOfItem(
+                            atPath: path
+                        ),
+                let size =
+                    attributes[.size] as? NSNumber
+            else {
+                return partialResult
+            }
+
+            return partialResult
+                + size.int64Value
         }
     }
 

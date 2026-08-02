@@ -14,6 +14,16 @@ enum DatabaseLoggingUpdateResult:
     case failed(String)
 }
 
+enum DatabaseStatisticsResult:
+    Sendable
+{
+    case loaded(
+        NotificationStoreStatistics?
+    )
+
+    case failed(String)
+}
+
 protocol AutomationConfigurationActivating:
     Sendable {
 
@@ -241,6 +251,64 @@ nonisolated final class NotilogMonitoringController:
             isStarted = false
 
             print("Notilog monitoring stopped")
+        }
+    }
+
+    func requestDatabaseStatistics(
+        completion: @escaping
+            @MainActor @Sendable (
+                DatabaseStatisticsResult
+            ) -> Void
+    ) {
+        queue.async { [weak self] in
+            guard let self else {
+                return
+            }
+
+            guard let runtime = self.runtime else {
+                Task { @MainActor in
+                    completion(
+                        .failed(
+                            "Notilog monitoring is not running."
+                        )
+                    )
+                }
+
+                return
+            }
+
+            do {
+                let statistics =
+                    try runtime.databaseStatistics()
+
+                Task {
+                    @MainActor [
+                        completion,
+                        statistics
+                    ] in
+                        completion(
+                            .loaded(statistics)
+                        )
+                }
+            } catch {
+                let message =
+                    "Could not load database statistics: "
+                    + String(describing: error)
+
+                Self.logger.error(
+                    "\(message, privacy: .public)"
+                )
+
+                Task {
+                    @MainActor [
+                        completion,
+                        message
+                    ] in
+                        completion(
+                            .failed(message)
+                        )
+                }
+            }
         }
     }
 
