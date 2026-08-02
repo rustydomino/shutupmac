@@ -18,6 +18,14 @@ public struct NotificationStoreStatistics:
     public let actionRunLimit: Int
 }
 
+public enum NotificationStoreAccessMode:
+    Equatable,
+    Sendable
+{
+    case readWrite
+    case readOnly
+}
+
 public final class NotificationStore {
     public static let defaultNotificationEventLimit =
         25_000
@@ -28,8 +36,10 @@ public final class NotificationStore {
     private static let maximumStoredTextLength = 4_096
 
     private let databasePath: String
+    private let accessMode: NotificationStoreAccessMode
 
     private var notificationEventLimit: Int
+
     private var actionRunLimit: Int
 
     private var notificationEventCount = 0
@@ -39,6 +49,8 @@ public final class NotificationStore {
     
 public init(
     path: String,
+    accessMode: NotificationStoreAccessMode =
+        .readWrite,
     notificationEventLimit: Int =
         NotificationStore
             .defaultNotificationEventLimit,
@@ -57,18 +69,42 @@ public init(
         )
 
         self.databasePath = path
+        self.accessMode = accessMode
         self.notificationEventLimit =
             notificationEventLimit
         self.actionRunLimit = actionRunLimit
 
-        if sqlite3_open(path, &db) != SQLITE_OK {
+        let openFlags: Int32
+
+        switch accessMode {
+        case .readWrite:
+            openFlags =
+                SQLITE_OPEN_READWRITE
+                    | SQLITE_OPEN_CREATE
+
+        case .readOnly:
+            openFlags = SQLITE_OPEN_READONLY
+        }
+
+        if sqlite3_open_v2(
+            path,
+            &db,
+            openFlags,
+            nil
+        ) != SQLITE_OK {
             throw StoreError.openFailed(
                 message: lastErrorMessage
             )
         }
 
-        try createTables()
-        try migrateSchema()
+        switch accessMode {
+        case .readWrite:
+            try createTables()
+            try migrateSchema()
+
+        case .readOnly:
+            break
+        }
 
         notificationEventCount = try rowCount(
             in: "notification_events"
@@ -78,8 +114,10 @@ public init(
             in: "action_runs"
         )
 
-        try pruneNotificationEventsIfNeeded()
-        try pruneActionRunsIfNeeded()
+        if accessMode == .readWrite {
+            try pruneNotificationEventsIfNeeded()
+            try pruneActionRunsIfNeeded()
+        }
     }
 
         public func statistics()
@@ -122,6 +160,8 @@ public init(
         notificationEventLimit: Int,
         actionRunLimit: Int
     ) throws {
+        try requireReadWriteAccess()
+
         guard notificationEventLimit > 0 else {
             throw StoreError.invalidRetentionLimit(
                 message:
@@ -150,13 +190,21 @@ public init(
         sqlite3_close(db)
     }
 
-    public func insert(_ events: [NotificationEvent], session: ObservationSession) throws {
+    public func insert(
+        _ events: [NotificationEvent],
+        session: ObservationSession
+    ) throws {
         for event in events {
             try insert(event, session: session)
         }
     }
 
-    public func insert(_ event: NotificationEvent, session: ObservationSession) throws {
+    public func insert(
+        _ event: NotificationEvent,
+        session: ObservationSession
+    ) throws {
+        try requireReadWriteAccess()
+
         let sql = """
         INSERT INTO notification_events (
             session_id,
@@ -232,6 +280,8 @@ public init(
         _ result: ActionRunResult,
         session: ObservationSession
     ) throws -> Int64 {
+        try requireReadWriteAccess()
+
         let sql = """
         INSERT INTO action_runs (
             created_at,
@@ -367,6 +417,8 @@ public init(
         _ status: ActionVerificationStatus,
         forActionRunID actionRunID: Int64
     ) throws {
+        try requireReadWriteAccess()
+
         let sql = """
         UPDATE action_runs
         SET verification_status = ?
@@ -483,7 +535,11 @@ public init(
         }
     }
 
-    public func startSession(_ session: ObservationSession) throws {
+    public func startSession(
+        _ session: ObservationSession
+    ) throws {
+        try requireReadWriteAccess()
+
         let sql = """
         INSERT OR IGNORE INTO watch_sessions (
             id,
@@ -510,7 +566,12 @@ public init(
         }
     }
 
-    public func endSession(_ session: ObservationSession, endedAt: Date = Date()) throws {
+    public func endSession(
+        _ session: ObservationSession,
+        endedAt: Date = Date()
+    ) throws {
+        try requireReadWriteAccess()
+
         let sql = """
         UPDATE watch_sessions
         SET ended_at = ?
@@ -1295,6 +1356,12 @@ public init(
         return String(cString: cString)
     }
 
+    private func requireReadWriteAccess() throws {
+        guard accessMode == .readWrite else {
+            throw StoreError.readOnlyMutation
+        }
+    }
+
     private var lastErrorMessage: String {
         if let db {
             return String(cString: sqlite3_errmsg(db))
@@ -1314,6 +1381,7 @@ public enum StoreError: Error {
     case deleteFailed(message: String)
     case migrationFailed(message: String)
     case invalidRetentionLimit(message: String)
+    case readOnlyMutation
 }
 
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)

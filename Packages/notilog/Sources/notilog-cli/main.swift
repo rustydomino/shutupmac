@@ -678,9 +678,10 @@ case "watch":
 case "history":
     let limit = integerOption("--limit", default: 20)
 
-    try startupConfiguration.runtimePaths.ensureDirectoriesExist()
-
-    let store = try NotificationStore(path: startupConfiguration.runtimePaths.database.path)
+    let store = try NotificationStore(
+        path: startupConfiguration.runtimePaths.database.path,
+        accessMode: .readOnly
+    )
 
     diagnosticHandler?(
         "Database path: \(startupConfiguration.runtimePaths.database.path)"
@@ -701,10 +702,10 @@ case "history":
 case "action-history":
     let limit = integerOption("--limit", default: 20)
 
-    try startupConfiguration.runtimePaths.ensureDirectoriesExist()
-
-    let store = try NotificationStore(path: startupConfiguration.runtimePaths.database.path)
-
+    let store = try NotificationStore(
+        path: startupConfiguration.runtimePaths.database.path,
+        accessMode: .readOnly
+    )
     diagnosticHandler?("Database path: \(startupConfiguration.runtimePaths.database.path)")
     diagnosticHandler?("Action history limit: \(limit)")
 

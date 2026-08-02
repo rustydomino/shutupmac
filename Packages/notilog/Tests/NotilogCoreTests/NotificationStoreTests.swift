@@ -1,6 +1,7 @@
 import Foundation
 @testable import NotilogCore
 import XCTest
+import SQLite3
 
 final class NotificationStoreTests: XCTestCase {
     func testActionVerificationStatusRoundTripsThroughSQLite() throws {
@@ -925,6 +926,395 @@ final class NotificationStoreTests: XCTestCase {
             statistics.actionRunLimit,
             2
         )
+    }
+
+    func testReadOnlyOpenDoesNotCreateMissingDatabase()
+        throws
+    {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: databaseURL.path
+            )
+        )
+
+        XCTAssertThrowsError(
+            try NotificationStore(
+                path: databaseURL.path,
+                accessMode: .readOnly
+            )
+        )
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: databaseURL.path
+            )
+        )
+    }
+
+    func testReadOnlyOpenDoesNotPruneNotificationEvents()
+        throws
+    {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        let session = ObservationSession(
+            id: "test-session",
+            startedAt: Date(timeIntervalSince1970: 1)
+        )
+
+        do {
+            let store = try NotificationStore(
+                path: databaseURL.path,
+                notificationEventLimit: 10,
+                actionRunLimit: 10
+            )
+
+            for index in 1...5 {
+                let notification = VisibleNotification(
+                    key: "notification-\(index)",
+                    app: "Test App",
+                    title: "Notification \(index)",
+                    subtitle: "",
+                    body: "Body \(index)"
+                )
+
+                try store.insert(
+                    NotificationEvent(
+                        type: .appeared,
+                        notification: notification,
+                        timestamp: Date(
+                            timeIntervalSince1970:
+                                TimeInterval(index)
+                        )
+                    ),
+                    session: session
+                )
+            }
+        }
+
+        let readOnlyStore = try NotificationStore(
+            path: databaseURL.path,
+            accessMode: .readOnly,
+            notificationEventLimit: 3,
+            actionRunLimit: 10
+        )
+
+        let records = try readOnlyStore.recentEvents(
+            limit: 10
+        )
+
+        XCTAssertEqual(records.count, 5)
+    }
+
+    func testReadOnlyOpenDoesNotMigrateLegacySchema()
+        throws
+    {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        var database: OpaquePointer?
+
+        XCTAssertEqual(
+            sqlite3_open(
+                databaseURL.path,
+                &database
+            ),
+            SQLITE_OK
+        )
+
+        let legacySchema = """
+        CREATE TABLE notification_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT
+        );
+
+        CREATE TABLE action_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT
+        );
+        """
+
+        XCTAssertEqual(
+            sqlite3_exec(
+                database,
+                legacySchema,
+                nil,
+                nil,
+                nil
+            ),
+            SQLITE_OK
+        )
+
+        _ = sqlite3_close(database)
+        database = nil
+
+        _ = try NotificationStore(
+            path: databaseURL.path,
+            accessMode: .readOnly
+        )
+
+        XCTAssertEqual(
+            sqlite3_open_v2(
+                databaseURL.path,
+                &database,
+                SQLITE_OPEN_READONLY,
+                nil
+            ),
+            SQLITE_OK
+        )
+
+        defer {
+            _ = sqlite3_close(database)
+        }
+
+        let tableInfoSQL =
+            "PRAGMA table_info(action_runs);"
+
+        var statement: OpaquePointer?
+
+        XCTAssertEqual(
+            sqlite3_prepare_v2(
+                database,
+                tableInfoSQL,
+                -1,
+                &statement,
+                nil
+            ),
+            SQLITE_OK
+        )
+
+        defer {
+            sqlite3_finalize(statement)
+        }
+
+        var columnNames: [String] = []
+
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard
+                let columnName =
+                    sqlite3_column_text(
+                        statement,
+                        1
+                    )
+            else {
+                continue
+            }
+
+            columnNames.append(
+                String(
+                    cString: columnName
+                )
+            )
+        }
+
+        XCTAssertFalse(
+            columnNames.contains(
+                "verification_status"
+            )
+        )
+    }
+
+    func testReadOnlyStoreRejectsMutation() throws {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        // Create a valid database first.
+        _ = try NotificationStore(
+            path: databaseURL.path
+        )
+
+        let readOnlyStore = try NotificationStore(
+            path: databaseURL.path,
+            accessMode: .readOnly
+        )
+
+        let session = ObservationSession(
+            id: "read-only-test-session",
+            startedAt: Date(timeIntervalSince1970: 1)
+        )
+
+        XCTAssertThrowsError(
+            try readOnlyStore.startSession(session)
+        ) { error in
+            guard case StoreError.readOnlyMutation = error else {
+                XCTFail(
+                    "Expected readOnlyMutation, got \(error)"
+                )
+                return
+            }
+        }
+    }
+
+    func testReadOnlyHistoryQueryWorksWhileWriterIsOpen()
+        throws
+    {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        let writerStore = try NotificationStore(
+            path: databaseURL.path
+        )
+
+        let session = ObservationSession(
+            id: "writer-session",
+            startedAt: Date(timeIntervalSince1970: 1)
+        )
+
+        let notification = VisibleNotification(
+            key: "notification-1",
+            app: "Test App",
+            title: "Concurrent read test",
+            subtitle: "",
+            body: "Writer remains open"
+        )
+
+        try writerStore.insert(
+            NotificationEvent(
+                type: .appeared,
+                notification: notification,
+                timestamp: Date(timeIntervalSince1970: 10)
+            ),
+            session: session
+        )
+
+        // Keep writerStore alive while opening and querying
+        // through a second SQLite connection.
+        let readOnlyStore = try NotificationStore(
+            path: databaseURL.path,
+            accessMode: .readOnly
+        )
+
+        let records = try readOnlyStore.recentEvents(
+            limit: 10
+        )
+
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(
+            records.first?.event.notification.title,
+            "Concurrent read test"
+        )
+    }
+
+    func testReadOnlyOpenDoesNotPruneActionRuns()
+        throws
+    {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        let session = ObservationSession(
+            id: "test-session",
+            startedAt: Date(timeIntervalSince1970: 1)
+        )
+
+        do {
+            let store = try NotificationStore(
+                path: databaseURL.path,
+                notificationEventLimit: 10,
+                actionRunLimit: 10
+            )
+
+            for index in 1...4 {
+                let notification = VisibleNotification(
+                    key: "notification-\(index)",
+                    app: "Test App",
+                    title: "Notification \(index)",
+                    subtitle: "",
+                    body: "Body \(index)"
+                )
+
+                let event = NotificationEvent(
+                    type: .appeared,
+                    notification: notification,
+                    timestamp: Date(
+                        timeIntervalSince1970:
+                            TimeInterval(index)
+                    )
+                )
+
+                let result = ActionRunResult(
+                    ruleName: "Rule \(index)",
+                    action: .dryRunLog(
+                        message: "Action \(index)"
+                    ),
+                    resolvedAction: .dryRunLog(
+                        message: "Resolved action \(index)"
+                    ),
+                    event: event,
+                    status: .succeeded,
+                    message: "Result \(index)",
+                    exitCode: 0,
+                    stdout: "",
+                    stderr: ""
+                )
+
+                try store.insert(
+                    result,
+                    session: session
+                )
+            }
+        }
+
+        let readOnlyStore = try NotificationStore(
+            path: databaseURL.path,
+            accessMode: .readOnly,
+            notificationEventLimit: 10,
+            actionRunLimit: 2
+        )
+
+        let records = try readOnlyStore.recentActionRuns(
+            limit: 10
+        )
+
+        XCTAssertEqual(records.count, 4)
     }
 
 }
