@@ -4,6 +4,11 @@ struct ActivityView: View {
     @ObservedObject
     var store: ActivityStore
 
+    @AppStorage(
+        PreferenceKeys.notilogDatabaseLoggingEnabled
+    )
+    private var databaseLoggingEnabled = true
+
     let createRuleFromNotification:
         (RuleEditorSeed) -> Void
 
@@ -116,6 +121,16 @@ struct ActivityView: View {
             )
     }
 
+    private var loggingDisabledWarning: some View {
+        Label(
+            "Logging is currently disabled",
+            systemImage: "exclamationmark.triangle.fill"
+        )
+        .font(.caption)
+        .foregroundStyle(.orange)
+        .lineLimit(1)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -165,14 +180,28 @@ struct ActivityView: View {
 
             Group {
                 if store.records.isEmpty {
-                    ContentUnavailableView(
-                        "No Notifications Yet",
-                        systemImage: "bell.badge",
-                        description: Text(
-                            "Notifications observed while ShutUpMac "
-                                + "is running will appear here."
+                    VStack(spacing: 0) {
+                        ContentUnavailableView(
+                            "No Notifications Yet",
+                            systemImage: "bell.badge",
+                            description: Text(
+                                "Notifications observed while ShutUpMac "
+                                    + "is running will appear here."
+                            )
                         )
-                    )
+
+                        if !databaseLoggingEnabled {
+                            Divider()
+
+                            HStack {
+                                loggingDisabledWarning
+
+                                Spacer()
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                        }
+                    }
                 } else {
                     VStack(spacing: 0) {
                         ZStack {
@@ -284,6 +313,10 @@ struct ActivityView: View {
                             Text(activityStatusText)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                        }
+
+                        if !databaseLoggingEnabled {
+                            loggingDisabledWarning
                         }
 
                         Spacer()
