@@ -7,6 +7,9 @@ final class ActivityStore: ObservableObject {
     @Published private(set) var items: [ActivityItem] = []
     @Published private(set) var records: [NotificationActivityRecord] = []
 
+    @Published private(set)
+    var monitoringErrorMessage: String?
+
     var isAtRecordCapacity: Bool {
         records.count >= maximumItemCount
     }
@@ -77,6 +80,16 @@ final class ActivityStore: ObservableObject {
                 records.count - maximumItemCount
             )
         }
+    }
+
+    func reportMonitoringError(
+        _ message: String
+    ) {
+        monitoringErrorMessage = message
+    }
+
+    func clearMonitoringError() {
+        monitoringErrorMessage = nil
     }
 
     func removeAll() {

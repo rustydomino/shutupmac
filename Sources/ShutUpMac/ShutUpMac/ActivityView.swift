@@ -131,6 +131,19 @@ struct ActivityView: View {
         .lineLimit(1)
     }
 
+    private func monitoringErrorWarning(
+        _ message: String
+    ) -> some View {
+        Label(
+            "Activity database error",
+            systemImage: "exclamationmark.triangle.fill"
+        )
+        .font(.caption)
+        .foregroundStyle(.red)
+        .lineLimit(1)
+        .help(message)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -175,6 +188,10 @@ struct ActivityView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+            .fixedSize(
+                horizontal: false,
+                vertical: true
+            )
 
             Divider()
 
@@ -189,17 +206,37 @@ struct ActivityView: View {
                                     + "is running will appear here."
                             )
                         )
+                        .frame(
+                            maxWidth: .infinity,
+                            maxHeight: .infinity
+                        )
 
-                        if !databaseLoggingEnabled {
+                        if !databaseLoggingEnabled
+                            || store.monitoringErrorMessage != nil
+                        {
                             Divider()
 
-                            HStack {
-                                loggingDisabledWarning
+                            HStack(spacing: 12) {
+                                if let message =
+                                    store.monitoringErrorMessage
+                                {
+                                    monitoringErrorWarning(
+                                        message
+                                    )
+                                }
+
+                                if !databaseLoggingEnabled {
+                                    loggingDisabledWarning
+                                }
 
                                 Spacer()
                             }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 8)
+                            .fixedSize(
+                                horizontal: false,
+                                vertical: true
+                            )
                         }
                     }
                 } else {
@@ -313,6 +350,14 @@ struct ActivityView: View {
                             Text(activityStatusText)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                        }
+
+                        if let message =
+                            store.monitoringErrorMessage
+                        {
+                            monitoringErrorWarning(
+                                message
+                            )
                         }
 
                         if !databaseLoggingEnabled {

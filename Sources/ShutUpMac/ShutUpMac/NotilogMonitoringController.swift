@@ -59,9 +59,15 @@ nonisolated final class NotilogMonitoringController:
             [NotificationActivityRecord]
         ) -> Void
 
+    private let onMonitoringError:
+        @MainActor @Sendable (String?) -> Void
+
     private var timer: DispatchSourceTimer?
     private var runtime: NotilogMonitoringRuntime?
     private var isStarted = false
+
+    private var historyErrorMessage: String?
+    private var cycleErrorActive = false
 
     init(
         runtimePaths: NotilogRuntimePaths =
@@ -80,8 +86,10 @@ nonisolated final class NotilogMonitoringController:
                 [NotificationActivityRecord]
             ) -> Void,
         onActivityItems: @escaping
-            @MainActor @Sendable ([ActivityItem]) -> Void
-    ) {
+            @MainActor @Sendable ([ActivityItem]) -> Void,
+        onMonitoringError: @escaping
+            @MainActor @Sendable (String?) -> Void = { _ in }
+    ) {        
         self.runtimePaths = runtimePaths
         self.initialConfiguration =
             initialConfiguration
@@ -92,6 +100,7 @@ nonisolated final class NotilogMonitoringController:
         self.interval = interval
         self.onHistoricalRecords = onHistoricalRecords
         self.onActivityItems = onActivityItems
+        self.onMonitoringError = onMonitoringError
     }
 
     func start() {
@@ -139,22 +148,37 @@ nonisolated final class NotilogMonitoringController:
                             )
                         }
 
+                    self.historyErrorMessage = nil
+
                     Task {
                         @MainActor [
                             onHistoricalRecords,
+                            onMonitoringError,
                             historicalRecords
                         ] in
                             onHistoricalRecords(
                                 historicalRecords
                             )
-                    }
-                } catch {
-                    print(
-                        "Could not load Notilog activity history: "
-                        + "\(error)"
-                    )
-                }
 
+                            onMonitoringError(nil)
+                    }                    
+                } catch {
+                    let message =
+                        "Could not load Notilog activity history: "
+                        + String(describing: error)
+
+                    self.historyErrorMessage = message
+
+                    print(message)
+
+                    Task {
+                        @MainActor [
+                            onMonitoringError,
+                            message
+                        ] in
+                            onMonitoringError(message)
+                    }
+                }
                 let timer = DispatchSource.makeTimerSource(
                     queue: self.queue
                 )
@@ -176,9 +200,19 @@ nonisolated final class NotilogMonitoringController:
                 timer.resume()
                 print("Notilog monitoring started")
             } catch {
-                print(
-                    "Could not start Notilog monitoring: \(error)"
-                )
+                let message =
+                    "Could not start Notilog monitoring: "
+                    + String(describing: error)
+
+                print(message)
+
+                Task {
+                    @MainActor [
+                        onMonitoringError = self.onMonitoringError,
+                        message
+                    ] in
+                        onMonitoringError(message)
+                }
             }
         }
     }
@@ -394,6 +428,20 @@ nonisolated final class NotilogMonitoringController:
                 at: timestamp
             )
 
+            if cycleErrorActive {
+                cycleErrorActive = false
+
+                let message = historyErrorMessage
+
+                Task {
+                    @MainActor [
+                        onMonitoringError,
+                        message
+                    ] in
+                        onMonitoringError(message)
+                }
+            }
+
             let activityItems = ActivityItemFactory.makeItems(
                 from: result,
                 verificationTimestamp: timestamp,
@@ -419,9 +467,21 @@ nonisolated final class NotilogMonitoringController:
                 + "\(activityItems.count) activity item(s)"
             )
         } catch {
-            print(
-                "Notilog monitoring cycle failed: \(error)"
-            )
+            cycleErrorActive = true
+
+            let message =
+                "Notilog monitoring cycle failed: "
+                + String(describing: error)
+
+            print(message)
+
+            Task {
+                @MainActor [
+                    onMonitoringError,
+                    message
+                ] in
+                    onMonitoringError(message)
+            }
         }
     }
 }

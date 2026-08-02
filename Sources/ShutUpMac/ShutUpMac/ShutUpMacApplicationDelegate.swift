@@ -64,9 +64,17 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
                 self?.activityStore.append(
                     activityItems
                 )
+            },
+            onMonitoringError: { [weak self] message in
+                if let message {
+                    self?.activityStore.reportMonitoringError(
+                        message
+                    )
+                } else {
+                    self?.activityStore.clearMonitoringError()
+                }
             }
         )
-
     func saveAutomationConfiguration(
         _ candidate: AutomationConfig
     ) {
