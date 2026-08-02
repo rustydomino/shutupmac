@@ -1,5 +1,6 @@
 import Foundation
 import NotilogCore
+import OSLog
 
 enum AutomationConfigurationUpdateResult:
     Sendable {
@@ -32,6 +33,11 @@ protocol AutomationConfigurationActivating:
 nonisolated final class NotilogMonitoringController:
     AutomationConfigurationActivating,
     @unchecked Sendable {
+    private static let logger = Logger(
+        subsystem: "net.kodada.mike.ShutUpMac",
+        category: "NotilogMonitoring"
+    )
+
     private let queue = DispatchQueue(
         label: "com.shutupmac.notilog-monitoring"
     )
@@ -169,7 +175,9 @@ nonisolated final class NotilogMonitoringController:
 
                     self.historyErrorMessage = message
 
-                    print(message)
+                    Self.logger.error(
+                        "\(message, privacy: .public)"
+                    )
 
                     Task {
                         @MainActor [
@@ -204,7 +212,9 @@ nonisolated final class NotilogMonitoringController:
                     "Could not start Notilog monitoring: "
                     + String(describing: error)
 
-                print(message)
+                Self.logger.error(
+                    "\(message, privacy: .public)"
+                )
 
                 Task {
                     @MainActor [
@@ -473,7 +483,9 @@ nonisolated final class NotilogMonitoringController:
                 "Notilog monitoring cycle failed: "
                 + String(describing: error)
 
-            print(message)
+            Self.logger.error(
+                "\(message, privacy: .public)"
+            )
 
             Task {
                 @MainActor [
