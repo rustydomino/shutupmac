@@ -17,6 +17,15 @@ struct AdvancedView: View {
             ) -> Void
         ) -> Void
 
+    let updateRetentionLimits:
+        (
+            Int,
+            Int,
+            @escaping @MainActor @Sendable (
+                RetentionLimitsUpdateResult
+            ) -> Void
+        ) -> Void
+
     @State private var statistics:
         NotificationStoreStatistics?
 
@@ -27,6 +36,19 @@ struct AdvancedView: View {
     @State private var isShowingResetConfirmation = false
     @State private var isResettingDatabase = false
     @State private var resetErrorMessage: String?
+
+    @State private var notificationEventLimitText =
+        AppPreferences
+            .notilogNotificationEventRetentionLimit
+            .formatted()
+
+    @State private var actionRunLimitText =
+        AppPreferences
+            .notilogActionRunRetentionLimit
+            .formatted()
+
+    @State private var isApplyingRetentionLimits = false
+    @State private var retentionErrorMessage: String?
 
     private var databaseFileURL: URL {
         NotilogRuntimePaths
@@ -91,6 +113,58 @@ struct AdvancedView: View {
         )
     }
     
+    private var parsedNotificationEventLimit: Int? {
+        retentionInteger(
+            from: notificationEventLimitText
+        )
+    }
+
+    private var parsedActionRunLimit: Int? {
+        retentionInteger(
+            from: actionRunLimitText
+        )
+    }
+
+    private var canApplyRetentionLimits: Bool {
+        guard !isApplyingRetentionLimits,
+              let notificationEventLimit =
+                  parsedNotificationEventLimit,
+              let actionRunLimit =
+                  parsedActionRunLimit,
+              AppPreferences
+                  .notificationEventRetentionRange
+                  .contains(notificationEventLimit),
+              AppPreferences
+                  .actionRunRetentionRange
+                  .contains(actionRunLimit)
+        else {
+            return false
+        }
+
+        return notificationEventLimit
+                != AppPreferences
+                    .notilogNotificationEventRetentionLimit
+            || actionRunLimit
+                != AppPreferences
+                    .notilogActionRunRetentionLimit
+    }
+
+    private func retentionInteger(
+        from text: String
+    ) -> Int? {
+        let normalized =
+            text
+                .replacingOccurrences(
+                    of: ",",
+                    with: ""
+                )
+                .trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+
+        return Int(normalized)
+    }
+
     var body: some View {
         Form {
             Section("Database") {
@@ -177,6 +251,85 @@ struct AdvancedView: View {
                 }
             }
 
+            Section("Retention") {
+                LabeledContent(
+                    "Retain Activity events"
+                ) {
+                    TextField(
+                        "25,000",
+                        text:
+                            $notificationEventLimitText
+                    )
+                    .multilineTextAlignment(.trailing)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 110)
+                }
+
+                LabeledContent(
+                    "Retain action runs"
+                ) {
+                    TextField(
+                        "10,000",
+                        text:
+                            $actionRunLimitText
+                    )
+                    .multilineTextAlignment(.trailing)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 110)
+                }
+
+                Text(
+                    "Lowering a limit immediately deletes the "
+                        + "oldest excess history. Increasing a "
+                        + "limit affects future retention."
+                )
+                .foregroundStyle(.secondary)
+                .fixedSize(
+                    horizontal: false,
+                    vertical: true
+                )
+
+                Text(
+                    "Activity events: "
+                        + "\(AppPreferences.notificationEventRetentionRange.lowerBound.formatted())"
+                        + "–"
+                        + "\(AppPreferences.notificationEventRetentionRange.upperBound.formatted()). "
+                        + "Action runs: "
+                        + "\(AppPreferences.actionRunRetentionRange.lowerBound.formatted())"
+                        + "–"
+                        + "\(AppPreferences.actionRunRetentionRange.upperBound.formatted())."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(
+                    horizontal: false,
+                    vertical: true
+                )
+
+                HStack {
+                    Spacer()
+
+                    Button(
+                        "Apply Retention Limits"
+                    ) {
+                        applyRetentionLimits()
+                    }
+                    .disabled(
+                        !canApplyRetentionLimits
+                    )
+                }
+
+                if let retentionErrorMessage {
+                    Label(
+                        "Could not update retention limits",
+                        systemImage:
+                            "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(.red)
+                    .help(retentionErrorMessage)
+                }
+            }
+
             Section("Maintenance") {
                 Text(
                     "Resetting can help recover from Activity "
@@ -245,6 +398,44 @@ struct AdvancedView: View {
                 try? await Task.sleep(
                     for: .seconds(1)
                 )
+            }
+        }
+    }
+
+    @MainActor
+    private func applyRetentionLimits() {
+        guard !isApplyingRetentionLimits,
+              let notificationEventLimit =
+                  parsedNotificationEventLimit,
+              let actionRunLimit =
+                  parsedActionRunLimit
+        else {
+            return
+        }
+
+        isApplyingRetentionLimits = true
+        retentionErrorMessage = nil
+
+        updateRetentionLimits(
+            notificationEventLimit,
+            actionRunLimit
+        ) { result in
+            isApplyingRetentionLimits = false
+
+            switch result {
+            case .updated:
+                notificationEventLimitText =
+                    notificationEventLimit
+                        .formatted()
+
+                actionRunLimitText =
+                    actionRunLimit
+                        .formatted()
+
+                refreshDatabaseStatistics()
+
+            case let .failed(message):
+                retentionErrorMessage = message
             }
         }
     }

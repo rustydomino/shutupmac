@@ -41,6 +41,15 @@ struct ShutUpMacManagementView: View {
             ) -> Void
         ) -> Void
 
+    let updateRetentionLimits:
+        (
+            Int,
+            Int,
+            @escaping @MainActor @Sendable (
+                RetentionLimitsUpdateResult
+            ) -> Void
+        ) -> Void
+
     let replaceNotilogRedactionPolicy:
         (RedactionPolicy) -> Void
 
@@ -131,9 +140,11 @@ struct ShutUpMacManagementView: View {
 
             AdvancedView(
                 requestDatabaseStatistics:
-                requestDatabaseStatistics,
+                    requestDatabaseStatistics,
                 resetActivityDatabase:
-                resetActivityDatabase
+                    resetActivityDatabase,
+                updateRetentionLimits:
+                    updateRetentionLimits
             )
             .tabItem {
                 Label(

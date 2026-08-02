@@ -31,6 +31,13 @@ enum ActivityDatabaseResetResult:
     case failed(String)
 }
 
+enum RetentionLimitsUpdateResult:
+    Sendable
+{
+    case updated
+    case failed(String)
+}
+
 protocol AutomationConfigurationActivating:
     Sendable {
 
@@ -69,6 +76,10 @@ nonisolated final class NotilogMonitoringController:
         NotificationDismissalHandler?
 
     private var loggingEnabled: Bool
+
+    private var notificationEventLimit: Int
+    private var actionRunLimit: Int
+
     private var redactionPolicy: RedactionPolicy
 
     private let initialConfiguration:
@@ -98,6 +109,10 @@ nonisolated final class NotilogMonitoringController:
         initialConfiguration:
             AutomationConfig? = nil,
         loggingEnabled: Bool = true,
+        notificationEventLimit: Int =
+            NotificationStore.defaultNotificationEventLimit,
+        actionRunLimit: Int =
+            NotificationStore.defaultActionRunLimit,
         redactionPolicy: RedactionPolicy = .disabled,
         automationMode:
             AutomationExecutionMode = .disabled,
@@ -117,6 +132,11 @@ nonisolated final class NotilogMonitoringController:
         self.initialConfiguration =
             initialConfiguration
         self.loggingEnabled = loggingEnabled
+
+        self.notificationEventLimit =
+            notificationEventLimit
+        self.actionRunLimit = actionRunLimit
+
         self.redactionPolicy = redactionPolicy
         self.automationMode = automationMode
         self.dismissalHandler = dismissalHandler
@@ -139,6 +159,10 @@ nonisolated final class NotilogMonitoringController:
                         self.initialConfiguration,
                     loggingEnabled:
                         self.loggingEnabled,
+                    notificationEventLimit:
+                        self.notificationEventLimit,
+                    actionRunLimit:
+                        self.actionRunLimit,
                     redactionPolicy:
                         self.redactionPolicy,
                     automationMode:
@@ -380,6 +404,110 @@ nonisolated final class NotilogMonitoringController:
                         completion(
                             .failed(message)
                         )
+                }
+            }
+        }
+    }
+
+
+    func updateRetentionLimits(
+        notificationEventLimit: Int,
+        actionRunLimit: Int,
+        completion: @escaping
+            @MainActor @Sendable (
+                RetentionLimitsUpdateResult
+            ) -> Void
+    ) {
+        guard AppPreferences
+            .notificationEventRetentionRange
+            .contains(notificationEventLimit)
+        else {
+            Task { @MainActor in
+                completion(
+                    .failed(
+                        "Activity event retention must be between "
+                            + "\(AppPreferences.notificationEventRetentionRange.lowerBound.formatted()) "
+                            + "and "
+                            + "\(AppPreferences.notificationEventRetentionRange.upperBound.formatted())."
+                    )
+                )
+            }
+
+            return
+        }
+
+        guard AppPreferences
+            .actionRunRetentionRange
+            .contains(actionRunLimit)
+        else {
+            Task { @MainActor in
+                completion(
+                    .failed(
+                        "Action-run retention must be between "
+                            + "\(AppPreferences.actionRunRetentionRange.lowerBound.formatted()) "
+                            + "and "
+                            + "\(AppPreferences.actionRunRetentionRange.upperBound.formatted())."
+                    )
+                )
+            }
+
+            return
+        }
+
+        queue.async { [weak self] in
+            guard let self else {
+                return
+            }
+
+            guard let runtime = self.runtime else {
+                Task { @MainActor in
+                    completion(
+                        .failed(
+                            "Notilog monitoring is not running."
+                        )
+                    )
+                }
+
+                return
+            }
+
+            do {
+                try runtime.updateRetentionLimits(
+                    notificationEventLimit:
+                        notificationEventLimit,
+                    actionRunLimit:
+                        actionRunLimit
+                )
+
+                self.notificationEventLimit =
+                    notificationEventLimit
+
+                self.actionRunLimit =
+                    actionRunLimit
+
+                AppPreferences.setNotilogRetentionLimits(
+                    notificationEventLimit:
+                        notificationEventLimit,
+                    actionRunLimit:
+                        actionRunLimit
+                )
+
+                Task { @MainActor in
+                    completion(.updated)
+                }
+            } catch {
+                let message =
+                    "Could not update retention limits: "
+                    + String(describing: error)
+
+                Self.logger.error(
+                    "\(message, privacy: .public)"
+                )
+
+                Task { @MainActor in
+                    completion(
+                        .failed(message)
+                    )
                 }
             }
         }

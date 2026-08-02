@@ -803,4 +803,128 @@ final class NotificationStoreTests: XCTestCase {
             )
         }
     }
+
+    func testUpdatingRetentionLimitsPrunesExistingHistory()
+        throws
+    {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        let store = try NotificationStore(
+            path: databaseURL.path,
+            notificationEventLimit: 10,
+            actionRunLimit: 10
+        )
+
+        let session = ObservationSession(
+            id: "test-session",
+            startedAt: Date(timeIntervalSince1970: 1)
+        )
+
+        for index in 1...5 {
+            let notification = VisibleNotification(
+                key: "notification-\(index)",
+                app: "Test App",
+                title: "Notification \(index)",
+                subtitle: "",
+                body: "Body \(index)"
+            )
+
+            let event = NotificationEvent(
+                type: .appeared,
+                notification: notification,
+                timestamp: Date(
+                    timeIntervalSince1970:
+                        TimeInterval(index)
+                )
+            )
+
+            try store.insert(
+                event,
+                session: session
+            )
+
+            if index <= 4 {
+                let result = ActionRunResult(
+                    ruleName: "Rule \(index)",
+                    action: .dryRunLog(
+                        message: "Action \(index)"
+                    ),
+                    resolvedAction: .dryRunLog(
+                        message: "Resolved action \(index)"
+                    ),
+                    event: event,
+                    status: .succeeded,
+                    message: "Result \(index)",
+                    exitCode: 0,
+                    stdout: "",
+                    stderr: ""
+                )
+
+                try store.insert(
+                    result,
+                    session: session
+                )
+            }
+        }
+
+        try store.updateRetentionLimits(
+            notificationEventLimit: 3,
+            actionRunLimit: 2
+        )
+
+        let events = try store.recentEvents(
+            limit: 10
+        )
+
+        XCTAssertEqual(
+            events.map(\.event.notification.key),
+            [
+                "notification-3",
+                "notification-4",
+                "notification-5",
+            ]
+        )
+
+        let actionRuns = try store.recentActionRuns(
+            limit: 10
+        )
+
+        XCTAssertEqual(
+            actionRuns.map(\.ruleName),
+            [
+                "Rule 3",
+                "Rule 4",
+            ]
+        )
+
+        let statistics = try store.statistics()
+
+        XCTAssertEqual(
+            statistics.notificationEventCount,
+            3
+        )
+        XCTAssertEqual(
+            statistics.actionRunCount,
+            2
+        )
+        XCTAssertEqual(
+            statistics.notificationEventLimit,
+            3
+        )
+        XCTAssertEqual(
+            statistics.actionRunLimit,
+            2
+        )
+    }
+
 }

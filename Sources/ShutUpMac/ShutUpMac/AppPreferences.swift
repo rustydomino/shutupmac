@@ -8,6 +8,12 @@ enum PreferenceKeys {
     static let notilogDatabaseLoggingEnabled =
         "notilogDatabaseLoggingEnabled"
 
+    static let notilogNotificationEventRetentionLimit =
+        "notilogNotificationEventRetentionLimit"
+
+    static let notilogActionRunRetentionLimit =
+        "notilogActionRunRetentionLimit"
+
     static let notilogRulesAutoDismissEnabled =
         "notilogRulesAutoDismissEnabled"
 
@@ -33,6 +39,11 @@ enum PreferenceKeys {
 }
 
 enum AppPreferences {
+    nonisolated static let notificationEventRetentionRange =
+        1_000...100_000
+
+    nonisolated static let actionRunRetentionRange =
+        1_000...50_000
     static func registerDefaults() {
         registerDefaults(
             in: .standard
@@ -46,6 +57,17 @@ enum AppPreferences {
 
             PreferenceKeys.enableGlobalHotkeys: true,
             PreferenceKeys.notilogDatabaseLoggingEnabled: true,
+
+            PreferenceKeys
+                .notilogNotificationEventRetentionLimit:
+                NotificationStore
+                    .defaultNotificationEventLimit,
+
+            PreferenceKeys
+                .notilogActionRunRetentionLimit:
+                NotificationStore
+                    .defaultActionRunLimit,
+
             PreferenceKeys.notilogRulesAutoDismissEnabled: true,
             PreferenceKeys.notilogRedactionEnabled: false,
             PreferenceKeys.notilogRedactTitle: true,
@@ -114,6 +136,65 @@ enum AppPreferences {
             forKey:
                 PreferenceKeys
                     .notilogDatabaseLoggingEnabled
+        )
+    }
+
+    static var notilogNotificationEventRetentionLimit:
+        Int
+    {
+        validatedRetentionValue(
+            forKey:
+                PreferenceKeys
+                    .notilogNotificationEventRetentionLimit,
+            allowedRange:
+                notificationEventRetentionRange,
+            defaultValue:
+                NotificationStore
+                    .defaultNotificationEventLimit
+        )
+    }
+
+    static var notilogActionRunRetentionLimit:
+        Int
+    {
+        validatedRetentionValue(
+            forKey:
+                PreferenceKeys
+                    .notilogActionRunRetentionLimit,
+            allowedRange:
+                actionRunRetentionRange,
+            defaultValue:
+                NotificationStore
+                    .defaultActionRunLimit
+        )
+    }
+
+    static func setNotilogRetentionLimits(
+        notificationEventLimit: Int,
+        actionRunLimit: Int
+    ) {
+        precondition(
+            notificationEventRetentionRange
+                .contains(notificationEventLimit)
+        )
+
+        precondition(
+            actionRunRetentionRange
+                .contains(actionRunLimit)
+        )
+
+        UserDefaults.standard.set(
+            notificationEventLimit,
+            forKey:
+                PreferenceKeys
+                    .notilogNotificationEventRetentionLimit
+        )
+
+        UserDefaults.standard.set(
+            actionRunLimit,
+            forKey:
+                PreferenceKeys
+                    .notilogActionRunRetentionLimit
         )
     }
 
@@ -208,6 +289,23 @@ enum AppPreferences {
         )
 
         return HotKey.decode(storedValue) ?? .defaultClear
+    }
+
+    private static func validatedRetentionValue(
+        forKey key: String,
+        allowedRange: ClosedRange<Int>,
+        defaultValue: Int
+    ) -> Int {
+        let storedValue =
+            UserDefaults.standard.integer(
+                forKey: key
+            )
+
+        guard allowedRange.contains(storedValue) else {
+            return defaultValue
+        }
+
+        return storedValue
     }
 
     private static func migrateClearDesktopHotKeyDefaultIfNeeded(

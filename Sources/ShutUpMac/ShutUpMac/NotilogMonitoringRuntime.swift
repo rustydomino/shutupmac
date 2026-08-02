@@ -17,6 +17,9 @@ nonisolated final class NotilogMonitoringRuntime {
     private var session: ObservationSession
     private var loggingEnabled: Bool
 
+    private var notificationEventLimit: Int
+    private var actionRunLimit: Int
+
     private let automationProcessor:
         NotificationAutomationProcessor
 
@@ -35,6 +38,10 @@ nonisolated final class NotilogMonitoringRuntime {
         runtimePaths: NotilogRuntimePaths = .legacyNotilogDefault(),
         initialConfiguration: AutomationConfig? = nil,
         loggingEnabled: Bool = true,
+        notificationEventLimit: Int =
+            NotificationStore.defaultNotificationEventLimit,
+        actionRunLimit: Int =
+            NotificationStore.defaultActionRunLimit,
         redactionPolicy: RedactionPolicy = .disabled,
         automationMode: AutomationExecutionMode = .disabled,
         dismissalHandler: NotificationDismissalHandler? = nil,
@@ -58,7 +65,11 @@ nonisolated final class NotilogMonitoringRuntime {
 
         if loggingEnabled || databaseAlreadyExists {
             store = try NotificationStore(
-                path: runtimePaths.database.path
+                path: runtimePaths.database.path,
+                notificationEventLimit:
+                    notificationEventLimit,
+                actionRunLimit:
+                    actionRunLimit
             )
         } else {
             store = nil
@@ -142,6 +153,9 @@ nonisolated final class NotilogMonitoringRuntime {
         self.store = store
         self.session = session
         self.loggingEnabled = loggingEnabled
+        self.notificationEventLimit =
+            notificationEventLimit
+        self.actionRunLimit = actionRunLimit
         self.automationProcessor =
             automationProcessor
         self.completedVerificationCoordinator =
@@ -246,7 +260,11 @@ deinit {
                 writableStore = store
             } else {
                 writableStore = try NotificationStore(
-                    path: runtimePaths.database.path
+                    path: runtimePaths.database.path,
+                    notificationEventLimit:
+                        notificationEventLimit,
+                    actionRunLimit:
+                        actionRunLimit
                 )
             }
 
@@ -350,6 +368,31 @@ deinit {
         return try store.statistics()
     }
 
+    /// Updates retention limits and immediately removes excess
+    /// historical rows when a database is currently open.
+    ///
+    /// The caller must invoke this on the same serial queue used for
+    /// processOneCycle().
+    func updateRetentionLimits(
+        notificationEventLimit: Int,
+        actionRunLimit: Int
+    ) throws {
+        if let store {
+            try store.updateRetentionLimits(
+                notificationEventLimit:
+                    notificationEventLimit,
+                actionRunLimit:
+                    actionRunLimit
+            )
+        }
+
+        self.notificationEventLimit =
+            notificationEventLimit
+
+        self.actionRunLimit =
+            actionRunLimit
+    }
+
     /// Replaces the Activity database while preserving the current
     /// scanner, automation configuration, and monitoring-process lock.
     ///
@@ -411,7 +454,11 @@ deinit {
     ) throws {
         let replacementStore =
             try NotificationStore(
-                path: runtimePaths.database.path
+                path: runtimePaths.database.path,
+                notificationEventLimit:
+                    notificationEventLimit,
+                actionRunLimit:
+                    actionRunLimit
             )
 
         let replacementSession =

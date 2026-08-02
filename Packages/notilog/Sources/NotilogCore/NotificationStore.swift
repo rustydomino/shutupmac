@@ -19,22 +19,33 @@ public struct NotificationStoreStatistics:
 }
 
 public final class NotificationStore {
+    public static let defaultNotificationEventLimit =
+        25_000
+
+    public static let defaultActionRunLimit =
+        10_000
+
     private static let maximumStoredTextLength = 4_096
 
     private let databasePath: String
-    private let notificationEventLimit: Int
-    private let actionRunLimit: Int
+
+    private var notificationEventLimit: Int
+    private var actionRunLimit: Int
 
     private var notificationEventCount = 0
     private var actionRunCount = 0
 
     private var db: OpaquePointer?
     
-    public init(
-        path: String,
-        notificationEventLimit: Int = 25_000,
-        actionRunLimit: Int = 10_000
-    ) throws {
+public init(
+    path: String,
+    notificationEventLimit: Int =
+        NotificationStore
+            .defaultNotificationEventLimit,
+    actionRunLimit: Int =
+        NotificationStore
+            .defaultActionRunLimit
+) throws {
         precondition(
             notificationEventLimit > 0,
             "Notification event retention must be positive"
@@ -105,6 +116,34 @@ public final class NotificationStore {
             actionRunLimit:
                 actionRunLimit
         )
+    }
+
+    public func updateRetentionLimits(
+        notificationEventLimit: Int,
+        actionRunLimit: Int
+    ) throws {
+        guard notificationEventLimit > 0 else {
+            throw StoreError.invalidRetentionLimit(
+                message:
+                    "Activity event retention must be positive."
+            )
+        }
+
+        guard actionRunLimit > 0 else {
+            throw StoreError.invalidRetentionLimit(
+                message:
+                    "Action-run retention must be positive."
+            )
+        }
+
+        self.notificationEventLimit =
+            notificationEventLimit
+
+        self.actionRunLimit =
+            actionRunLimit
+
+        try pruneNotificationEventsIfNeeded()
+        try pruneActionRunsIfNeeded()
     }
 
     deinit {
@@ -1274,6 +1313,7 @@ public enum StoreError: Error {
     case updateFailed(message: String)
     case deleteFailed(message: String)
     case migrationFailed(message: String)
+    case invalidRetentionLimit(message: String)
 }
 
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)

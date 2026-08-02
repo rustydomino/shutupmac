@@ -80,6 +80,20 @@ struct ShutUpMacApp: App {
                             completion: completion
                         )
                 },
+                updateRetentionLimits: {
+                    notificationEventLimit,
+                    actionRunLimit,
+                    completion in
+
+                    applicationDelegate
+                        .updateRetentionLimits(
+                            notificationEventLimit:
+                                notificationEventLimit,
+                            actionRunLimit:
+                                actionRunLimit,
+                            completion: completion
+                        )
+                },
                 replaceNotilogRedactionPolicy: { policy in
                     applicationDelegate
                         .replaceNotilogRedactionPolicy(

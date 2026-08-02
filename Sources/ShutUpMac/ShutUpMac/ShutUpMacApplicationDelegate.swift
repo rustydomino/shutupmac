@@ -21,6 +21,12 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
             loggingEnabled:
                 AppPreferences
                     .notilogDatabaseLoggingEnabled,
+            notificationEventLimit:
+                AppPreferences
+                    .notilogNotificationEventRetentionLimit,
+            actionRunLimit:
+                AppPreferences
+                    .notilogActionRunRetentionLimit,
             redactionPolicy:
                 AppPreferences
                     .notilogRedactionPolicy,
@@ -135,6 +141,24 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
     ) {
         notilogMonitoringController
             .resetActivityDatabase(
+                completion: completion
+            )
+    }
+
+    func updateRetentionLimits(
+        notificationEventLimit: Int,
+        actionRunLimit: Int,
+        completion: @escaping
+            @MainActor @Sendable (
+                RetentionLimitsUpdateResult
+            ) -> Void
+    ) {
+        notilogMonitoringController
+            .updateRetentionLimits(
+                notificationEventLimit:
+                    notificationEventLimit,
+                actionRunLimit:
+                    actionRunLimit,
                 completion: completion
             )
     }
