@@ -103,7 +103,7 @@ func integerOption(_ name: String, default defaultValue: Int) -> Int {
     guard let value = Int(rawValue), value > 0 else {
         fputs(
             "Invalid value for \(name): \(rawValue). " +
-            "Expected a positive integer.\n",
+                "Expected a positive integer.\n",
             stderr
         )
         exit(2)
@@ -477,6 +477,22 @@ case "watch":
 
     try startupConfiguration.runtimePaths.ensureDirectoriesExist()
 
+    let monitoringProcessLock: MonitoringProcessLock
+
+    do {
+        monitoringProcessLock =
+            try MonitoringProcessLock(
+                lockFileURL:
+                startupConfiguration.runtimePaths.monitorLock
+            )
+    } catch {
+        fputs(
+            "\(error.localizedDescription)\n",
+            stderr
+        )
+        exit(1)
+    }
+
     let scanner = NotificationScanner(
         diagnosticHandler: diagnosticHandler
     )
@@ -607,54 +623,56 @@ case "watch":
 
     var didReportPreviousStateRecovery = false
 
-    while true {
-        let scanTimestamp = Date()
-        let notifications = scanner.scan()
+    try withExtendedLifetime(monitoringProcessLock) {
+        while true {
+            let scanTimestamp = Date()
+            let notifications = scanner.scan()
 
-        _ = try monitor.processScan(
-            notifications: notifications,
-            at: scanTimestamp,
-            actionTimestampProvider: {
-                Date()
-            },
-            afterCompletedActionVerifications: {
-                completedVerifications in
-                printCompletedActionVerifications(
-                    completedVerifications,
-                    output: watchOutput
-                )
-            },
-            beforeAutomation: { event in
-                printEvent(
-                    event,
-                    output: watchOutput,
-                    redactionPolicy:
-                    startupConfiguration.redactionPolicy
-                )
-            },
-            beforeActionResultCoordination: { result in
-                printActionResult(
-                    result,
-                    mode: automationExecutionMode,
-                    output: watchOutput,
-                    redactionPolicy:
-                    startupConfiguration.redactionPolicy
-                )
-            },
-            afterRecoveredEvents: { recoveredEvents in
-                if !didReportPreviousStateRecovery {
-                    diagnosticHandler?(
-                        "Recovered unobserved disappearances: \(recoveredEvents.count)"
+            _ = try monitor.processScan(
+                notifications: notifications,
+                at: scanTimestamp,
+                actionTimestampProvider: {
+                    Date()
+                },
+                afterCompletedActionVerifications: {
+                    completedVerifications in
+                    printCompletedActionVerifications(
+                        completedVerifications,
+                        output: watchOutput
                     )
+                },
+                beforeAutomation: { event in
+                    printEvent(
+                        event,
+                        output: watchOutput,
+                        redactionPolicy:
+                        startupConfiguration.redactionPolicy
+                    )
+                },
+                beforeActionResultCoordination: { result in
+                    printActionResult(
+                        result,
+                        mode: automationExecutionMode,
+                        output: watchOutput,
+                        redactionPolicy:
+                        startupConfiguration.redactionPolicy
+                    )
+                },
+                afterRecoveredEvents: { recoveredEvents in
+                    if !didReportPreviousStateRecovery {
+                        diagnosticHandler?(
+                            "Recovered unobserved disappearances: \(recoveredEvents.count)"
+                        )
 
-                    didReportPreviousStateRecovery = true
+                        didReportPreviousStateRecovery = true
+                    }
                 }
-            }
-        )
+            )
 
-        Thread.sleep(
-            forTimeInterval: startupConfiguration.scanInterval
-        )
+            Thread.sleep(
+                forTimeInterval: startupConfiguration.scanInterval
+            )
+        }
     }
 
 case "history":

@@ -8,6 +8,9 @@ import NotilogCore
 nonisolated final class NotilogMonitoringRuntime {
     let runtimePaths: NotilogRuntimePaths
 
+    private let monitoringProcessLock:
+        MonitoringProcessLock
+
     private let scanner: NotificationScanner
 
     private var store: NotificationStore?
@@ -38,6 +41,11 @@ nonisolated final class NotilogMonitoringRuntime {
         dismissalVerificationDelay: TimeInterval = 2.0
     ) throws {
         try runtimePaths.ensureDirectoriesExist()
+
+        let monitoringProcessLock =
+            try MonitoringProcessLock(
+                lockFileURL: runtimePaths.monitorLock
+            )
 
         let scanner = NotificationScanner()
 
@@ -128,6 +136,8 @@ nonisolated final class NotilogMonitoringRuntime {
         )
 
         self.runtimePaths = runtimePaths
+        self.monitoringProcessLock =
+            monitoringProcessLock
         self.scanner = scanner
         self.store = store
         self.session = session

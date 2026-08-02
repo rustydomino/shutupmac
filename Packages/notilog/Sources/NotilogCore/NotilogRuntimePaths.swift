@@ -11,6 +11,12 @@ public struct NotilogRuntimePaths: Equatable, Sendable {
     public let config: URL
     public let logs: URL
 
+    public var monitorLock: URL {
+        applicationSupport.appendingPathComponent(
+            "monitor.lock"
+        )
+    }
+
     /// Creates the conventional Notilog directory layout beneath a supplied
     /// Application Support directory.
     public init(applicationSupport: URL) {
