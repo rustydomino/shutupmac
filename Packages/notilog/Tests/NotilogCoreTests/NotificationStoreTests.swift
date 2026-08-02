@@ -1036,6 +1036,11 @@ final class NotificationStoreTests: XCTestCase {
             )
         }
 
+        // Create a recognized Notilog schema.
+        _ = try NotificationStore(
+            path: databaseURL.path
+        )
+
         var database: OpaquePointer?
 
         XCTAssertEqual(
@@ -1046,20 +1051,10 @@ final class NotificationStoreTests: XCTestCase {
             SQLITE_OK
         )
 
-        let legacySchema = """
-        CREATE TABLE notification_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT
-        );
-
-        CREATE TABLE action_runs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT
-        );
-        """
-
         XCTAssertEqual(
             sqlite3_exec(
                 database,
-                legacySchema,
+                "PRAGMA user_version = 0;",
                 nil,
                 nil,
                 nil
@@ -1070,10 +1065,27 @@ final class NotificationStoreTests: XCTestCase {
         _ = sqlite3_close(database)
         database = nil
 
-        _ = try NotificationStore(
-            path: databaseURL.path,
-            accessMode: .readOnly
-        )
+        XCTAssertThrowsError(
+            try NotificationStore(
+                path: databaseURL.path,
+                accessMode: .readOnly
+            )
+        ) { error in
+            guard case let StoreError
+                .schemaRequiresMigration(
+                    foundVersion,
+                    requiredVersion
+                ) = error
+            else {
+                XCTFail(
+                    "Expected schemaRequiresMigration, got \(error)"
+                )
+                return
+            }
+
+            XCTAssertEqual(foundVersion, 0)
+            XCTAssertEqual(requiredVersion, 4)
+        }
 
         XCTAssertEqual(
             sqlite3_open_v2(
@@ -1089,15 +1101,12 @@ final class NotificationStoreTests: XCTestCase {
             _ = sqlite3_close(database)
         }
 
-        let tableInfoSQL =
-            "PRAGMA table_info(action_runs);"
-
         var statement: OpaquePointer?
 
         XCTAssertEqual(
             sqlite3_prepare_v2(
                 database,
-                tableInfoSQL,
+                "PRAGMA user_version;",
                 -1,
                 &statement,
                 nil
@@ -1109,30 +1118,14 @@ final class NotificationStoreTests: XCTestCase {
             sqlite3_finalize(statement)
         }
 
-        var columnNames: [String] = []
+        XCTAssertEqual(
+            sqlite3_step(statement),
+            SQLITE_ROW
+        )
 
-        while sqlite3_step(statement) == SQLITE_ROW {
-            guard
-                let columnName =
-                    sqlite3_column_text(
-                        statement,
-                        1
-                    )
-            else {
-                continue
-            }
-
-            columnNames.append(
-                String(
-                    cString: columnName
-                )
-            )
-        }
-
-        XCTAssertFalse(
-            columnNames.contains(
-                "verification_status"
-            )
+        XCTAssertEqual(
+            sqlite3_column_int(statement, 0),
+            0
         )
     }
 
@@ -1315,6 +1308,346 @@ final class NotificationStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(records.count, 4)
+    }
+
+    func testNewDatabaseEstablishesCurrentSchemaVersion()
+        throws
+    {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        _ = try NotificationStore(
+            path: databaseURL.path
+        )
+
+        var database: OpaquePointer?
+
+        XCTAssertEqual(
+            sqlite3_open_v2(
+                databaseURL.path,
+                &database,
+                SQLITE_OPEN_READONLY,
+                nil
+            ),
+            SQLITE_OK
+        )
+
+        defer {
+            _ = sqlite3_close(database)
+        }
+
+        var statement: OpaquePointer?
+
+        XCTAssertEqual(
+            sqlite3_prepare_v2(
+                database,
+                "PRAGMA user_version;",
+                -1,
+                &statement,
+                nil
+            ),
+            SQLITE_OK
+        )
+
+        defer {
+            sqlite3_finalize(statement)
+        }
+
+        XCTAssertEqual(
+            sqlite3_step(statement),
+            SQLITE_ROW
+        )
+
+        XCTAssertEqual(
+            sqlite3_column_int(statement, 0),
+            4
+        )
+    }
+
+    func testRecognizedLegacyDatabaseMigratesForward()
+        throws
+    {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        // Create the current schema first.
+        _ = try NotificationStore(
+            path: databaseURL.path
+        )
+
+        var database: OpaquePointer?
+
+        XCTAssertEqual(
+            sqlite3_open(
+                databaseURL.path,
+                &database
+            ),
+            SQLITE_OK
+        )
+
+        let makeLegacySQL = """
+        ALTER TABLE action_runs
+        DROP COLUMN verification_status;
+
+        PRAGMA user_version = 0;
+        """
+
+        XCTAssertEqual(
+            sqlite3_exec(
+                database,
+                makeLegacySQL,
+                nil,
+                nil,
+                nil
+            ),
+            SQLITE_OK
+        )
+
+        _ = sqlite3_close(database)
+        database = nil
+
+        // A writer should recognize and migrate it.
+        _ = try NotificationStore(
+            path: databaseURL.path
+        )
+
+        XCTAssertEqual(
+            sqlite3_open_v2(
+                databaseURL.path,
+                &database,
+                SQLITE_OPEN_READONLY,
+                nil
+            ),
+            SQLITE_OK
+        )
+
+        defer {
+            _ = sqlite3_close(database)
+        }
+
+        var versionStatement: OpaquePointer?
+
+        XCTAssertEqual(
+            sqlite3_prepare_v2(
+                database,
+                "PRAGMA user_version;",
+                -1,
+                &versionStatement,
+                nil
+            ),
+            SQLITE_OK
+        )
+
+        XCTAssertEqual(
+            sqlite3_step(versionStatement),
+            SQLITE_ROW
+        )
+
+        XCTAssertEqual(
+            sqlite3_column_int(
+                versionStatement,
+                0
+            ),
+            4
+        )
+
+        sqlite3_finalize(versionStatement)
+
+        var columnsStatement: OpaquePointer?
+
+        XCTAssertEqual(
+            sqlite3_prepare_v2(
+                database,
+                "PRAGMA table_info(action_runs);",
+                -1,
+                &columnsStatement,
+                nil
+            ),
+            SQLITE_OK
+        )
+
+        defer {
+            sqlite3_finalize(columnsStatement)
+        }
+
+        var columnNames: [String] = []
+
+        while sqlite3_step(columnsStatement)
+            == SQLITE_ROW
+        {
+            guard
+                let columnName =
+                    sqlite3_column_text(
+                        columnsStatement,
+                        1
+                    )
+            else {
+                continue
+            }
+
+            columnNames.append(
+                String(cString: columnName)
+            )
+        }
+
+        XCTAssertTrue(
+            columnNames.contains(
+                "verification_status"
+            )
+        )
+    }
+
+    func testNewerSchemaVersionIsRejected() throws {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        _ = try NotificationStore(
+            path: databaseURL.path
+        )
+
+        var database: OpaquePointer?
+
+        XCTAssertEqual(
+            sqlite3_open(
+                databaseURL.path,
+                &database
+            ),
+            SQLITE_OK
+        )
+
+        XCTAssertEqual(
+            sqlite3_exec(
+                database,
+                "PRAGMA user_version = 5;",
+                nil,
+                nil,
+                nil
+            ),
+            SQLITE_OK
+        )
+
+        _ = sqlite3_close(database)
+        database = nil
+
+        for accessMode in [
+            NotificationStoreAccessMode.readWrite,
+            NotificationStoreAccessMode.readOnly,
+        ] {
+            XCTAssertThrowsError(
+                try NotificationStore(
+                    path: databaseURL.path,
+                    accessMode: accessMode
+                )
+            ) { error in
+                guard case let StoreError.schemaTooNew(
+                    foundVersion,
+                    supportedVersion
+                ) = error else {
+                    XCTFail(
+                        "Expected schemaTooNew, got \(error)"
+                    )
+                    return
+                }
+
+                XCTAssertEqual(foundVersion, 5)
+                XCTAssertEqual(supportedVersion, 4)
+            }
+        }
+    }
+
+    func testUnrecognizedVersionZeroSchemaIsRejected()
+        throws
+    {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        var database: OpaquePointer?
+
+        XCTAssertEqual(
+            sqlite3_open(
+                databaseURL.path,
+                &database
+            ),
+            SQLITE_OK
+        )
+
+        XCTAssertEqual(
+            sqlite3_exec(
+                database,
+                """
+                CREATE TABLE unrelated_data (
+                    id INTEGER PRIMARY KEY
+                );
+
+                PRAGMA user_version = 0;
+                """,
+                nil,
+                nil,
+                nil
+            ),
+            SQLITE_OK
+        )
+
+        _ = sqlite3_close(database)
+        database = nil
+
+        for accessMode in [
+            NotificationStoreAccessMode.readWrite,
+            NotificationStoreAccessMode.readOnly,
+        ] {
+            XCTAssertThrowsError(
+                try NotificationStore(
+                    path: databaseURL.path,
+                    accessMode: accessMode
+                )
+            ) { error in
+                guard case StoreError
+                    .unrecognizedLegacySchema = error
+                else {
+                    XCTFail(
+                        "Expected unrecognizedLegacySchema, " +
+                            "got \(error)"
+                    )
+                    return
+                }
+            }
+        }
     }
 
 }

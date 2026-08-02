@@ -34,6 +34,7 @@ public final class NotificationStore {
         10_000
 
     private static let maximumStoredTextLength = 4_096
+    private static let currentSchemaVersion: Int32 = 4
 
     private let databasePath: String
     private let accessMode: NotificationStoreAccessMode
@@ -97,14 +98,7 @@ public init(
             )
         }
 
-        switch accessMode {
-        case .readWrite:
-            try createTables()
-            try migrateSchema()
-
-        case .readOnly:
-            break
-        }
+        try prepareSchema()
 
         notificationEventCount = try rowCount(
             in: "notification_events"
@@ -975,6 +969,125 @@ public init(
         return records
     }
 
+    private func prepareSchema() throws {
+        let foundVersion = try schemaVersion()
+
+        guard
+            foundVersion
+                <= NotificationStore.currentSchemaVersion
+        else {
+            throw StoreError.schemaTooNew(
+                foundVersion: foundVersion,
+                supportedVersion:
+                    NotificationStore.currentSchemaVersion
+            )
+        }
+
+        if foundVersion
+            == NotificationStore.currentSchemaVersion
+        {
+            return
+        }
+
+        let containsUserTables = try hasUserTables()
+
+        if foundVersion == 0 && !containsUserTables {
+            guard accessMode == .readWrite else {
+                throw StoreError.schemaRequiresMigration(
+                    foundVersion: foundVersion,
+                    requiredVersion:
+                        NotificationStore.currentSchemaVersion
+                )
+            }
+
+            try createTables()
+
+            try setSchemaVersion(
+                NotificationStore.currentSchemaVersion
+            )
+
+            return
+        }
+
+        guard try isRecognizedLegacySchema() else {
+            throw StoreError.unrecognizedLegacySchema
+        }
+
+        guard accessMode == .readWrite else {
+            throw StoreError.schemaRequiresMigration(
+                foundVersion: foundVersion,
+                requiredVersion:
+                    NotificationStore.currentSchemaVersion
+            )
+        }
+
+        try createTables()
+        try migrateSchema()
+
+        try setSchemaVersion(
+            NotificationStore.currentSchemaVersion
+        )
+    }
+
+    private func schemaVersion() throws -> Int32 {
+        let sql = "PRAGMA user_version;"
+        var statement: OpaquePointer?
+
+        guard sqlite3_prepare_v2(
+            db,
+            sql,
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else {
+            throw StoreError.prepareFailed(
+                message: lastErrorMessage
+            )
+        }
+
+        defer {
+            sqlite3_finalize(statement)
+        }
+
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            throw StoreError.queryFailed(
+                message: lastErrorMessage
+            )
+        }
+
+        return sqlite3_column_int(statement, 0)
+    }
+
+    private func setSchemaVersion(
+        _ version: Int32
+    ) throws {
+        let sql =
+            "PRAGMA main.user_version = \(Int(version));"
+
+        guard sqlite3_exec(
+            db,
+            sql,
+            nil,
+            nil,
+            nil
+        ) == SQLITE_OK else {
+            throw StoreError.migrationFailed(
+                message: lastErrorMessage
+            )
+        }
+
+        let storedVersion = try schemaVersion()
+
+        guard storedVersion == version else {
+            throw StoreError.migrationFailed(
+                message:
+                    "Failed to set database schema version " +
+                    "to \(version); database reports " +
+                    "\(storedVersion)."
+            )
+        }
+    }
+
     private func migrateSchema() throws {
         guard try !columnExists("verification_status", in: "action_runs") else {
             return
@@ -990,7 +1103,172 @@ public init(
         }
     }
 
-    private func columnExists(_ columnName: String, in tableName: String) throws -> Bool {
+    private func tableExists(
+        _ tableName: String
+    ) throws -> Bool {
+        let sql = """
+        SELECT 1
+        FROM sqlite_master
+        WHERE type = 'table'
+        AND name = ?
+        LIMIT 1;
+        """
+
+        var statement: OpaquePointer?
+
+        guard sqlite3_prepare_v2(
+            db,
+            sql,
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else {
+            throw StoreError.prepareFailed(
+                message: lastErrorMessage
+            )
+        }
+
+        defer {
+            sqlite3_finalize(statement)
+        }
+
+        sqlite3_bind_text(
+            statement,
+            1,
+            tableName,
+            -1,
+            SQLITE_TRANSIENT
+        )
+
+        return sqlite3_step(statement) == SQLITE_ROW
+    }
+
+    private func hasUserTables() throws -> Bool {
+        let sql = """
+        SELECT 1
+        FROM sqlite_master
+        WHERE type = 'table'
+        AND name NOT LIKE 'sqlite_%'
+        LIMIT 1;
+        """
+
+        var statement: OpaquePointer?
+
+        guard sqlite3_prepare_v2(
+            db,
+            sql,
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else {
+            throw StoreError.prepareFailed(
+                message: lastErrorMessage
+            )
+        }
+
+        defer {
+            sqlite3_finalize(statement)
+        }
+
+        switch sqlite3_step(statement) {
+        case SQLITE_ROW:
+            return true
+
+        case SQLITE_DONE:
+            return false
+
+        default:
+            throw StoreError.queryFailed(
+                message: lastErrorMessage
+            )
+        }
+    }
+
+    private func isRecognizedLegacySchema()
+        throws -> Bool
+    {
+        let requiredColumns: [String: [String]] = [
+            "notification_events": [
+                "id",
+                "session_id",
+                "timestamp",
+                "event_type",
+                "notification_key",
+                "subrole",
+                "ax_identifier",
+                "app",
+                "title",
+                "subtitle",
+                "body",
+            ],
+
+            "active_notifications": [
+                "notification_key",
+                "subrole",
+                "ax_identifier",
+                "app",
+                "title",
+                "subtitle",
+                "body",
+                "first_seen_at",
+                "last_seen_at",
+            ],
+
+            "watch_sessions": [
+                "id",
+                "started_at",
+                "ended_at",
+            ],
+
+            "action_runs": [
+                "id",
+                "created_at",
+                "session_id",
+                "rule_name",
+                "action_summary",
+                "resolved_action_summary",
+                "status",
+                "message",
+                "exit_code",
+                "stdout",
+                "stderr",
+                "event_type",
+                "event_timestamp",
+                "notification_key",
+                "subrole",
+                "ax_identifier",
+                "app",
+                "title",
+                "subtitle",
+                "body",
+            ],
+        ]
+
+        for (
+            tableName,
+            columnNames
+        ) in requiredColumns {
+            guard try tableExists(tableName) else {
+                return false
+            }
+
+            for columnName in columnNames {
+                guard try columnExists(
+                    columnName,
+                    in: tableName
+                ) else {
+                    return false
+                }
+            }
+        }
+
+        return true
+    }
+
+    private func columnExists(
+        _ columnName: String,
+        in tableName: String
+    ) throws -> Bool {
         let sql = "PRAGMA table_info(\(tableName));"
         var statement: OpaquePointer?
 
@@ -1102,7 +1380,6 @@ public init(
         CREATE INDEX IF NOT EXISTS idx_notification_events_session
         ON notification_events(session_id);
 
-        PRAGMA user_version = 4;
         """
 
         guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
@@ -1380,6 +1657,19 @@ public enum StoreError: Error {
     case updateFailed(message: String)
     case deleteFailed(message: String)
     case migrationFailed(message: String)
+
+    case schemaRequiresMigration(
+        foundVersion: Int32,
+        requiredVersion: Int32
+    )
+
+    case schemaTooNew(
+        foundVersion: Int32,
+        supportedVersion: Int32
+    )
+
+    case unrecognizedLegacySchema
+
     case invalidRetentionLimit(message: String)
     case readOnlyMutation
 }
