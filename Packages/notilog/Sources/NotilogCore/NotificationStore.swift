@@ -2,15 +2,54 @@ import Foundation
 import SQLite3
 
 public final class NotificationStore {
-    private var db: OpaquePointer?
+    private static let maximumStoredTextLength = 4_096
 
-    public init(path: String) throws {
+    private let notificationEventLimit: Int
+    private let actionRunLimit: Int
+
+    private var notificationEventCount = 0
+    private var actionRunCount = 0
+
+    private var db: OpaquePointer?
+    
+    public init(
+        path: String,
+        notificationEventLimit: Int = 25_000,
+        actionRunLimit: Int = 10_000
+    ) throws {
+        precondition(
+            notificationEventLimit > 0,
+            "Notification event retention must be positive"
+        )
+
+        precondition(
+            actionRunLimit > 0,
+            "Action-run retention must be positive"
+        )
+
+        self.notificationEventLimit =
+            notificationEventLimit
+        self.actionRunLimit = actionRunLimit
+
         if sqlite3_open(path, &db) != SQLITE_OK {
-            throw StoreError.openFailed(message: lastErrorMessage)
+            throw StoreError.openFailed(
+                message: lastErrorMessage
+            )
         }
 
         try createTables()
         try migrateSchema()
+
+        notificationEventCount = try rowCount(
+            in: "notification_events"
+        )
+
+        actionRunCount = try rowCount(
+            in: "action_runs"
+        )
+
+        try pruneNotificationEventsIfNeeded()
+        try pruneActionRunsIfNeeded()
     }
 
     deinit {
@@ -61,16 +100,37 @@ public final class NotificationStore {
         bind(notification.key, to: statement, index: 4)
         bind(notification.subrole, to: statement, index: 5)
         bind(notification.axIdentifier, to: statement, index: 6)
-        bind(notification.app, to: statement, index: 7)
-        bind(notification.title, to: statement, index: 8)
-        bind(notification.subtitle, to: statement, index: 9)
-        bind(notification.body, to: statement, index: 10)
+        bind(
+            storedText(notification.app),
+            to: statement,
+            index: 7
+        )
+        bind(
+            storedText(notification.title),
+            to: statement,
+            index: 8
+        )
+        bind(
+            storedText(notification.subtitle),
+            to: statement,
+            index: 9
+        )
+        bind(
+            storedText(notification.body),
+            to: statement,
+            index: 10
+        )
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw StoreError.insertFailed(message: lastErrorMessage)
+            throw StoreError.insertFailed(
+                message: lastErrorMessage
+            )
         }
 
+        notificationEventCount += 1
+
         try updateActiveNotifications(for: event)
+        try pruneNotificationEventsIfNeeded()
     }
 
     @discardableResult
@@ -117,32 +177,96 @@ public final class NotificationStore {
         let event = result.event
         let notification = event.notification
 
-        bind(formatter.string(from: Date()), to: statement, index: 1)
+        bind(
+            formatter.string(from: Date()),
+            to: statement,
+            index: 1
+        )
         bind(session.id, to: statement, index: 2)
-        bind(result.ruleName, to: statement, index: 3)
-        bind(result.action.summary, to: statement, index: 4)
-        bind(result.resolvedAction.summary, to: statement, index: 5)
+        bind(
+            storedText(result.ruleName),
+            to: statement,
+            index: 3
+        )
+        bind(
+            storedText(result.action.summary),
+            to: statement,
+            index: 4
+        )
+        bind(
+            storedText(result.resolvedAction.summary),
+            to: statement,
+            index: 5
+        )
         bind(result.status.rawValue, to: statement, index: 6)
-        bind(result.verificationStatus?.rawValue, to: statement, index: 7)
-        bind(result.message, to: statement, index: 8)
+        bind(
+            result.verificationStatus?.rawValue,
+            to: statement,
+            index: 7
+        )
+        bind(
+            storedText(result.message),
+            to: statement,
+            index: 8
+        )
         bind(result.exitCode, to: statement, index: 9)
-        bind(result.stdout, to: statement, index: 10)
-        bind(result.stderr, to: statement, index: 11)
+        bind(
+            storedText(result.stdout),
+            to: statement,
+            index: 10
+        )
+        bind(
+            storedText(result.stderr),
+            to: statement,
+            index: 11
+        )
         bind(event.type.rawValue, to: statement, index: 12)
-        bind(formatter.string(from: event.timestamp), to: statement, index: 13)
+        bind(
+            formatter.string(from: event.timestamp),
+            to: statement,
+            index: 13
+        )
         bind(notification.key, to: statement, index: 14)
         bind(notification.subrole, to: statement, index: 15)
-        bind(notification.axIdentifier, to: statement, index: 16)
-        bind(notification.app, to: statement, index: 17)
-        bind(notification.title, to: statement, index: 18)
-        bind(notification.subtitle, to: statement, index: 19)
-        bind(notification.body, to: statement, index: 20)
+        bind(
+            notification.axIdentifier,
+            to: statement,
+            index: 16
+        )
+        bind(
+            storedText(notification.app),
+            to: statement,
+            index: 17
+        )
+        bind(
+            storedText(notification.title),
+            to: statement,
+            index: 18
+        )
+        bind(
+            storedText(notification.subtitle),
+            to: statement,
+            index: 19
+        )
+        bind(
+            storedText(notification.body),
+            to: statement,
+            index: 20
+        )
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw StoreError.insertFailed(message: lastErrorMessage)
+            throw StoreError.insertFailed(
+                message: lastErrorMessage
+            )
         }
+        
+        let actionRunID =
+            sqlite3_last_insert_rowid(db)
 
-        return sqlite3_last_insert_rowid(db)
+        actionRunCount += 1
+
+        try pruneActionRunsIfNeeded()
+        return actionRunID
     }
 
     public func updateActionVerificationStatus(
@@ -831,6 +955,139 @@ public final class NotificationStore {
         }
     }
 
+    private func rowCount(
+        in tableName: String
+    ) throws -> Int {
+        let sql =
+            "SELECT COUNT(*) FROM \(tableName);"
+
+        var statement: OpaquePointer?
+
+        guard sqlite3_prepare_v2(
+            db,
+            sql,
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else {
+            throw StoreError.prepareFailed(
+                message: lastErrorMessage
+            )
+        }
+
+        defer {
+            sqlite3_finalize(statement)
+        }
+
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            throw StoreError.queryFailed(
+                message: lastErrorMessage
+            )
+        }
+
+        return Int(
+            sqlite3_column_int64(statement, 0)
+        )
+    }
+
+    private func pruneNotificationEventsIfNeeded()
+        throws
+    {
+        guard notificationEventCount
+            > notificationEventLimit
+        else {
+            return
+        }
+
+        let deletionCount =
+            notificationEventCount
+                - notificationEventLimit
+
+        try deleteOldestRows(
+            from: "notification_events",
+            count: deletionCount
+        )
+
+        notificationEventCount -= deletionCount
+    }
+
+    private func pruneActionRunsIfNeeded()
+        throws
+    {
+        guard actionRunCount > actionRunLimit else {
+            return
+        }
+
+        let deletionCount =
+            actionRunCount - actionRunLimit
+
+        try deleteOldestRows(
+            from: "action_runs",
+            count: deletionCount
+        )
+
+        actionRunCount -= deletionCount
+    }
+
+    private func deleteOldestRows(
+        from tableName: String,
+        count: Int
+    ) throws {
+        guard count > 0 else {
+            return
+        }
+
+        let sql = """
+        DELETE FROM \(tableName)
+        WHERE id IN (
+            SELECT id
+            FROM \(tableName)
+            ORDER BY id ASC
+            LIMIT ?
+        );
+        """
+
+        var statement: OpaquePointer?
+
+        guard sqlite3_prepare_v2(
+            db,
+            sql,
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else {
+            throw StoreError.prepareFailed(
+                message: lastErrorMessage
+            )
+        }
+
+        defer {
+            sqlite3_finalize(statement)
+        }
+
+        sqlite3_bind_int64(
+            statement,
+            1,
+            Int64(count)
+        )
+
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw StoreError.deleteFailed(
+                message: lastErrorMessage
+            )
+        }
+    }
+
+    private func storedText(
+        _ value: String
+    ) -> String {
+        String(
+            value.prefix(
+                Self.maximumStoredTextLength
+            )
+        )
+    }
+
     private func bind(_ string: String, to statement: OpaquePointer?, index: Int32) {
         sqlite3_bind_text(statement, index, string, -1, SQLITE_TRANSIENT)
     }
@@ -872,8 +1129,10 @@ public enum StoreError: Error {
     case openFailed(message: String)
     case createTableFailed(message: String)
     case prepareFailed(message: String)
+    case queryFailed(message: String)
     case insertFailed(message: String)
     case updateFailed(message: String)
+    case deleteFailed(message: String)
     case migrationFailed(message: String)
 }
 
