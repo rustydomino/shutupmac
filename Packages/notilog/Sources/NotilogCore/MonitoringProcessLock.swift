@@ -14,7 +14,7 @@ public final class MonitoringProcessLock {
         }
 
         guard descriptor >= 0 else {
-            throw MonitoringProcessLockError.openFailed(
+            throw NotilogError.monitoringLockOpenFailed(
                 lockFileURL: lockFileURL,
                 errorCode: errno
             )
@@ -31,10 +31,10 @@ public final class MonitoringProcessLock {
             if errorCode == EWOULDBLOCK
                 || errorCode == EAGAIN
             {
-                throw MonitoringProcessLockError.alreadyRunning
+                throw NotilogError.monitorAlreadyRunning
             }
 
-            throw MonitoringProcessLockError.lockFailed(
+            throw NotilogError.monitoringLockFailed(
                 lockFileURL: lockFileURL,
                 errorCode: errorCode
             )
@@ -63,54 +63,4 @@ public final class MonitoringProcessLock {
     }
 }
 
-public enum MonitoringProcessLockError:
-    Error,
-    LocalizedError,
-    Equatable
-{
-    case alreadyRunning
 
-    case openFailed(
-        lockFileURL: URL,
-        errorCode: Int32
-    )
-
-    case lockFailed(
-        lockFileURL: URL,
-        errorCode: Int32
-    )
-
-    public var errorDescription: String? {
-        switch self {
-        case .alreadyRunning:
-            return "Notilog monitoring is already running."
-
-        case let .openFailed(lockFileURL, errorCode):
-            return Self.systemErrorDescription(
-                prefix: "Could not open the monitoring lock",
-                lockFileURL: lockFileURL,
-                errorCode: errorCode
-            )
-
-        case let .lockFailed(lockFileURL, errorCode):
-            return Self.systemErrorDescription(
-                prefix: "Could not acquire the monitoring lock",
-                lockFileURL: lockFileURL,
-                errorCode: errorCode
-            )
-        }
-    }
-
-    private static func systemErrorDescription(
-        prefix: String,
-        lockFileURL: URL,
-        errorCode: Int32
-    ) -> String {
-        let systemMessage =
-            String(cString: strerror(errorCode))
-
-        return "\(prefix) at "
-            + "\(lockFileURL.path): "
-            + "\(systemMessage)"
-    }
-}

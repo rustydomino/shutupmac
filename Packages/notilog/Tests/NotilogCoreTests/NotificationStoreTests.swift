@@ -1071,7 +1071,7 @@ final class NotificationStoreTests: XCTestCase {
                 accessMode: .readOnly
             )
         ) { error in
-            guard case let StoreError
+            guard case let NotilogError
                 .schemaRequiresMigration(
                     foundVersion,
                     requiredVersion
@@ -1160,7 +1160,7 @@ final class NotificationStoreTests: XCTestCase {
         XCTAssertThrowsError(
             try readOnlyStore.startSession(session)
         ) { error in
-            guard case StoreError.readOnlyMutation = error else {
+            guard case NotilogError.readOnlyMutation = error else {
                 XCTFail(
                     "Expected readOnlyMutation, got \(error)"
                 )
@@ -1566,7 +1566,7 @@ final class NotificationStoreTests: XCTestCase {
                     accessMode: accessMode
                 )
             ) { error in
-                guard case let StoreError.schemaTooNew(
+                guard case let NotilogError.schemaTooNew(
                     foundVersion,
                     supportedVersion
                 ) = error else {
@@ -1637,7 +1637,7 @@ final class NotificationStoreTests: XCTestCase {
                     accessMode: accessMode
                 )
             ) { error in
-                guard case StoreError
+                guard case NotilogError
                     .unrecognizedLegacySchema = error
                 else {
                     XCTFail(

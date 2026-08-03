@@ -321,6 +321,27 @@ func printConfigErrorAndExit(_ error: Error) -> Never {
     exit(1)
 }
 
+func printRuntimeErrorAndExit(
+    _ error: Error
+) -> Never {
+    let message: String
+
+    if let notilogError = error as? NotilogError {
+        message =
+            notilogError.errorDescription
+                ?? String(describing: notilogError)
+    } else {
+        message = error.localizedDescription
+    }
+
+    fputs(
+        "Error: \(message)\n",
+        stderr
+    )
+
+    exit(1)
+}
+
 func automationConfigURL() -> URL {
     if let configPath = stringOption("--config") {
         let expandedPath = (configPath as NSString).expandingTildeInPath
@@ -485,26 +506,28 @@ case "watch":
                 lockFileURL:
                 startupConfiguration.runtimePaths.monitorLock
             )
-    } catch {
-        fputs(
-            "\(error.localizedDescription)\n",
-            stderr
-        )
-        exit(1)
-    }
 
+    } catch {
+        printRuntimeErrorAndExit(error)
+    }
     let scanner = NotificationScanner(
         diagnosticHandler: diagnosticHandler
     )
 
     let store: NotificationStore?
 
-    if startupConfiguration.loggingEnabled {
-        store = try NotificationStore(
-            path: startupConfiguration.runtimePaths.database.path
-        )
-    } else {
-        store = nil
+    do {
+        if startupConfiguration.loggingEnabled {
+            store = try NotificationStore(
+                path:
+                startupConfiguration.runtimePaths
+                    .database.path
+            )
+        } else {
+            store = nil
+        }
+    } catch {
+        printRuntimeErrorAndExit(error)
     }
 
     let automationEngine: AutomationEngine
@@ -678,17 +701,31 @@ case "watch":
 case "history":
     let limit = integerOption("--limit", default: 20)
 
-    let store = try NotificationStore(
-        path: startupConfiguration.runtimePaths.database.path,
-        accessMode: .readOnly
-    )
+    let records: [NotificationEventRecord]
 
-    diagnosticHandler?(
-        "Database path: \(startupConfiguration.runtimePaths.database.path)"
-    )
-    diagnosticHandler?("History limit: \(limit)")
+    do {
+        let store = try NotificationStore(
+            path:
+            startupConfiguration.runtimePaths
+                .database.path,
+            accessMode: .readOnly
+        )
 
-    let records = try store.recentEvents(limit: limit)
+        diagnosticHandler?(
+            "Database path: " +
+                startupConfiguration.runtimePaths
+                .database.path
+        )
+        diagnosticHandler?(
+            "History limit: \(limit)"
+        )
+
+        records = try store.recentEvents(
+            limit: limit
+        )
+    } catch {
+        printRuntimeErrorAndExit(error)
+    }
 
     if records.isEmpty {
         print("No notification events found.")
@@ -702,14 +739,32 @@ case "history":
 case "action-history":
     let limit = integerOption("--limit", default: 20)
 
-    let store = try NotificationStore(
-        path: startupConfiguration.runtimePaths.database.path,
-        accessMode: .readOnly
-    )
-    diagnosticHandler?("Database path: \(startupConfiguration.runtimePaths.database.path)")
-    diagnosticHandler?("Action history limit: \(limit)")
+    let records: [ActionRunRecord]
 
-    let records = try store.recentActionRuns(limit: limit)
+    do {
+        let store = try NotificationStore(
+            path:
+            startupConfiguration.runtimePaths
+                .database.path,
+            accessMode: .readOnly
+        )
+
+        diagnosticHandler?(
+            "Database path: " +
+                startupConfiguration.runtimePaths
+                .database.path
+        )
+
+        diagnosticHandler?(
+            "Action history limit: \(limit)"
+        )
+
+        records = try store.recentActionRuns(
+            limit: limit
+        )
+    } catch {
+        printRuntimeErrorAndExit(error)
+    }
 
     if records.isEmpty {
         print("No action runs found.")

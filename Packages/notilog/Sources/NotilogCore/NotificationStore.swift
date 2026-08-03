@@ -87,13 +87,23 @@ public init(
             openFlags = SQLITE_OPEN_READONLY
         }
 
+        if accessMode == .readOnly,
+        !FileManager.default.fileExists(
+            atPath: path
+        )
+        {
+            throw NotilogError.databaseNotFound(
+                path: path
+            )
+        }
+
         if sqlite3_open_v2(
             path,
             &db,
             openFlags,
             nil
         ) != SQLITE_OK {
-            throw StoreError.openFailed(
+            throw NotilogError.databaseOpenFailed(
                 message: lastErrorMessage
             )
         }
@@ -157,14 +167,14 @@ public init(
         try requireReadWriteAccess()
 
         guard notificationEventLimit > 0 else {
-            throw StoreError.invalidRetentionLimit(
+            throw NotilogError.invalidRetentionConfiguration(
                 message:
                     "Activity event retention must be positive."
             )
         }
 
         guard actionRunLimit > 0 else {
-            throw StoreError.invalidRetentionLimit(
+            throw NotilogError.invalidRetentionConfiguration(
                 message:
                     "Action-run retention must be positive."
             )
@@ -217,7 +227,7 @@ public init(
         var statement: OpaquePointer?
 
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw StoreError.prepareFailed(message: lastErrorMessage)
+            throw NotilogError.databasePrepareFailed(message: lastErrorMessage)
         }
 
         defer {
@@ -258,7 +268,7 @@ public init(
         )
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw StoreError.insertFailed(
+            throw NotilogError.databaseInsertFailed(
                 message: lastErrorMessage
             )
         }
@@ -304,7 +314,7 @@ public init(
         var statement: OpaquePointer?
 
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw StoreError.prepareFailed(message: lastErrorMessage)
+            throw NotilogError.databasePrepareFailed(message: lastErrorMessage)
         }
 
         defer {
@@ -393,7 +403,7 @@ public init(
         )
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw StoreError.insertFailed(
+            throw NotilogError.databaseInsertFailed(
                 message: lastErrorMessage
             )
         }
@@ -422,7 +432,7 @@ public init(
         var statement: OpaquePointer?
 
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw StoreError.prepareFailed(message: lastErrorMessage)
+            throw NotilogError.databasePrepareFailed(message: lastErrorMessage)
         }
 
         defer {
@@ -433,11 +443,11 @@ public init(
         sqlite3_bind_int64(statement, 2, actionRunID)
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw StoreError.updateFailed(message: lastErrorMessage)
+            throw NotilogError.databaseUpdateFailed(message: lastErrorMessage)
         }
 
         guard sqlite3_changes(db) == 1 else {
-            throw StoreError.updateFailed(
+            throw NotilogError.databaseUpdateFailed(
                 message: "No action_runs row found with id \(actionRunID)"
             )
         }
@@ -480,7 +490,7 @@ public init(
         var statement: OpaquePointer?
 
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw StoreError.prepareFailed(message: lastErrorMessage)
+            throw NotilogError.databasePrepareFailed(message: lastErrorMessage)
         }
 
         defer {
@@ -502,7 +512,7 @@ public init(
         bind(timestamp, to: statement, index: 9)
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw StoreError.insertFailed(message: lastErrorMessage)
+            throw NotilogError.databaseInsertFailed(message: lastErrorMessage)
         }
     }
 
@@ -515,7 +525,7 @@ public init(
         var statement: OpaquePointer?
 
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw StoreError.prepareFailed(message: lastErrorMessage)
+            throw NotilogError.databasePrepareFailed(message: lastErrorMessage)
         }
 
         defer {
@@ -525,7 +535,7 @@ public init(
         bind(key, to: statement, index: 1)
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw StoreError.insertFailed(message: lastErrorMessage)
+            throw NotilogError.databaseInsertFailed(message: lastErrorMessage)
         }
     }
 
@@ -544,7 +554,7 @@ public init(
         var statement: OpaquePointer?
 
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw StoreError.prepareFailed(message: lastErrorMessage)
+            throw NotilogError.databasePrepareFailed(message: lastErrorMessage)
         }
 
         defer {
@@ -556,7 +566,7 @@ public init(
         bind(formatter.string(from: session.startedAt), to: statement, index: 2)
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw StoreError.insertFailed(message: lastErrorMessage)
+            throw NotilogError.databaseInsertFailed(message: lastErrorMessage)
         }
     }
 
@@ -575,7 +585,7 @@ public init(
         var statement: OpaquePointer?
 
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw StoreError.prepareFailed(message: lastErrorMessage)
+            throw NotilogError.databasePrepareFailed(message: lastErrorMessage)
         }
 
         defer {
@@ -587,7 +597,7 @@ public init(
         bind(session.id, to: statement, index: 2)
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw StoreError.insertFailed(message: lastErrorMessage)
+            throw NotilogError.databaseInsertFailed(message: lastErrorMessage)
         }
     }
 
@@ -608,7 +618,7 @@ public init(
         var statement: OpaquePointer?
 
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw StoreError.prepareFailed(message: lastErrorMessage)
+            throw NotilogError.databasePrepareFailed(message: lastErrorMessage)
         }
 
         defer {
@@ -672,7 +682,7 @@ public init(
         var statement: OpaquePointer?
 
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw StoreError.prepareFailed(message: lastErrorMessage)
+            throw NotilogError.databasePrepareFailed(message: lastErrorMessage)
         }
 
         defer {
@@ -770,7 +780,7 @@ public init(
             &statement,
             nil
         ) == SQLITE_OK else {
-            throw StoreError.prepareFailed(
+            throw NotilogError.databasePrepareFailed(
                 message: lastErrorMessage
             )
         }
@@ -885,7 +895,7 @@ public init(
         var statement: OpaquePointer?
 
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw StoreError.prepareFailed(message: lastErrorMessage)
+            throw NotilogError.databasePrepareFailed(message: lastErrorMessage)
         }
 
         defer {
@@ -976,7 +986,7 @@ public init(
             foundVersion
                 <= NotificationStore.currentSchemaVersion
         else {
-            throw StoreError.schemaTooNew(
+            throw NotilogError.schemaTooNew(
                 foundVersion: foundVersion,
                 supportedVersion:
                     NotificationStore.currentSchemaVersion
@@ -993,7 +1003,7 @@ public init(
 
         if foundVersion == 0 && !containsUserTables {
             guard accessMode == .readWrite else {
-                throw StoreError.schemaRequiresMigration(
+                throw NotilogError.schemaRequiresMigration(
                     foundVersion: foundVersion,
                     requiredVersion:
                         NotificationStore.currentSchemaVersion
@@ -1010,11 +1020,11 @@ public init(
         }
 
         guard try isRecognizedLegacySchema() else {
-            throw StoreError.unrecognizedLegacySchema
+            throw NotilogError.unrecognizedLegacySchema
         }
 
         guard accessMode == .readWrite else {
-            throw StoreError.schemaRequiresMigration(
+            throw NotilogError.schemaRequiresMigration(
                 foundVersion: foundVersion,
                 requiredVersion:
                     NotificationStore.currentSchemaVersion
@@ -1040,7 +1050,7 @@ public init(
             &statement,
             nil
         ) == SQLITE_OK else {
-            throw StoreError.prepareFailed(
+            throw NotilogError.databasePrepareFailed(
                 message: lastErrorMessage
             )
         }
@@ -1050,7 +1060,7 @@ public init(
         }
 
         guard sqlite3_step(statement) == SQLITE_ROW else {
-            throw StoreError.queryFailed(
+            throw NotilogError.databaseQueryFailed(
                 message: lastErrorMessage
             )
         }
@@ -1071,7 +1081,7 @@ public init(
             nil,
             nil
         ) == SQLITE_OK else {
-            throw StoreError.migrationFailed(
+            throw NotilogError.databaseMigrationFailed(
                 message: lastErrorMessage
             )
         }
@@ -1079,7 +1089,7 @@ public init(
         let storedVersion = try schemaVersion()
 
         guard storedVersion == version else {
-            throw StoreError.migrationFailed(
+            throw NotilogError.databaseMigrationFailed(
                 message:
                     "Failed to set database schema version " +
                     "to \(version); database reports " +
@@ -1099,7 +1109,9 @@ public init(
         """
 
         guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
-            throw StoreError.migrationFailed(message: lastErrorMessage)
+            throw NotilogError.databaseMigrationFailed(
+                message: lastErrorMessage
+            )
         }
     }
 
@@ -1123,7 +1135,7 @@ public init(
             &statement,
             nil
         ) == SQLITE_OK else {
-            throw StoreError.prepareFailed(
+            throw NotilogError.databasePrepareFailed(
                 message: lastErrorMessage
             )
         }
@@ -1161,7 +1173,7 @@ public init(
             &statement,
             nil
         ) == SQLITE_OK else {
-            throw StoreError.prepareFailed(
+            throw NotilogError.databasePrepareFailed(
                 message: lastErrorMessage
             )
         }
@@ -1178,7 +1190,7 @@ public init(
             return false
 
         default:
-            throw StoreError.queryFailed(
+            throw NotilogError.databaseQueryFailed(
                 message: lastErrorMessage
             )
         }
@@ -1273,7 +1285,7 @@ public init(
         var statement: OpaquePointer?
 
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw StoreError.prepareFailed(message: lastErrorMessage)
+            throw NotilogError.databasePrepareFailed(message: lastErrorMessage)
         }
 
         defer {
@@ -1383,7 +1395,9 @@ public init(
         """
 
         guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
-            throw StoreError.createTableFailed(message: lastErrorMessage)
+            throw NotilogError.databaseCreateSchemaFailed(
+                message: lastErrorMessage
+            )
         }
     }
 
@@ -1409,7 +1423,7 @@ public init(
             &statement,
             nil
         ) == SQLITE_OK else {
-            throw StoreError.prepareFailed(
+            throw NotilogError.databasePrepareFailed(
                 message: lastErrorMessage
             )
         }
@@ -1419,7 +1433,7 @@ public init(
         }
 
         guard sqlite3_step(statement) == SQLITE_ROW else {
-            throw StoreError.queryFailed(
+            throw NotilogError.databaseQueryFailed(
                 message: lastErrorMessage
             )
         }
@@ -1487,7 +1501,7 @@ public init(
             &statement,
             nil
         ) == SQLITE_OK else {
-            throw StoreError.prepareFailed(
+            throw NotilogError.databasePrepareFailed(
                 message: lastErrorMessage
             )
         }
@@ -1497,7 +1511,7 @@ public init(
         }
 
         guard sqlite3_step(statement) == SQLITE_ROW else {
-            throw StoreError.queryFailed(
+            throw NotilogError.databaseQueryFailed(
                 message: lastErrorMessage
             )
         }
@@ -1573,7 +1587,7 @@ public init(
             &statement,
             nil
         ) == SQLITE_OK else {
-            throw StoreError.prepareFailed(
+            throw NotilogError.databasePrepareFailed(
                 message: lastErrorMessage
             )
         }
@@ -1589,7 +1603,7 @@ public init(
         )
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw StoreError.deleteFailed(
+            throw NotilogError.databaseDeleteFailed(
                 message: lastErrorMessage
             )
         }
@@ -1635,7 +1649,7 @@ public init(
 
     private func requireReadWriteAccess() throws {
         guard accessMode == .readWrite else {
-            throw StoreError.readOnlyMutation
+            throw NotilogError.readOnlyMutation
         }
     }
 
@@ -1646,32 +1660,6 @@ public init(
 
         return "Unknown SQLite error"
     }
-}
-
-public enum StoreError: Error {
-    case openFailed(message: String)
-    case createTableFailed(message: String)
-    case prepareFailed(message: String)
-    case queryFailed(message: String)
-    case insertFailed(message: String)
-    case updateFailed(message: String)
-    case deleteFailed(message: String)
-    case migrationFailed(message: String)
-
-    case schemaRequiresMigration(
-        foundVersion: Int32,
-        requiredVersion: Int32
-    )
-
-    case schemaTooNew(
-        foundVersion: Int32,
-        supportedVersion: Int32
-    )
-
-    case unrecognizedLegacySchema
-
-    case invalidRetentionLimit(message: String)
-    case readOnlyMutation
 }
 
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
