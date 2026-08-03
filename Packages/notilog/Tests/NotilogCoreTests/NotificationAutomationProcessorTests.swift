@@ -119,6 +119,164 @@ final class NotificationAutomationProcessorTests: XCTestCase {
         )
     }
 
+    func testGuiAndCliProcessorsProduceIdenticalOutcomes() {
+        let matchingRuleID = UUID(
+            uuidString:
+                "00000000-0000-0000-0000-000000000601"
+        )!
+
+        let nonmatchingRuleID = UUID(
+            uuidString:
+                "00000000-0000-0000-0000-000000000602"
+        )!
+
+        let rules = [
+            NotificationRule(
+                id: matchingRuleID,
+                name: "Mail notification",
+                criteria: NotificationMatchCriteria(
+                    eventTypes: [.appeared],
+                    appEquals: "Mail",
+                    titleContains: "Invoice"
+                ),
+                actions: [
+                    .dryRunLog(
+                        message:
+                            "Handled {{notification.key}}"
+                    )
+                ]
+            ),
+
+            NotificationRule(
+                id: nonmatchingRuleID,
+                name: "Messages notification",
+                criteria: NotificationMatchCriteria(
+                    eventTypes: [.appeared],
+                    appEquals: "Messages"
+                ),
+                actions: [
+                    .dryRunLog(
+                        message: "Should not run"
+                    )
+                ]
+            ),
+        ]
+
+        let event = sampleEvent(
+            key: "invoice-alert",
+            app: "Mail",
+            title: "New Invoice"
+        )
+
+        for mode in [
+            AutomationExecutionMode.dryRun,
+            AutomationExecutionMode.runActions,
+        ] {
+            let guiProcessor =
+                makeProcessor(rules: rules)
+
+            let cliProcessor =
+                makeProcessor(rules: rules)
+
+            let guiResult =
+                guiProcessor.processDetailed(
+                    event: event,
+                    mode: mode
+                )
+
+            let cliResult =
+                cliProcessor.processDetailed(
+                    event: event,
+                    mode: mode
+                )
+
+            XCTAssertEqual(
+                guiResult.matchedRules.map(\.ruleID),
+                cliResult.matchedRules.map(\.ruleID)
+            )
+
+            XCTAssertEqual(
+                guiResult.matchedRules.map(\.ruleName),
+                cliResult.matchedRules.map(\.ruleName)
+            )
+
+            XCTAssertEqual(
+                guiResult.matchedRules.map {
+                    $0.actions.map(\.summary)
+                },
+                cliResult.matchedRules.map {
+                    $0.actions.map(\.summary)
+                }
+            )
+
+            XCTAssertEqual(
+                guiResult.matchedRules.map(\.ruleID),
+                [matchingRuleID]
+            )
+
+            XCTAssertEqual(
+                guiResult.actionResults.count,
+                1
+            )
+
+            XCTAssertEqual(
+                cliResult.actionResults.count,
+                1
+            )
+
+            let guiAction =
+                guiResult.actionResults[0]
+
+            let cliAction =
+                cliResult.actionResults[0]
+
+            XCTAssertEqual(
+                guiAction.ruleName,
+                cliAction.ruleName
+            )
+
+            XCTAssertEqual(
+                guiAction.action.summary,
+                cliAction.action.summary
+            )
+
+            XCTAssertEqual(
+                guiAction.resolvedAction.summary,
+                cliAction.resolvedAction.summary
+            )
+
+            XCTAssertEqual(
+                guiAction.status,
+                cliAction.status
+            )
+
+            XCTAssertEqual(
+                guiAction.message,
+                cliAction.message
+            )
+
+            XCTAssertEqual(
+                guiAction.exitCode,
+                cliAction.exitCode
+            )
+
+            XCTAssertEqual(
+                guiAction.stdout,
+                cliAction.stdout
+            )
+
+            XCTAssertEqual(
+                guiAction.stderr,
+                cliAction.stderr
+            )
+
+            XCTAssertEqual(
+                guiAction.verificationStatus,
+                cliAction.verificationStatus
+            )
+        }
+    }
+
     func testRunActionsExecutesMatchingAction() {
         let processor = makeProcessor(
             rules: [
