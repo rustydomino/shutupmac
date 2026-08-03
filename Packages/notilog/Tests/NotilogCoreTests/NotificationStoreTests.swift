@@ -1,7 +1,7 @@
 import Foundation
 @testable import NotilogCore
-import XCTest
 import SQLite3
+import XCTest
 
 final class NotificationStoreTests: XCTestCase {
     func testActionVerificationStatusRoundTripsThroughSQLite() throws {
@@ -546,7 +546,7 @@ final class NotificationStoreTests: XCTestCase {
             startedAt: Date(timeIntervalSince1970: 1)
         )
 
-        for index in 1...5 {
+        for index in 1 ... 5 {
             let notification = VisibleNotification(
                 key: "notification-\(index)",
                 app: "Test App",
@@ -561,7 +561,7 @@ final class NotificationStoreTests: XCTestCase {
                     notification: notification,
                     timestamp: Date(
                         timeIntervalSince1970:
-                            TimeInterval(index)
+                        TimeInterval(index)
                     )
                 ),
                 session: session
@@ -600,6 +600,681 @@ final class NotificationStoreTests: XCTestCase {
         )
     }
 
+    func testNotificationEventPruningDoesNotBreakActionHistory()
+        throws
+    {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        let store = try NotificationStore(
+            path: databaseURL.path,
+            notificationEventLimit: 2,
+            actionRunLimit: 10
+        )
+
+        let session = ObservationSession(
+            id: "test-session",
+            startedAt: Date(timeIntervalSince1970: 1)
+        )
+
+        for index in 1 ... 4 {
+            let notification = VisibleNotification(
+                key: "notification-\(index)",
+                app: "Test App",
+                title: "Notification \(index)",
+                subtitle: "",
+                body: "Body \(index)"
+            )
+
+            let event = NotificationEvent(
+                type: .appeared,
+                notification: notification,
+                timestamp: Date(
+                    timeIntervalSince1970:
+                    TimeInterval(index)
+                )
+            )
+
+            try store.insert(
+                event,
+                session: session
+            )
+
+            let result = ActionRunResult(
+                ruleName: "Rule \(index)",
+                action: .dryRunLog(
+                    message: "Action \(index)"
+                ),
+                resolvedAction: .dryRunLog(
+                    message: "Resolved action \(index)"
+                ),
+                event: event,
+                status: .succeeded,
+                message: "Result \(index)",
+                exitCode: 0,
+                stdout: "",
+                stderr: ""
+            )
+
+            try store.insert(
+                result,
+                session: session
+            )
+        }
+
+        let events = try store.recentEvents(
+            limit: 10
+        )
+
+        XCTAssertEqual(
+            events.map(\.event.notification.key),
+            [
+                "notification-3",
+                "notification-4",
+            ]
+        )
+
+        let actionRuns = try store.recentActionRuns(
+            limit: 10
+        )
+
+        XCTAssertEqual(actionRuns.count, 4)
+
+        XCTAssertEqual(
+            actionRuns.map(\.ruleName),
+            [
+                "Rule 1",
+                "Rule 2",
+                "Rule 3",
+                "Rule 4",
+            ]
+        )
+
+        XCTAssertEqual(
+            actionRuns.map(\.notification.key),
+            [
+                "notification-1",
+                "notification-2",
+                "notification-3",
+                "notification-4",
+            ]
+        )
+    }
+
+    func testActionRunPruningDoesNotBreakNotificationHistory()
+        throws
+    {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        let store = try NotificationStore(
+            path: databaseURL.path,
+            notificationEventLimit: 10,
+            actionRunLimit: 2
+        )
+
+        let session = ObservationSession(
+            id: "test-session",
+            startedAt: Date(timeIntervalSince1970: 1)
+        )
+
+        for index in 1 ... 4 {
+            let notification = VisibleNotification(
+                key: "notification-\(index)",
+                app: "Test App",
+                title: "Notification \(index)",
+                subtitle: "",
+                body: "Body \(index)"
+            )
+
+            let event = NotificationEvent(
+                type: .appeared,
+                notification: notification,
+                timestamp: Date(
+                    timeIntervalSince1970:
+                    TimeInterval(index)
+                )
+            )
+
+            try store.insert(
+                event,
+                session: session
+            )
+
+            let result = ActionRunResult(
+                ruleName: "Rule \(index)",
+                action: .dryRunLog(
+                    message: "Action \(index)"
+                ),
+                resolvedAction: .dryRunLog(
+                    message: "Resolved action \(index)"
+                ),
+                event: event,
+                status: .succeeded,
+                message: "Result \(index)",
+                exitCode: 0,
+                stdout: "",
+                stderr: ""
+            )
+
+            try store.insert(
+                result,
+                session: session
+            )
+        }
+
+        let actionRuns = try store.recentActionRuns(
+            limit: 10
+        )
+
+        XCTAssertEqual(
+            actionRuns.map(\.ruleName),
+            [
+                "Rule 3",
+                "Rule 4",
+            ]
+        )
+
+        let events = try store.recentEvents(
+            limit: 10
+        )
+
+        XCTAssertEqual(events.count, 4)
+
+        XCTAssertEqual(
+            events.map(\.event.notification.key),
+            [
+                "notification-1",
+                "notification-2",
+                "notification-3",
+                "notification-4",
+            ]
+        )
+    }
+
+    func testHistoricalPruningDoesNotRemoveActiveNotifications()
+        throws
+    {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        let store = try NotificationStore(
+            path: databaseURL.path,
+            notificationEventLimit: 2,
+            actionRunLimit: 2
+        )
+
+        let session = ObservationSession(
+            id: "test-session",
+            startedAt: Date(timeIntervalSince1970: 1)
+        )
+
+        for index in 1 ... 4 {
+            let notification = VisibleNotification(
+                key: "notification-\(index)",
+                app: "Test App",
+                title: "Notification \(index)",
+                subtitle: "",
+                body: "Body \(index)"
+            )
+
+            try store.insert(
+                NotificationEvent(
+                    type: .appeared,
+                    notification: notification,
+                    timestamp: Date(
+                        timeIntervalSince1970:
+                        TimeInterval(index)
+                    )
+                ),
+                session: session
+            )
+        }
+
+        XCTAssertEqual(
+            try store.recentEvents(limit: 10).count,
+            2
+        )
+
+        let activeNotifications =
+            try store.loadActiveNotifications()
+
+        XCTAssertEqual(
+            activeNotifications.map(\.key).sorted(),
+            [
+                "notification-1",
+                "notification-2",
+                "notification-3",
+                "notification-4",
+            ]
+        )
+    }
+
+    func testSessionCleanupDoesNotBreakActionHistory()
+        throws
+    {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        let store = try NotificationStore(
+            path: databaseURL.path,
+            notificationEventLimit: 1,
+            actionRunLimit: 10
+        )
+
+        for index in 1...2 {
+            let session = ObservationSession(
+                id: "session-\(index)",
+                startedAt: Date(
+                    timeIntervalSince1970:
+                        TimeInterval(index)
+                )
+            )
+
+            try store.startSession(session)
+
+            let notification = VisibleNotification(
+                key: "notification-\(index)",
+                app: "Test App",
+                title: "Notification \(index)",
+                subtitle: "",
+                body: "Body \(index)"
+            )
+
+            let event = NotificationEvent(
+                type: .appeared,
+                notification: notification,
+                timestamp: Date(
+                    timeIntervalSince1970:
+                        TimeInterval(index + 10)
+                )
+            )
+
+            try store.insert(
+                event,
+                session: session
+            )
+
+            try store.insert(
+                ActionRunResult(
+                    ruleName: "Rule \(index)",
+                    action: .dryRunLog(
+                        message: "Action \(index)"
+                    ),
+                    resolvedAction: .dryRunLog(
+                        message:
+                            "Resolved action \(index)"
+                    ),
+                    event: event,
+                    status: .succeeded,
+                    message: "Result \(index)",
+                    exitCode: 0,
+                    stdout: "",
+                    stderr: ""
+                ),
+                session: session
+            )
+
+            try store.endSession(
+                session,
+                endedAt: Date(
+                    timeIntervalSince1970:
+                        TimeInterval(index + 20)
+                )
+            )
+        }
+
+        // Event 1 was pruned, so its ended session
+        // is also removed.
+        XCTAssertEqual(
+            try store.statistics()
+                .watchSessionCount,
+            1
+        )
+
+        XCTAssertEqual(
+            try store.recentEvents(limit: 10)
+                .map(\.sessionID),
+            [
+                "session-2",
+            ]
+        )
+
+        // Action history is self-contained and remains
+        // queryable even after session 1 is removed.
+        let actionRuns =
+            try store.recentActionRuns(limit: 10)
+
+        XCTAssertEqual(
+            actionRuns.map(\.sessionID),
+            [
+                "session-1",
+                "session-2",
+            ]
+        )
+
+        XCTAssertEqual(
+            actionRuns.map(\.notification.key),
+            [
+                "notification-1",
+                "notification-2",
+            ]
+        )
+    }
+
+    func testWriterStartupPruningRemovesUnreferencedEndedSessions()
+        throws
+    {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        do {
+            let store = try NotificationStore(
+                path: databaseURL.path,
+                notificationEventLimit: 10,
+                actionRunLimit: 10
+            )
+
+            for index in 1...4 {
+                let session = ObservationSession(
+                    id: "session-\(index)",
+                    startedAt: Date(
+                        timeIntervalSince1970:
+                            TimeInterval(index)
+                    )
+                )
+
+                try store.startSession(session)
+
+                try store.insert(
+                    NotificationEvent(
+                        type: .appeared,
+                        notification:
+                            VisibleNotification(
+                                key:
+                                    "notification-\(index)",
+                                app: "Test App",
+                                title:
+                                    "Notification \(index)",
+                                subtitle: "",
+                                body: "Body \(index)"
+                            ),
+                        timestamp: Date(
+                            timeIntervalSince1970:
+                                TimeInterval(index + 10)
+                        )
+                    ),
+                    session: session
+                )
+
+                try store.endSession(
+                    session,
+                    endedAt: Date(
+                        timeIntervalSince1970:
+                            TimeInterval(index + 20)
+                    )
+                )
+            }
+
+            XCTAssertEqual(
+                try store.statistics()
+                    .watchSessionCount,
+                4
+            )
+        }
+
+        // Reopening with a lower event limit performs
+        // normal writer-startup retention enforcement.
+        let prunedStore = try NotificationStore(
+            path: databaseURL.path,
+            notificationEventLimit: 2,
+            actionRunLimit: 10
+        )
+
+        XCTAssertEqual(
+            try prunedStore.recentEvents(limit: 10)
+                .map(\.sessionID),
+            [
+                "session-3",
+                "session-4",
+            ]
+        )
+
+        XCTAssertEqual(
+            try prunedStore.statistics()
+                .watchSessionCount,
+            2
+        )
+    }
+
+    func testEventPruningPreservesOpenUnreferencedSession()
+        throws
+    {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        let store = try NotificationStore(
+            path: databaseURL.path,
+            notificationEventLimit: 1,
+            actionRunLimit: 10
+        )
+
+        let firstSession = ObservationSession(
+            id: "ended-session-1",
+            startedAt: Date(timeIntervalSince1970: 1)
+        )
+
+        try store.startSession(firstSession)
+
+        try store.insert(
+            NotificationEvent(
+                type: .appeared,
+                notification: VisibleNotification(
+                    key: "notification-1",
+                    app: "Test App",
+                    title: "Notification 1",
+                    subtitle: "",
+                    body: "Body 1"
+                ),
+                timestamp: Date(timeIntervalSince1970: 10)
+            ),
+            session: firstSession
+        )
+
+        try store.endSession(
+            firstSession,
+            endedAt: Date(timeIntervalSince1970: 11)
+        )
+
+        let openSession = ObservationSession(
+            id: "open-session",
+            startedAt: Date(timeIntervalSince1970: 20)
+        )
+
+        // This session intentionally has no events and
+        // remains open.
+        try store.startSession(openSession)
+
+        let secondSession = ObservationSession(
+            id: "ended-session-2",
+            startedAt: Date(timeIntervalSince1970: 30)
+        )
+
+        try store.startSession(secondSession)
+
+        try store.insert(
+            NotificationEvent(
+                type: .appeared,
+                notification: VisibleNotification(
+                    key: "notification-2",
+                    app: "Test App",
+                    title: "Notification 2",
+                    subtitle: "",
+                    body: "Body 2"
+                ),
+                timestamp: Date(timeIntervalSince1970: 40)
+            ),
+            session: secondSession
+        )
+
+        try store.endSession(
+            secondSession,
+            endedAt: Date(timeIntervalSince1970: 41)
+        )
+
+        let statistics = try store.statistics()
+
+        // The first ended session is now unreferenced and
+        // removed. The retained event's session and the
+        // still-open session both remain.
+        XCTAssertEqual(
+            statistics.watchSessionCount,
+            2
+        )
+
+        XCTAssertEqual(
+            try store.recentEvents(limit: 10)
+                .map(\.sessionID),
+            [
+                "ended-session-2",
+            ]
+        )
+    }
+
+    func testEventPruningRemovesUnreferencedEndedSessions()
+        throws
+    {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        let store = try NotificationStore(
+            path: databaseURL.path,
+            notificationEventLimit: 2,
+            actionRunLimit: 10
+        )
+
+        for index in 1...4 {
+            let session = ObservationSession(
+                id: "session-\(index)",
+                startedAt: Date(
+                    timeIntervalSince1970:
+                        TimeInterval(index)
+                )
+            )
+
+            try store.startSession(session)
+
+            let notification = VisibleNotification(
+                key: "notification-\(index)",
+                app: "Test App",
+                title: "Notification \(index)",
+                subtitle: "",
+                body: "Body \(index)"
+            )
+
+            try store.insert(
+                NotificationEvent(
+                    type: .appeared,
+                    notification: notification,
+                    timestamp: Date(
+                        timeIntervalSince1970:
+                            TimeInterval(index + 10)
+                    )
+                ),
+                session: session
+            )
+
+            try store.endSession(
+                session,
+                endedAt: Date(
+                    timeIntervalSince1970:
+                        TimeInterval(index + 20)
+                )
+            )
+        }
+
+        let retainedEvents =
+            try store.recentEvents(limit: 10)
+
+        XCTAssertEqual(
+            retainedEvents.map(\.sessionID),
+            [
+                "session-3",
+                "session-4",
+            ]
+        )
+
+        let statistics = try store.statistics()
+
+        XCTAssertEqual(
+            statistics.watchSessionCount,
+            2
+        )
+    }
+
     func testActionRunRetentionKeepsNewestRows()
         throws
     {
@@ -626,7 +1301,7 @@ final class NotificationStoreTests: XCTestCase {
             startedAt: Date(timeIntervalSince1970: 1)
         )
 
-        for index in 1...4 {
+        for index in 1 ... 4 {
             let notification = VisibleNotification(
                 key: "notification-\(index)",
                 app: "Test App",
@@ -640,7 +1315,7 @@ final class NotificationStoreTests: XCTestCase {
                 notification: notification,
                 timestamp: Date(
                     timeIntervalSince1970:
-                        TimeInterval(index)
+                    TimeInterval(index)
                 )
             )
 
@@ -688,6 +1363,7 @@ final class NotificationStoreTests: XCTestCase {
             ]
         )
     }
+
     func testOpeningStorePrunesExistingHistoryToConfiguredLimits()
         throws
     {
@@ -715,7 +1391,7 @@ final class NotificationStoreTests: XCTestCase {
                 actionRunLimit: 10
             )
 
-            for index in 1...5 {
+            for index in 1 ... 5 {
                 let notification = VisibleNotification(
                     key: "notification-\(index)",
                     app: "Test App",
@@ -729,7 +1405,7 @@ final class NotificationStoreTests: XCTestCase {
                     notification: notification,
                     timestamp: Date(
                         timeIntervalSince1970:
-                            TimeInterval(index)
+                        TimeInterval(index)
                     )
                 )
 
@@ -831,7 +1507,7 @@ final class NotificationStoreTests: XCTestCase {
             startedAt: Date(timeIntervalSince1970: 1)
         )
 
-        for index in 1...5 {
+        for index in 1 ... 5 {
             let notification = VisibleNotification(
                 key: "notification-\(index)",
                 app: "Test App",
@@ -845,7 +1521,7 @@ final class NotificationStoreTests: XCTestCase {
                 notification: notification,
                 timestamp: Date(
                     timeIntervalSince1970:
-                        TimeInterval(index)
+                    TimeInterval(index)
                 )
             )
 
@@ -984,7 +1660,7 @@ final class NotificationStoreTests: XCTestCase {
                 actionRunLimit: 10
             )
 
-            for index in 1...5 {
+            for index in 1 ... 5 {
                 let notification = VisibleNotification(
                     key: "notification-\(index)",
                     app: "Test App",
@@ -999,7 +1675,7 @@ final class NotificationStoreTests: XCTestCase {
                         notification: notification,
                         timestamp: Date(
                             timeIntervalSince1970:
-                                TimeInterval(index)
+                            TimeInterval(index)
                         )
                     ),
                     session: session
@@ -1255,7 +1931,7 @@ final class NotificationStoreTests: XCTestCase {
                 actionRunLimit: 10
             )
 
-            for index in 1...4 {
+            for index in 1 ... 4 {
                 let notification = VisibleNotification(
                     key: "notification-\(index)",
                     app: "Test App",
@@ -1269,7 +1945,7 @@ final class NotificationStoreTests: XCTestCase {
                     notification: notification,
                     timestamp: Date(
                         timeIntervalSince1970:
-                            TimeInterval(index)
+                        TimeInterval(index)
                     )
                 )
 
@@ -1495,10 +2171,10 @@ final class NotificationStoreTests: XCTestCase {
         {
             guard
                 let columnName =
-                    sqlite3_column_text(
-                        columnsStatement,
-                        1
-                    )
+                sqlite3_column_text(
+                    columnsStatement,
+                    1
+                )
             else {
                 continue
             }
@@ -1649,5 +2325,4 @@ final class NotificationStoreTests: XCTestCase {
             }
         }
     }
-
 }

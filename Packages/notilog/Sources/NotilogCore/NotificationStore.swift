@@ -1541,6 +1541,9 @@ public init(
         )
 
         notificationEventCount -= deletionCount
+
+        try deleteUnreferencedEndedSessions()
+
     }
 
     private func pruneActionRunsIfNeeded()
@@ -1559,6 +1562,33 @@ public init(
         )
 
         actionRunCount -= deletionCount
+    }
+
+    private func deleteUnreferencedEndedSessions()
+        throws
+    {
+        let sql = """
+        DELETE FROM watch_sessions
+        WHERE ended_at IS NOT NULL
+        AND NOT EXISTS (
+            SELECT 1
+            FROM notification_events
+            WHERE notification_events.session_id
+                = watch_sessions.id
+        );
+        """
+
+        guard sqlite3_exec(
+            db,
+            sql,
+            nil,
+            nil,
+            nil
+        ) == SQLITE_OK else {
+            throw NotilogError.databaseDeleteFailed(
+                message: lastErrorMessage
+            )
+        }
     }
 
     private func deleteOldestRows(

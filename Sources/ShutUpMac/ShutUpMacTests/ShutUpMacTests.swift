@@ -262,6 +262,171 @@ final class ShutUpMacTests: XCTestCase {
         )
     }
 
+    func testMonitoringRuntimeResetClearsDatabaseTables()
+        throws
+    {
+        let temporaryRoot =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    UUID().uuidString,
+                    isDirectory: true
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: temporaryRoot
+            )
+        }
+
+        let runtimePaths = NotilogRuntimePaths(
+            applicationSupport: temporaryRoot
+        )
+
+        try runtimePaths.ensureDirectoriesExist()
+
+        let historicalSession = ObservationSession(
+            id: "historical-session",
+            startedAt: Date(
+                timeIntervalSince1970: 10
+            )
+        )
+
+        let notification = VisibleNotification(
+            key: "historical-notification",
+            app: "Test App",
+            title: "Historical notification",
+            subtitle: "",
+            body: "Historical body"
+        )
+
+        let event = NotificationEvent(
+            type: .appeared,
+            notification: notification,
+            timestamp: Date(
+                timeIntervalSince1970: 20
+            )
+        )
+
+        do {
+            let store = try NotificationStore(
+                path: runtimePaths.database.path
+            )
+
+            try store.startSession(
+                historicalSession
+            )
+
+            try store.insert(
+                event,
+                session: historicalSession
+            )
+
+            let actionResult = ActionRunResult(
+                ruleName: "Historical Rule",
+                action: .dryRunLog(
+                    message: "Historical action"
+                ),
+                resolvedAction: .dryRunLog(
+                    message: "Historical resolved action"
+                ),
+                event: event,
+                status: .succeeded,
+                message: "Historical result",
+                exitCode: 0,
+                stdout: "",
+                stderr: ""
+            )
+
+            try store.insert(
+                actionResult,
+                session: historicalSession
+            )
+
+            try store.endSession(
+                historicalSession,
+                endedAt: Date(
+                    timeIntervalSince1970: 30
+                )
+            )
+        }
+
+        let runtime = try NotilogMonitoringRuntime(
+            runtimePaths: runtimePaths,
+            initialConfiguration:
+                AutomationConfig(rules: []),
+            loggingEnabled: true
+        )
+
+        let statisticsBeforeReset =
+            try XCTUnwrap(
+                runtime.databaseStatistics()
+            )
+
+        XCTAssertEqual(
+            statisticsBeforeReset
+                .notificationEventCount,
+            1
+        )
+
+        XCTAssertEqual(
+            statisticsBeforeReset.actionRunCount,
+            1
+        )
+
+        XCTAssertEqual(
+            statisticsBeforeReset
+                .activeNotificationCount,
+            1
+        )
+
+        // The historical session plus the runtime's
+        // newly started current session.
+        XCTAssertEqual(
+            statisticsBeforeReset.watchSessionCount,
+            2
+        )
+
+        try runtime.resetDatabase()
+
+        let statisticsAfterReset =
+            try XCTUnwrap(
+                runtime.databaseStatistics()
+            )
+
+        XCTAssertEqual(
+            statisticsAfterReset
+                .notificationEventCount,
+            0
+        )
+
+        XCTAssertEqual(
+            statisticsAfterReset.actionRunCount,
+            0
+        )
+
+        XCTAssertEqual(
+            statisticsAfterReset
+                .activeNotificationCount,
+            0
+        )
+
+        // Reset recreates the database and starts one
+        // fresh session because logging remains enabled.
+        XCTAssertEqual(
+            statisticsAfterReset.watchSessionCount,
+            1
+        )
+
+        XCTAssertNil(
+            statisticsAfterReset
+                .oldestNotificationEventDate
+        )
+
+        XCTAssertNil(
+            statisticsAfterReset
+                .newestNotificationEventDate
+        )
+    }
 
     func testNotilogRedactionPolicyIsDisabledWhenMasterSettingIsOff() {
         let policy = AppPreferences.makeNotilogRedactionPolicy(
