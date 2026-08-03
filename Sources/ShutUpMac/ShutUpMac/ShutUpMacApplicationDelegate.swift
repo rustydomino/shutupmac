@@ -13,20 +13,66 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
             configURL: runtimePaths.config
         )
 
+private(set) lazy var retentionConfigurationStore =
+    RetentionConfigurationStore(
+        fileURL: runtimePaths.retention
+    )
+
+    private(set) lazy var retentionConfiguration:
+        RetentionConfiguration =
+    {
+        do {
+            return try AppPreferences
+                .migratedNotilogRetentionConfiguration(
+                    using: retentionConfigurationStore
+                )
+        } catch {
+            let errorDetail: String
+
+            if let notilogError =
+                error as? NotilogError
+            {
+                errorDetail =
+                    notilogError.errorDescription
+                        ?? String(
+                            describing: notilogError
+                        )
+            } else {
+                errorDetail =
+                    error.localizedDescription
+            }
+
+            activityStore.reportMonitoringError(
+                MonitoringErrorPresentation(
+                    title:
+                        "Retention configuration error",
+                    detail:
+                        "Could not load retention.json; " +
+                        "using built-in defaults. " +
+                        errorDetail
+                )
+            )
+
+            return RetentionConfiguration.defaults
+        }
+    }()
+
     private lazy var notilogMonitoringController =
         NotilogMonitoringController(
             runtimePaths: runtimePaths,
+            retentionConfigurationStore:
+                retentionConfigurationStore,
             initialConfiguration:
                 automationConfigurationStore.configuration,
             loggingEnabled:
                 AppPreferences
                     .notilogDatabaseLoggingEnabled,
             notificationEventLimit:
-                AppPreferences
-                    .notilogNotificationEventRetentionLimit,
+                retentionConfiguration
+                    .notificationEventLimit,
             actionRunLimit:
-                AppPreferences
-                    .notilogActionRunRetentionLimit,
+                retentionConfiguration
+                    .actionRunLimit,
             redactionPolicy:
                 AppPreferences
                     .notilogRedactionPolicy,
@@ -71,10 +117,10 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
                     activityItems
                 )
             },
-            onMonitoringError: { [weak self] message in
-                if let message {
+            onMonitoringError: { [weak self] presentation in
+                if let presentation {
                     self?.activityStore.reportMonitoringError(
-                        message
+                        presentation
                     )
                 } else {
                     self?.activityStore.clearMonitoringError()

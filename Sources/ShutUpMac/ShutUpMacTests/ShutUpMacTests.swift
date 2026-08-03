@@ -62,6 +62,168 @@ final class ShutUpMacTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testExistingRetentionFileWinsOverLegacyPreferences()
+        throws
+    {
+        let directoryURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-retention-migration-\(UUID().uuidString)",
+                    isDirectory: true
+                )
+
+        let fileURL =
+            directoryURL.appendingPathComponent(
+                "retention.json"
+            )
+
+        let suiteName =
+            "RetentionMigrationTests-\(UUID().uuidString)"
+
+        guard let defaults =
+            UserDefaults(suiteName: suiteName)
+        else {
+            XCTFail("Could not create test UserDefaults")
+            return
+        }
+
+        defer {
+            defaults.removePersistentDomain(
+                forName: suiteName
+            )
+
+            try? FileManager.default.removeItem(
+                at: directoryURL
+            )
+        }
+
+        defaults.set(
+            50_000,
+            forKey:
+                "notilogNotificationEventRetentionLimit"
+        )
+
+        defaults.set(
+            20_000,
+            forKey:
+                "notilogActionRunRetentionLimit"
+        )
+
+        let fileConfiguration =
+            try RetentionConfiguration(
+                notificationEventLimit: 12_000,
+                actionRunLimit: 6_000
+            )
+
+        let store =
+            RetentionConfigurationStore(
+                fileURL: fileURL
+            )
+
+        try store.save(fileConfiguration)
+
+        let resolvedConfiguration =
+            try AppPreferences
+                .migratedNotilogRetentionConfiguration(
+                    using: store,
+                    defaults: defaults
+                )
+
+        XCTAssertEqual(
+            resolvedConfiguration,
+            fileConfiguration
+        )
+
+        XCTAssertEqual(
+            try store.load(),
+            .loaded(fileConfiguration)
+        )
+    }
+
+    @MainActor
+    func testNonDefaultLegacyRetentionPreferencesMigrateToFile()
+        throws
+    {
+        let directoryURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-retention-migration-\(UUID().uuidString)",
+                    isDirectory: true
+                )
+
+        let fileURL =
+            directoryURL.appendingPathComponent(
+                "retention.json"
+            )
+
+        let suiteName =
+            "RetentionMigrationTests-\(UUID().uuidString)"
+
+        guard let defaults =
+            UserDefaults(suiteName: suiteName)
+        else {
+            XCTFail("Could not create test UserDefaults")
+            return
+        }
+
+        defer {
+            defaults.removePersistentDomain(
+                forName: suiteName
+            )
+
+            try? FileManager.default.removeItem(
+                at: directoryURL
+            )
+        }
+
+        defaults.set(
+            32_000,
+            forKey:
+                "notilogNotificationEventRetentionLimit"
+        )
+
+        defaults.set(
+            14_000,
+            forKey:
+                "notilogActionRunRetentionLimit"
+        )
+
+        let store =
+            RetentionConfigurationStore(
+                fileURL: fileURL
+            )
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: fileURL.path
+            )
+        )
+
+        let resolvedConfiguration =
+            try AppPreferences
+                .migratedNotilogRetentionConfiguration(
+                    using: store,
+                    defaults: defaults
+                )
+
+        let expectedConfiguration =
+            try RetentionConfiguration(
+                notificationEventLimit: 32_000,
+                actionRunLimit: 14_000
+            )
+
+        XCTAssertEqual(
+            resolvedConfiguration,
+            expectedConfiguration
+        )
+
+        XCTAssertEqual(
+            try store.load(),
+            .loaded(expectedConfiguration)
+        )
+    }
+
     func testStoredRulesAutoDismissValueOverridesDefault()
         throws
     {
@@ -112,6 +274,86 @@ final class ShutUpMacTests: XCTestCase {
         XCTAssertEqual(
             policy,
             .disabled
+        )
+    }
+
+    @MainActor
+    func testDefaultLegacyRetentionPreferencesDoNotCreateFile()
+        throws
+    {
+        let directoryURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-retention-migration-\(UUID().uuidString)",
+                    isDirectory: true
+                )
+
+        let fileURL =
+            directoryURL.appendingPathComponent(
+                "retention.json"
+            )
+
+        let suiteName =
+            "RetentionMigrationTests-\(UUID().uuidString)"
+
+        guard let defaults =
+            UserDefaults(suiteName: suiteName)
+        else {
+            XCTFail("Could not create test UserDefaults")
+            return
+        }
+
+        defer {
+            defaults.removePersistentDomain(
+                forName: suiteName
+            )
+
+            try? FileManager.default.removeItem(
+                at: directoryURL
+            )
+        }
+
+        defaults.set(
+            RetentionConfiguration
+                .defaultNotificationEventLimit,
+            forKey:
+                "notilogNotificationEventRetentionLimit"
+        )
+
+        defaults.set(
+            RetentionConfiguration
+                .defaultActionRunLimit,
+            forKey:
+                "notilogActionRunRetentionLimit"
+        )
+
+        let store =
+            RetentionConfigurationStore(
+                fileURL: fileURL
+            )
+
+        let resolvedConfiguration =
+            try AppPreferences
+                .migratedNotilogRetentionConfiguration(
+                    using: store,
+                    defaults: defaults
+                )
+
+        XCTAssertEqual(
+            resolvedConfiguration,
+            RetentionConfiguration.defaults
+        )
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: fileURL.path
+            )
+        )
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: directoryURL.path
+            )
         )
     }
 
@@ -668,6 +910,53 @@ final class ShutUpMacTests: XCTestCase {
         store.loadHistoricalRecords([record])
 
         XCTAssertFalse(store.isAtRecordCapacity)
+    }
+
+    @MainActor
+    func testActivityStorePreservesRecordsWhenMonitoringErrorIsReported() {
+        let notification = ActivityNotificationSnapshot(
+            key: "notification-1",
+            app: "Test App",
+            title: "Existing notification",
+            subtitle: "",
+            body: "Existing body"
+        )
+
+        let record = NotificationActivityRecord(
+            historicalNotification: notification,
+            appearedAt: Date(
+                timeIntervalSince1970: 100
+            )
+        )
+
+        let store = ActivityStore()
+        store.loadHistoricalRecords([record])
+
+        let presentation = MonitoringErrorPresentation(
+            title: "Activity database error",
+            detail: "Could not query the Activity database."
+        )
+
+        store.reportMonitoringError(
+            presentation
+        )
+
+        XCTAssertEqual(store.records.count, 1)
+        XCTAssertEqual(
+            store.records.first?.id,
+            "notification-1"
+        )
+        XCTAssertEqual(
+            store.monitoringErrorPresentation,
+            presentation
+        )
+
+        store.clearMonitoringError()
+
+        XCTAssertEqual(store.records.count, 1)
+        XCTAssertNil(
+            store.monitoringErrorPresentation
+        )
     }
 
     @MainActor

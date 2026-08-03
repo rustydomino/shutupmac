@@ -17,6 +17,12 @@ public struct NotilogRuntimePaths: Equatable, Sendable {
         )
     }
 
+public var retention: URL {
+    applicationSupport.appendingPathComponent(
+        "retention.json"
+    )
+}
+
     /// Creates the conventional Notilog directory layout beneath a supplied
     /// Application Support directory.
     public init(applicationSupport: URL) {

@@ -40,6 +40,9 @@ struct ShutUpMacApp: App {
                 automationConfigurationStore:
                     applicationDelegate
                         .automationConfigurationStore,
+                initialRetentionConfiguration:
+                    applicationDelegate
+                        .retentionConfiguration,
                 saveAutomationConfiguration: { candidate in
                     applicationDelegate
                         .saveAutomationConfiguration(

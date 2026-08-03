@@ -26,6 +26,59 @@ struct AdvancedView: View {
             ) -> Void
         ) -> Void
 
+    init(
+        initialRetentionConfiguration:
+            RetentionConfiguration = .defaults,
+        requestDatabaseStatistics: @escaping (
+            @escaping @MainActor @Sendable (
+                DatabaseStatisticsResult
+            ) -> Void
+        ) -> Void,
+        resetActivityDatabase: @escaping (
+            @escaping @MainActor @Sendable (
+                ActivityDatabaseResetResult
+            ) -> Void
+        ) -> Void,
+        updateRetentionLimits: @escaping (
+            Int,
+            Int,
+            @escaping @MainActor @Sendable (
+                RetentionLimitsUpdateResult
+            ) -> Void
+        ) -> Void
+    ) {
+        self.requestDatabaseStatistics =
+            requestDatabaseStatistics
+
+        self.resetActivityDatabase =
+            resetActivityDatabase
+
+        self.updateRetentionLimits =
+            updateRetentionLimits
+
+        _appliedRetentionConfiguration =
+            State(
+                initialValue:
+                    initialRetentionConfiguration
+            )
+
+        _notificationEventLimitText =
+            State(
+                initialValue:
+                    initialRetentionConfiguration
+                        .notificationEventLimit
+                        .formatted()
+            )
+
+        _actionRunLimitText =
+            State(
+                initialValue:
+                    initialRetentionConfiguration
+                        .actionRunLimit
+                        .formatted()
+            )
+    }
+
     @State private var statistics:
         NotificationStoreStatistics?
 
@@ -37,15 +90,14 @@ struct AdvancedView: View {
     @State private var isResettingDatabase = false
     @State private var resetErrorMessage: String?
 
-    @State private var notificationEventLimitText =
-        AppPreferences
-            .notilogNotificationEventRetentionLimit
-            .formatted()
+    @State private var appliedRetentionConfiguration:
+        RetentionConfiguration
 
-    @State private var actionRunLimitText =
-        AppPreferences
-            .notilogActionRunRetentionLimit
-            .formatted()
+    @State private var notificationEventLimitText:
+        String
+
+    @State private var actionRunLimitText:
+        String
 
     @State private var isApplyingRetentionLimits = false
     @State private var retentionErrorMessage: String?
@@ -142,11 +194,11 @@ struct AdvancedView: View {
         }
 
         return notificationEventLimit
-                != AppPreferences
-                    .notilogNotificationEventRetentionLimit
+                != appliedRetentionConfiguration
+                    .notificationEventLimit
             || actionRunLimit
-                != AppPreferences
-                    .notilogActionRunRetentionLimit
+                != appliedRetentionConfiguration
+                    .actionRunLimit
     }
 
     private func retentionInteger(
@@ -424,6 +476,13 @@ struct AdvancedView: View {
 
             switch result {
             case .updated:
+                appliedRetentionConfiguration =
+                    try! RetentionConfiguration(
+                        notificationEventLimit:
+                            notificationEventLimit,
+                        actionRunLimit:
+                            actionRunLimit
+                    )
                 notificationEventLimitText =
                     notificationEventLimit
                         .formatted()

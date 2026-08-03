@@ -13,6 +13,9 @@ struct ShutUpMacManagementView: View {
     var automationConfigurationStore:
         AutomationConfigurationStore
 
+    let initialRetentionConfiguration:
+        RetentionConfiguration
+
     let saveAutomationConfiguration:
         (AutomationConfig) -> Void
 
@@ -139,6 +142,8 @@ struct ShutUpMacManagementView: View {
             .tag(ShutUpMacTab.rules)
 
             AdvancedView(
+                initialRetentionConfiguration:
+                    initialRetentionConfiguration,
                 requestDatabaseStatistics:
                     requestDatabaseStatistics,
                 resetActivityDatabase:

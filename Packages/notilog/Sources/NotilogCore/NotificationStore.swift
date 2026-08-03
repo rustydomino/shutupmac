@@ -28,11 +28,12 @@ public enum NotificationStoreAccessMode:
 
 public final class NotificationStore {
     public static let defaultNotificationEventLimit =
-        25_000
+        RetentionConfiguration
+            .defaultNotificationEventLimit
 
     public static let defaultActionRunLimit =
-        10_000
-
+        RetentionConfiguration
+            .defaultActionRunLimit
     private static let maximumStoredTextLength = 4_096
     private static let currentSchemaVersion: Int32 = 4
 

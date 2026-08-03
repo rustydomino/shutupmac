@@ -39,6 +39,16 @@ public enum NotilogError:
         message: String
     )
 
+    case retentionConfigurationReadFailed(
+        path: String,
+        message: String
+    )
+
+    case retentionConfigurationWriteFailed(
+        path: String,
+        message: String
+    )
+
     case databaseOpenFailed(
         message: String
     )
@@ -132,6 +142,22 @@ public enum NotilogError:
             return
                 "Invalid retention configuration: " +
                 message
+
+        case let .retentionConfigurationReadFailed(
+            path,
+            message
+        ):
+            return
+                "Could not read retention configuration " +
+                "at \(path): \(message)"
+
+        case let .retentionConfigurationWriteFailed(
+            path,
+            message
+        ):
+            return
+                "Could not write retention configuration " +
+                "at \(path): \(message)"
 
         case let .databaseOpenFailed(message):
             return

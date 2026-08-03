@@ -132,16 +132,16 @@ struct ActivityView: View {
     }
 
     private func monitoringErrorWarning(
-        _ message: String
+        _ presentation: MonitoringErrorPresentation
     ) -> some View {
         Label(
-            "Activity database error",
+            presentation.title,
             systemImage: "exclamationmark.triangle.fill"
         )
         .font(.caption)
         .foregroundStyle(.red)
         .lineLimit(1)
-        .help(message)
+        .help(presentation.detail)
     }
 
     var body: some View {
@@ -212,16 +212,16 @@ struct ActivityView: View {
                         )
 
                         if !databaseLoggingEnabled
-                            || store.monitoringErrorMessage != nil
+                            || store.monitoringErrorPresentation != nil
                         {
                             Divider()
 
                             HStack(spacing: 12) {
-                                if let message =
-                                    store.monitoringErrorMessage
+                                if let presentation =
+                                    store.monitoringErrorPresentation
                                 {
                                     monitoringErrorWarning(
-                                        message
+                                        presentation
                                     )
                                 }
 
@@ -352,11 +352,11 @@ struct ActivityView: View {
                                 .foregroundStyle(.secondary)
                         }
 
-                        if let message =
-                            store.monitoringErrorMessage
+                        if let presentation =
+                            store.monitoringErrorPresentation
                         {
                             monitoringErrorWarning(
-                                message
+                                presentation
                             )
                         }
 

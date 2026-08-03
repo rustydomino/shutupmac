@@ -26,7 +26,32 @@ if arguments.contains("-v") || arguments.contains("--version") {
     exit(0)
 }
 
-let command = arguments.first { !$0.hasPrefix("-") } ?? "help"
+let commandIndex =
+    arguments.firstIndex {
+        !$0.hasPrefix("-")
+    }
+
+let command =
+    commandIndex.map {
+        arguments[$0]
+    } ?? "help"
+
+let subcommand: String? =
+    commandIndex.flatMap { index in
+        let followingIndex =
+            arguments.index(after: index)
+
+        guard followingIndex
+            < arguments.endIndex
+        else {
+            return nil
+        }
+
+        return arguments[followingIndex]
+            .hasPrefix("-")
+                ? nil
+                : arguments[followingIndex]
+    }
 
 let dryRunActionsEnabled = arguments.contains("--dry-run-actions")
 let runActionsEnabled = arguments.contains("--run-actions")
@@ -321,25 +346,70 @@ func printConfigErrorAndExit(_ error: Error) -> Never {
     exit(1)
 }
 
+func runtimeErrorMessage(
+    _ error: Error
+) -> String {
+    if let notilogError = error as? NotilogError {
+        return notilogError.errorDescription
+            ?? String(describing: notilogError)
+    }
+
+    return error.localizedDescription
+}
+
 func printRuntimeErrorAndExit(
     _ error: Error
 ) -> Never {
-    let message: String
-
-    if let notilogError = error as? NotilogError {
-        message =
-            notilogError.errorDescription
-                ?? String(describing: notilogError)
-    } else {
-        message = error.localizedDescription
-    }
-
     fputs(
-        "Error: \(message)\n",
+        "Error: \(runtimeErrorMessage(error))\n",
         stderr
     )
 
     exit(1)
+}
+
+func loadRetentionConfigurationForWatch(
+    runtimePaths: NotilogRuntimePaths
+) -> RetentionConfiguration {
+    let store =
+        RetentionConfigurationStore(
+            fileURL: runtimePaths.retention
+        )
+
+    do {
+        let result = try store.load()
+
+        switch result {
+        case .missing:
+            diagnosticHandler?(
+                "Retention path: " +
+                    runtimePaths.retention.path +
+                    " (missing; using built-in defaults)"
+            )
+
+        case .loaded:
+            diagnosticHandler?(
+                "Retention path: " +
+                    runtimePaths.retention.path
+            )
+        }
+
+        return result.configuration
+    } catch {
+        fputs(
+            "Warning: " +
+                runtimeErrorMessage(error) +
+                " Using built-in retention defaults.\n",
+            stderr
+        )
+
+        diagnosticHandler?(
+            "Retention path: " +
+                runtimePaths.retention.path
+        )
+
+        return RetentionConfiguration.defaults
+    }
 }
 
 func automationConfigURL() -> URL {
@@ -518,10 +588,22 @@ case "watch":
 
     do {
         if startupConfiguration.loggingEnabled {
+            let retentionConfiguration =
+                loadRetentionConfigurationForWatch(
+                    runtimePaths:
+                        startupConfiguration.runtimePaths
+                )
+
             store = try NotificationStore(
                 path:
-                startupConfiguration.runtimePaths
-                    .database.path
+                    startupConfiguration.runtimePaths
+                        .database.path,
+                notificationEventLimit:
+                    retentionConfiguration
+                        .notificationEventLimit,
+                actionRunLimit:
+                    retentionConfiguration
+                        .actionRunLimit
             )
         } else {
             store = nil
@@ -775,6 +857,223 @@ case "action-history":
         printActionHistoryRecord(record)
     }
 
+case "retention":
+    switch subcommand {
+    case "show":
+        let store =
+            RetentionConfigurationStore(
+                fileURL:
+                    startupConfiguration
+                        .runtimePaths
+                        .retention
+            )
+
+        do {
+            let result = try store.load()
+            let configuration =
+                result.configuration
+
+            print(
+                "Retention path: " +
+                    store.fileURL.path
+            )
+
+            switch result {
+            case .missing:
+                print(
+                    "Source: built-in defaults " +
+                        "(retention.json is missing)"
+                )
+
+            case .loaded:
+                print("Source: retention.json")
+            }
+
+            print(
+                "Notification event limit: " +
+                    configuration
+                        .notificationEventLimit
+                        .formatted()
+            )
+
+            print(
+                "Action run limit: " +
+                    configuration
+                        .actionRunLimit
+                        .formatted()
+            )
+        } catch {
+            printRuntimeErrorAndExit(error)
+        }
+
+    case "set":
+        guard arguments.contains("--events") else {
+            fputs(
+                "Missing required option: --events N.\n",
+                stderr
+            )
+            exit(2)
+        }
+
+        guard arguments.contains("--actions") else {
+            fputs(
+                "Missing required option: --actions N.\n",
+                stderr
+            )
+            exit(2)
+        }
+
+        let notificationEventLimit =
+            integerOption(
+                "--events",
+                default: 0
+            )
+
+        let actionRunLimit =
+            integerOption(
+                "--actions",
+                default: 0
+            )
+
+        let configuration:
+            RetentionConfiguration
+
+        do {
+            configuration =
+                try RetentionConfiguration(
+                    notificationEventLimit:
+                        notificationEventLimit,
+                    actionRunLimit:
+                        actionRunLimit
+                )
+        } catch {
+            fputs(
+                "Invalid retention settings: " +
+                    runtimeErrorMessage(error) +
+                    "\n",
+                stderr
+            )
+
+            exit(2)
+        }
+
+        let store =
+            RetentionConfigurationStore(
+                fileURL:
+                    startupConfiguration
+                        .runtimePaths
+                        .retention
+            )
+
+        do {
+            try store.save(configuration)
+        } catch {
+            printRuntimeErrorAndExit(error)
+        }
+
+        print(
+            "Retention configuration saved."
+        )
+
+        print(
+            "Retention path: " +
+                store.fileURL.path
+        )
+
+        print(
+            "Notification event limit: " +
+                configuration
+                    .notificationEventLimit
+                    .formatted()
+        )
+
+        print(
+            "Action run limit: " +
+                configuration
+                    .actionRunLimit
+                    .formatted()
+        )
+
+        print(
+            "Pruning will be applied on the next " +
+                "writer startup or GUI Apply operation."
+        )
+
+    case "reset":
+        let store =
+            RetentionConfigurationStore(
+                fileURL:
+                    startupConfiguration
+                        .runtimePaths
+                        .retention
+            )
+
+        do {
+            if FileManager.default.fileExists(
+                atPath: store.fileURL.path
+            ) {
+                try FileManager.default.removeItem(
+                    at: store.fileURL
+                )
+            }
+        } catch {
+            printRuntimeErrorAndExit(
+                NotilogError
+                    .retentionConfigurationWriteFailed(
+                        path: store.fileURL.path,
+                        message:
+                            error.localizedDescription
+                    )
+            )
+        }
+
+        print(
+            "Retention configuration reset " +
+                "to built-in defaults."
+        )
+
+        print(
+            "Retention path: " +
+                store.fileURL.path
+        )
+
+        print(
+            "Notification event limit: " +
+                RetentionConfiguration
+                    .defaultNotificationEventLimit
+                    .formatted()
+        )
+
+        print(
+            "Action run limit: " +
+                RetentionConfiguration
+                    .defaultActionRunLimit
+                    .formatted()
+        )
+
+        print(
+            "Pruning will be applied on the next " +
+                "writer startup or GUI Apply operation."
+        )
+
+    case nil:
+        fputs(
+            "Missing retention command. " +
+                "Expected show, set, or reset.\n",
+            stderr
+        )
+        exit(2)
+
+    default:
+        fputs(
+            "Unknown retention command: " +
+                "\(subcommand!). " +
+                "Expected show, set, or reset.\n",
+            stderr
+        )
+        exit(2)
+    }
+
 case "rules":
     try startupConfiguration.runtimePaths.ensureDirectoriesExist()
 
@@ -813,17 +1112,21 @@ case "help", "--help", "-h":
       notilog-cli permissions
       notilog-cli permissions --prompt
       notilog-cli history [--limit N]
-      notilog-cli watch [--quiet] [--debug] [--no-logging] [--redact [FIELDS]][--dry-run-actions] [--run-actions] [--config PATH]
+      notilog-cli watch [--quiet] [--debug] [--no-logging] [--redact [FIELDS]] [--dry-run-actions] [--run-actions] [--config PATH]
       notilog-cli action-history [--limit N]
       notilog-cli rules [--config PATH]
       notilog-cli config-check [--config PATH]
       notilog-cli --version
+      notilog-cli retention show
+      notilog-cli retention set --events N --actions N
+      notilog-cli retention reset
 
     Commands:
       permissions       Check Accessibility permission
       watch             Watch visible notifications
       history           Show recent notification events
       action-history    Show recent automation action results
+      retention         Show or change shared retention limits
       rules             Show configured automation rules
       config-check      Validate automation config
 
@@ -835,6 +1138,8 @@ case "help", "--help", "-h":
       --dry-run-actions Print matched automation actions without running them
       --run-actions     Run matched automation actions
       --limit N         Limit history results
+      --events N        Set the notification event retention limit
+      --actions N       Set the action-run retention limit
       -v, --version     Show the version
       --config PATH     Use a specific automation config file
     """)
