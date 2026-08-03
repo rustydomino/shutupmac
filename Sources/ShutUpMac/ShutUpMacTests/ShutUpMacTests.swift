@@ -1573,6 +1573,280 @@ final class ShutUpMacTests: XCTestCase {
     }
     
     @MainActor
+    func testGuiSavePathPreservesAdvancedRuleConfiguration()
+        async throws
+    {
+        let directoryURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    UUID().uuidString,
+                    isDirectory: true
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: directoryURL
+            )
+        }
+
+        let configURL =
+            directoryURL.appendingPathComponent(
+                "config.json"
+            )
+
+        let ordinaryRuleID = UUID(
+            uuidString:
+                "00000000-0000-0000-0000-000000000501"
+        )!
+
+        let advancedRuleID = UUID(
+            uuidString:
+                "00000000-0000-0000-0000-000000000502"
+        )!
+
+        let ordinaryRule = AutomationRuleConfig(
+            id: ordinaryRuleID,
+            name: "Ordinary GUI rule",
+            enabled: true,
+            match: NotificationMatchConfig(
+                eventTypes: [.appeared],
+                appEquals: "Mail",
+                titleContains: "Newsletter"
+            ),
+            actions: [
+                NotificationActionConfig(
+                    type: "shutupmac_dismiss"
+                )
+            ]
+        )
+
+        let advancedRule = AutomationRuleConfig(
+            id: advancedRuleID,
+            name: "Advanced CLI rule",
+            enabled: false,
+            match: NotificationMatchConfig(
+                eventTypes: [
+                    .appeared,
+                    .disappeared,
+                ],
+                appContains: "Mail",
+                titleEquals: "Receipt",
+                titleContains: "Invoice",
+                anyTextContains: "account",
+                caseSensitive: true
+            ),
+            exceptions: [
+                NotificationExceptionConfig(
+                    field: .body,
+                    contains: "test message"
+                )
+            ],
+            actions: [
+                NotificationActionConfig(
+                    type: "exec",
+                    command: "/usr/bin/logger",
+                    arguments: [
+                        "--",
+                        "advanced-rule",
+                    ]
+                ),
+                NotificationActionConfig(
+                    type: "dryRunLog",
+                    message: "Advanced dry run"
+                ),
+            ]
+        )
+
+        let originalConfiguration = AutomationConfig(
+            rules: [
+                ordinaryRule,
+                advancedRule,
+            ]
+        )
+
+        // This represents the ordinary rule returned by
+        // RuleEditorView after a GUI edit.
+        let editedOrdinaryRule = AutomationRuleConfig(
+            id: ordinaryRuleID,
+            name: "Edited ordinary GUI rule",
+            enabled: false,
+            match: NotificationMatchConfig(
+                eventTypes: [.appeared],
+                appEquals: "Mail",
+                bodyContains: "Updated text"
+            ),
+            actions: [
+                NotificationActionConfig(
+                    type: "shutupmac_dismiss"
+                )
+            ]
+        )
+
+        let candidate =
+            originalConfiguration.replacingRule(
+                editedOrdinaryRule
+            )
+
+        let store = AutomationConfigurationStore(
+            configURL: configURL
+        )
+
+        let activator =
+            StubAutomationConfigurationActivator(
+                result: .activated
+            )
+
+        store.saveAndActivate(
+            candidate,
+            using: activator
+        )
+
+        for _ in 0..<100 {
+            if store.configuration != nil
+                || store.errorMessage != nil
+            {
+                break
+            }
+
+            try await Task.sleep(
+                nanoseconds: 10_000_000
+            )
+        }
+
+        XCTAssertNil(store.errorMessage)
+
+        let writtenConfiguration =
+            try AutomationConfig.load(
+                from: configURL
+            )
+
+        XCTAssertEqual(
+            writtenConfiguration.rules.count,
+            2
+        )
+
+        let writtenOrdinaryRule =
+            try XCTUnwrap(
+                writtenConfiguration.rules.first {
+                    $0.id == ordinaryRuleID
+                }
+            )
+
+        XCTAssertEqual(
+            writtenOrdinaryRule.name,
+            "Edited ordinary GUI rule"
+        )
+
+        XCTAssertEqual(
+            writtenOrdinaryRule.enabled,
+            false
+        )
+
+        XCTAssertEqual(
+            writtenOrdinaryRule.match.bodyContains,
+            "Updated text"
+        )
+
+        let writtenAdvancedRule =
+            try XCTUnwrap(
+                writtenConfiguration.rules.first {
+                    $0.id == advancedRuleID
+                }
+            )
+
+        XCTAssertEqual(
+            writtenAdvancedRule.name,
+            "Advanced CLI rule"
+        )
+
+        XCTAssertEqual(
+            writtenAdvancedRule.enabled,
+            false
+        )
+
+        XCTAssertEqual(
+            writtenAdvancedRule.match.eventTypes,
+            [
+                .appeared,
+                .disappeared,
+            ]
+        )
+
+        XCTAssertEqual(
+            writtenAdvancedRule.match.appContains,
+            "Mail"
+        )
+
+        XCTAssertEqual(
+            writtenAdvancedRule.match.titleEquals,
+            "Receipt"
+        )
+
+        XCTAssertEqual(
+            writtenAdvancedRule.match.titleContains,
+            "Invoice"
+        )
+
+        XCTAssertEqual(
+            writtenAdvancedRule.match.anyTextContains,
+            "account"
+        )
+
+        XCTAssertEqual(
+            writtenAdvancedRule.match.caseSensitive,
+            true
+        )
+
+        XCTAssertEqual(
+            writtenAdvancedRule.exceptions?.count,
+            1
+        )
+
+        XCTAssertEqual(
+            writtenAdvancedRule.exceptions?.first?.field,
+            .body
+        )
+
+        XCTAssertEqual(
+            writtenAdvancedRule.exceptions?.first?.contains,
+            "test message"
+        )
+
+        XCTAssertEqual(
+            writtenAdvancedRule.actions.count,
+            2
+        )
+
+        XCTAssertEqual(
+            writtenAdvancedRule.actions[0].type,
+            "exec"
+        )
+
+        XCTAssertEqual(
+            writtenAdvancedRule.actions[0].command,
+            "/usr/bin/logger"
+        )
+
+        XCTAssertEqual(
+            writtenAdvancedRule.actions[0].arguments,
+            [
+                "--",
+                "advanced-rule",
+            ]
+        )
+
+        XCTAssertEqual(
+            writtenAdvancedRule.actions[1].type,
+            "dryRunLog"
+        )
+
+        XCTAssertEqual(
+            writtenAdvancedRule.actions[1].message,
+            "Advanced dry run"
+        )
+    }
+
+    @MainActor
     func testReloadFromDiskActivatesValidExternalConfiguration()
         async throws {
 
