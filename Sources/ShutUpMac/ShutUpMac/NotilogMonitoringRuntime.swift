@@ -63,13 +63,18 @@ nonisolated final class NotilogMonitoringRuntime {
                 atPath: runtimePaths.database.path
             )
 
-        if loggingEnabled || databaseAlreadyExists {
+        if loggingEnabled {
             store = try NotificationStore(
                 path: runtimePaths.database.path,
                 notificationEventLimit:
                     notificationEventLimit,
                 actionRunLimit:
                     actionRunLimit
+            )
+        } else if databaseAlreadyExists {
+            store = try NotificationStore(
+                path: runtimePaths.database.path,
+                accessMode: .readOnly
             )
         } else {
             store = nil
@@ -252,27 +257,20 @@ deinit {
         }
 
         if enabled {
-            let writableStore: NotificationStore
-
-            if let store {
-                // Reuse an existing database that was opened for
-                // reading historical records.
-                writableStore = store
-            } else {
-                writableStore = try NotificationStore(
+            let writableStore =
+                try NotificationStore(
                     path: runtimePaths.database.path,
                     notificationEventLimit:
                         notificationEventLimit,
                     actionRunLimit:
                         actionRunLimit
                 )
-            }
 
             let candidateSession =
                 ObservationSession()
 
-            // Do not connect any coordinator until the new
-            // database session has started successfully.
+            // Do not connect any coordinator until the
+            // writable session starts successfully.
             try writableStore.startSession(
                 candidateSession
             )
@@ -300,7 +298,15 @@ deinit {
                 return
             }
 
-            // If ending the session fails, leave the current
+            // Open the inspection connection first. If this
+            // fails, the active writer remains unchanged.
+            let readOnlyStore =
+                try NotificationStore(
+                    path: runtimePaths.database.path,
+                    accessMode: .readOnly
+                )
+
+            // If ending the session fails, leave the active
             // persistence configuration unchanged.
             try currentStore.endSession(
                 session
@@ -321,11 +327,12 @@ deinit {
                     session: session
                 )
 
-            // Keep the database open so existing history can
-            // still be queried and displayed.
+            // Existing history remains visible, but the
+            // retained connection cannot mutate the database.
+            store = readOnlyStore
             loggingEnabled = false
         }
-    }   
+    }  
 
     /// Builds and activates rules from a new configuration.
     ///

@@ -2209,4 +2209,173 @@ final class ShutUpMacTests: XCTestCase {
         )
     }
     
+    func testLoggingDisabledDoesNotCreateMissingDatabase()
+        throws
+    {
+        let temporaryRoot =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    UUID().uuidString,
+                    isDirectory: true
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: temporaryRoot
+            )
+        }
+
+        let runtimePaths = NotilogRuntimePaths(
+            applicationSupport: temporaryRoot
+        )
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: runtimePaths.database.path
+            )
+        )
+
+        let runtime = try NotilogMonitoringRuntime(
+            runtimePaths: runtimePaths,
+            initialConfiguration:
+                AutomationConfig(rules: []),
+            loggingEnabled: false,
+            notificationEventLimit: 1_000,
+            actionRunLimit: 1_000
+        )
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: runtimePaths.database.path
+            )
+        )
+
+        XCTAssertNil(
+            try runtime.databaseStatistics()
+        )
+
+        XCTAssertTrue(
+            try runtime.recentAppearanceEvents(
+                limit: 10
+            ).isEmpty
+        )
+    }
+
+    func testLoggingDisabledDoesNotApplyRetentionToExistingHistory()
+        throws
+    {
+        let temporaryRoot =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    UUID().uuidString,
+                    isDirectory: true
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: temporaryRoot
+            )
+        }
+
+        let runtimePaths = NotilogRuntimePaths(
+            applicationSupport: temporaryRoot
+        )
+
+        try runtimePaths.ensureDirectoriesExist()
+
+        let session = ObservationSession(
+            id: "historical-session",
+            startedAt: Date(
+                timeIntervalSince1970: 1
+            )
+        )
+
+        do {
+            let store = try NotificationStore(
+                path: runtimePaths.database.path,
+                notificationEventLimit: 10,
+                actionRunLimit: 10
+            )
+
+            try store.startSession(session)
+
+            for index in 1...4 {
+                try store.insert(
+                    NotificationEvent(
+                        type: .appeared,
+                        notification:
+                            VisibleNotification(
+                                key:
+                                    "notification-\(index)",
+                                app: "Test App",
+                                title:
+                                    "Notification \(index)",
+                                subtitle: "",
+                                body: "Body \(index)"
+                            ),
+                        timestamp: Date(
+                            timeIntervalSince1970:
+                                TimeInterval(index + 10)
+                        )
+                    ),
+                    session: session
+                )
+            }
+
+            try store.endSession(
+                session,
+                endedAt: Date(
+                    timeIntervalSince1970: 20
+                )
+            )
+        }
+
+        // The lower limit must not be enforced merely
+        // because the GUI opens existing history while
+        // logging is disabled.
+        let runtime = try NotilogMonitoringRuntime(
+            runtimePaths: runtimePaths,
+            initialConfiguration:
+                AutomationConfig(rules: []),
+            loggingEnabled: false,
+            notificationEventLimit: 2,
+            actionRunLimit: 10
+        )
+
+        let history =
+            try runtime.recentAppearanceEvents(
+                limit: 10
+            )
+
+        XCTAssertEqual(
+            history.map {
+                $0.event.notification.key
+            },
+            [
+                "notification-1",
+                "notification-2",
+                "notification-3",
+                "notification-4",
+            ]
+        )
+
+        let readOnlyStore =
+            try NotificationStore(
+                path: runtimePaths.database.path,
+                accessMode: .readOnly
+            )
+
+        XCTAssertEqual(
+            try readOnlyStore.statistics()
+                .notificationEventCount,
+            4
+        )
+
+        XCTAssertEqual(
+            try readOnlyStore.statistics()
+                .watchSessionCount,
+            1
+        )
+    }
+
 }

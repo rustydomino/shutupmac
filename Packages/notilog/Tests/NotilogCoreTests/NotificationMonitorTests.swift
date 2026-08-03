@@ -351,6 +351,183 @@ final class NotificationMonitorTests: XCTestCase {
         )
     }
 
+    func testNoLoggingRunsAutomationWithoutMutatingDatabase()
+        throws
+    {
+        let databaseURL =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "notilog-\(UUID().uuidString).sqlite"
+                )
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        let historicalSession = ObservationSession(
+            id: "historical-session",
+            startedAt: Date(
+                timeIntervalSince1970: 1
+            )
+        )
+
+        do {
+            let store = try NotificationStore(
+                path: databaseURL.path
+            )
+
+            try store.startSession(
+                historicalSession
+            )
+
+            try store.insert(
+                NotificationEvent(
+                    type: .appeared,
+                    notification:
+                        sampleNotification(
+                            key: "alert-existing"
+                        ),
+                    timestamp: Date(
+                        timeIntervalSince1970: 2
+                    )
+                ),
+                session: historicalSession
+            )
+
+            try store.endSession(
+                historicalSession,
+                endedAt: Date(
+                    timeIntervalSince1970: 3
+                )
+            )
+        }
+
+        let baselineStore = try NotificationStore(
+            path: databaseURL.path,
+            accessMode: .readOnly
+        )
+
+        let baselineStatistics =
+            try baselineStore.statistics()
+
+        let components = makeMonitor(
+            rules: [
+                matchingRule(
+                    name: "Dry-run notification",
+                    eventTypes: [.appeared],
+                    actions: [
+                        .dryRunLog(
+                            message:
+                                "Handled {{notification.key}}"
+                        )
+                    ]
+                )
+            ],
+            automationMode: .dryRun
+        )
+
+        let result =
+            try components.monitor.processScan(
+                notifications: [
+                    sampleNotification(
+                        key: "alert-new"
+                    )
+                ],
+                at: Date(
+                    timeIntervalSince1970: 10
+                ),
+                actionTimestampProvider: {
+                    Date(
+                        timeIntervalSince1970: 11
+                    )
+                },
+                afterCompletedActionVerifications: {
+                    _ in
+                },
+                beforeAutomation: { _ in },
+                beforeActionResultCoordination: {
+                    _ in
+                },
+                afterRecoveredEvents: { _ in }
+            )
+
+        XCTAssertEqual(
+            result.events.count,
+            1
+        )
+
+        XCTAssertEqual(
+            result.events[0].actionResults.count,
+            1
+        )
+
+        XCTAssertNil(
+            result.events[0]
+                .actionResults[0]
+                .actionRunID
+        )
+
+        let unchangedStore = try NotificationStore(
+            path: databaseURL.path,
+            accessMode: .readOnly
+        )
+
+        let unchangedStatistics =
+            try unchangedStore.statistics()
+
+        XCTAssertEqual(
+            unchangedStatistics
+                .notificationEventCount,
+            baselineStatistics
+                .notificationEventCount
+        )
+
+        XCTAssertEqual(
+            unchangedStatistics.actionRunCount,
+            baselineStatistics.actionRunCount
+        )
+
+        XCTAssertEqual(
+            unchangedStatistics
+                .activeNotificationCount,
+            baselineStatistics
+                .activeNotificationCount
+        )
+
+        XCTAssertEqual(
+            unchangedStatistics.watchSessionCount,
+            baselineStatistics.watchSessionCount
+        )
+
+        XCTAssertEqual(
+            try unchangedStore
+                .recentEvents(limit: 10)
+                .map {
+                    $0.event.notification.key
+                },
+            [
+                "alert-existing",
+            ]
+        )
+
+        XCTAssertTrue(
+            try unchangedStore
+                .recentActionRuns(limit: 10)
+                .isEmpty
+        )
+
+        XCTAssertEqual(
+            try unchangedStore
+                .loadActiveNotifications()
+                .map(\.key),
+            [
+                "alert-existing",
+            ]
+        )
+    }
+
     func testReplaceAutomationModeAffectsSubsequentScans()
         throws
     {
