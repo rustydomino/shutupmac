@@ -21,6 +21,9 @@ The project consists of a reusable Swift library, `NotilogCore`, and a CLI host,
 - Debounce short AX disappearances before emitting lifecycle events.
 - Track active notifications and reconcile state after interrupted watch sessions.
 - Persist notification history, active state, watch sessions, and action results to SQLite.
+- Open SQLite explicitly as read-write or read-only, with read-only callers unable to create, migrate, prune, or mutate the database.
+- Validate explicit schema versions before use and migrate only recognized legacy schemas through a writer.
+- Share validated retention limits between the app and CLI through `retention.json`.
 - Inspect notification and action history from the CLI.
 - Define multiple JSON automation rules and multiple actions per rule.
 - Match event type, app, title, subtitle, body, or combined notification text.
@@ -96,6 +99,8 @@ Current CLI paths:
 ```text
 notilog.sqlite   SQLite database
 config.json      Optional automation configuration
+retention.json   Optional shared retention configuration
+monitor.lock     Single-monitor process lock
 logs/            Reserved runtime log directory
 ```
 
@@ -103,12 +108,13 @@ An embedding host may supply a different application-support root or fully expli
 
 ## ShutUpMac App Host
 
-The ShutUpMac app currently uses the legacy Notilog runtime directory and owns the watcher lifecycle with a timer-driven host around `NotificationMonitor`. On launch it loads recent notification appearance records into the Activity window and then appends live monitoring results. The app also hosts the Rules window and injects an in-process dismissal handler so `shutupmac_dismiss` actions do not launch the external helper.
+The ShutUpMac app uses the legacy Notilog runtime directory and owns the watcher lifecycle with a timer-driven host around `NotificationMonitor`. On launch it loads recent notification appearance records into the Activity tab and then appends live monitoring results. The unified management window also hosts the Rules and Advanced tabs, and the app injects an in-process dismissal handler so `shutupmac_dismiss` actions do not launch the external helper.
 
-ShutUpMac Settings provides live controls for:
+ShutUpMac provides live controls for:
 
-- Enabling or disabling notification logging. When disabled, scanning, rules, actions, and verification continue, but new SQLite records and Activity rows are suppressed.
+- Enabling or disabling notification logging. When disabled, scanning, rules, actions, and verification continue, but new SQLite records and Activity rows are suppressed. If history already exists, the app keeps it readable through a read-only store that does not migrate or prune. A missing database is not created merely to show Activity.
 - Redacting title, subtitle, and body. Selected nonempty fields become `[REDACTED]` in subsequent Activity rows and database writes. The application name remains visible in the GUI.
+- Viewing database statistics, applying shared retention limits, and resetting the Activity database from the Advanced tab.
 
 The GUI controls intentionally expose a smaller redaction surface than the CLI. `notilog-cli --redact` continues to support `app` and the reserved `attachments` field in addition to title, subtitle, and body.
 
@@ -198,6 +204,23 @@ notilog-cli rules
 notilog-cli rules --config ./Examples/config.example.json
 ```
 
+
+### Retention
+
+```zsh
+notilog-cli retention show
+notilog-cli retention set --events 25000 --actions 10000
+notilog-cli retention reset
+```
+
+Retention is shared with the ShutUpMac Advanced tab through:
+
+```text
+~/Library/Application Support/notilog/retention.json
+```
+
+If the file is missing, Notilog uses built-in defaults without creating it: 25,000 notification events and 10,000 action runs. Valid ranges are 1,000–100,000 events and 1,000–50,000 action runs. `retention set` saves atomically; pruning occurs on the next writer startup or immediately when the GUI applies the limits. `retention reset` removes the file and restores the built-in defaults. Invalid or malformed files are reported and are not overwritten implicitly.
+
 ### Config Validation
 
 ```zsh
@@ -238,7 +261,7 @@ notilog-cli watch --no-logging --run-actions
 - Executes enabled actions.
 - Tracks pending ShutUpMac verification in memory.
 
-Because there is no database, the session does not recover previously active notification state and action verification results are not persisted.
+Because there is no database, the session does not recover previously active notification state and action verification results are not persisted. The CLI guarantee is stricter than the GUI logging-disabled behavior: `watch --no-logging` does not open SQLite at all, while the app may hold an existing database open read-only so previously recorded Activity remains visible.
 
 ### Quiet Mode
 
@@ -358,7 +381,7 @@ MonitoringCycleProcessor                   NotificationEventCoordinator
                                                      └─ action coordination
 ```
 
-The host supplies scans and timestamps, receives typed results through `NotificationMonitor`, and chooses how to render them. `notilog-cli` owns its AX polling loop, sleeping, argument parsing, and terminal output. The ShutUpMac app owns a separate timer-driven lifecycle and Activity presentation. `NotilogCore` owns the reusable event, action, persistence, verification, and redaction coordination shared by both hosts.
+The host supplies scans and timestamps, receives typed results through `NotificationMonitor`, and chooses how to render them. `notilog-cli` owns its AX polling loop, sleeping, argument parsing, and terminal output. The ShutUpMac app owns a separate timer-driven lifecycle and Activity presentation. `NotilogCore` owns the reusable event, action, persistence, verification, redaction, retention, schema, and typed-error behavior shared by both hosts.
 
 The original event is used for rule matching and configured actions. Redacted copies are created for Notilog-owned output and persistence.
 
@@ -622,7 +645,14 @@ watch_sessions        Observation session records
 action_runs           Action execution and verification results
 ```
 
-The schema stores notification identity and content fields separately and uses `PRAGMA user_version` for schema versioning.
+The schema stores notification identity and content fields separately and uses `PRAGMA user_version` for explicit schema versioning. The current schema version is 4.
+
+`NotificationStore` has two access modes:
+
+- `readWrite`: may create a new database, migrate a recognized legacy schema, apply retention pruning, and perform mutations.
+- `readOnly`: requires an existing database, never creates or migrates, never applies retention pruning, and rejects all mutation methods with `NotilogError.readOnlyMutation`.
+
+A database newer than the supported schema, an unrecognized legacy schema, or a schema requiring migration through a read-only connection fails safely with a typed `NotilogError`. Read-only `history` and `action-history` commands therefore cannot modify the database as a side effect of inspection. Writer-side notification-event pruning also removes ended watch sessions only when no retained historical event references them; action history and active notification state are pruned independently.
 
 Example inspection from the repository root:
 
@@ -642,6 +672,10 @@ LIMIT 10;
 '
 ```
 
+
+## Error Contract
+
+`NotilogCore` exposes shared `NotilogError` cases for monitoring locks, missing databases, schema compatibility, retention configuration, database operations, and read-only mutation. The GUI maps these cases to concise user-facing titles and details. CLI usage errors exit with status 2, while runtime/configuration/database failures exit with status 1 and print a stable localized description to standard error.
 
 ## Current Boundaries
 

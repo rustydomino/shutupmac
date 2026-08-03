@@ -1,6 +1,6 @@
 # Notilog TODO
 
-_Last updated: 2026-07-31_
+_Last updated: 2026-08-03_
 
 ## Completed foundations
 
@@ -29,13 +29,24 @@ _Last updated: 2026-07-31_
 - [x] Suppress duplicate dismissal attempts when multiple rules match one notification event.
 - [x] Inject in-process dismissal into the ShutUpMac app while retaining the external-helper fallback for standalone hosts.
 - [x] Complete manual runtime regression testing for exceptions, disabled rules, exact/contains and case-sensitive matching, logging-disabled automation, redaction boundaries, edit preservation, advanced-rule safety, config-save rollback, and restart persistence.
+- [x] Add true read-only `NotificationStore` access that never creates, migrates, prunes, or mutates.
+- [x] Add explicit SQLite schema versioning and safe rejection of newer, unknown, or migration-required read-only schemas.
+- [x] Add shared typed `NotilogError` cases for monitoring, schema, retention, database, and read-only failures.
+- [x] Add shared atomic `retention.json` configuration with GUI migration from non-default legacy preferences.
+- [x] Add `notilog-cli retention show`, `set`, and `reset`.
+- [x] Make historical event pruning independent from action history and active notification state.
+- [x] Remove unreferenced ended watch sessions after historical event pruning.
+- [x] Add advanced-rule GUI round-trip regression coverage.
+- [x] Add mixed unredacted, redacted, and truncated persistence coverage.
+- [x] Enforce logging-disabled guarantees for GUI read-only history and CLI no-open/no-write mode.
+- [x] Add GUI/CLI automation parity regression coverage against the shared core.
 
 ## Immediate next steps
 
-- [ ] Commit the in-process dismissal, regression-test, and documentation changes.
-- [ ] Add app-level automated tests for preference-to-policy mapping, live policy replacement, Activity redaction, runtime configuration rollback, and Rules presentation.
-- [ ] Add process-level tests for CLI option parsing and exit codes so malformed-option behavior is automated.
-- [ ] Choose the next GUI milestone: Activity details/structured filters or Rules-window visual polish.
+- [ ] Run clean full-suite and installed-app release validation.
+- [ ] Update the project changelog and version for the next release.
+- [ ] Define stale/pending verification restart behavior only if it becomes a practical source of misleading history.
+- [ ] Add Activity details or structured filters only if the current search/table workflow proves insufficient.
 
 ## Library and host integration
 
@@ -52,7 +63,7 @@ _Last updated: 2026-07-31_
 
 ### Global no-persistence mode
 
-- [x] `watch --no-logging` does not open or write SQLite.
+- [x] `watch --no-logging` does not create, open, migrate, prune, or write SQLite.
 - [x] Continue scanning, matching rules, running actions, and delayed verification in memory.
 - [x] Disable session history and restart recovery when no store is present.
 - [x] Support:
@@ -109,6 +120,8 @@ _Last updated: 2026-07-31_
 - [x] Return typed monitoring results rather than printing inside the core.
 - [x] Preserve recovered-event-before-current-event ordering.
 - [x] Keep verification functional when logging is disabled.
+- [x] Keep existing GUI history readable through a read-only store while logging is disabled.
+- [x] Do not create a missing GUI database or apply retention merely to inspect disabled-logging history.
 - [ ] Decide how stale `pending` action rows should be handled when Notilog exits before verification.
 - [ ] Candidate final state: `verification_interrupted` or `unknown`.
 - [ ] On startup, decide whether to mark stale rows interrupted, recheck recent rows, or leave them pending with an explanation.
@@ -152,6 +165,13 @@ _Last updated: 2026-07-31_
 
 ## Database and data model cleanup
 
+- [x] Add explicit `readWrite` and `readOnly` store modes.
+- [x] Use `PRAGMA user_version` as an explicit schema contract.
+- [x] Migrate only recognized legacy schemas and only through a writer.
+- [x] Reject newer, unrecognized, or migration-required read-only schemas safely.
+- [x] Share validated retention limits through atomic `retention.json`.
+- [x] Preserve action history and active notification state while pruning notification events.
+- [x] Remove ended sessions only when no retained historical event references them.
 - [x] Add stable UUIDs to automation configuration rules; do not rely on editable rule names as configuration identity.
 - [ ] Store both stable rule ID and execution-time rule name in `action_runs`.
 - [ ] Add structured `action_type` to `action_runs`.
@@ -177,14 +197,23 @@ _Last updated: 2026-07-31_
 - [x] Immutable configuration helpers for enable/disable, add, replace, and remove.
 - [x] Injected dismissal handler precedence and external-helper fallback.
 - [x] Duplicate matching dismissal rules invoke the injected handler only once.
+- [x] Read-only database open, missing-file, migration refusal, mutation rejection, and concurrent-reader coverage.
+- [x] Explicit schema current/legacy/too-new/unrecognized coverage.
+- [x] Shared retention missing/default, validation, malformed preservation, save/load, and atomic replacement coverage.
+- [x] Independent pruning, active-state preservation, database reset, and orphan-session cleanup coverage.
+- [x] Advanced-rule GUI save-path round-trip coverage.
+- [x] Mixed unredacted, redacted, and truncated event/action persistence coverage.
+- [x] GUI logging-disabled history/no-create/no-prune coverage.
+- [x] No-logging automation-without-database-mutation coverage.
+- [x] GUI/CLI automation parity coverage.
 
 ### Remaining tests
 
 - [ ] Add process-level tests for missing and malformed CLI option values.
 - [ ] Add explicit process tests proving `--quiet` suppresses all routine watch output.
 - [ ] Add restart tests for stale/pending verification behavior after that policy is defined.
-- [ ] Add app-level tests for logging-state transitions and redaction preference mapping.
-- [ ] Add Activity factory tests for selected-field redaction and action-result suppression.
+- [x] Add app-level tests for logging-state transitions and redaction preference mapping.
+- [x] Add Activity factory tests for selected-field redaction and action-result suppression.
 - [ ] Add per-rule retention precedence tests if retention policy is added.
 
 ## First GUI milestone: Activity viewer
@@ -194,7 +223,8 @@ _Last updated: 2026-07-31_
 - [x] Append live notification activity from the embedded Notilog monitor.
 - [x] Present app, notification preview, matched rules, and appearance time in a sortable table.
 - [x] Add full-text Spotlight-style search across notification records.
-- [x] Retain existing history while logging is disabled and suppress new Activity rows.
+- [x] Retain existing history through read-only access while logging is disabled and suppress new Activity rows.
+- [x] Avoid schema migration, retention pruning, or database creation merely to display disabled-logging history.
 - [x] Display GUI-selected redacted fields as `[REDACTED]`.
 - [ ] Add a details/inspector view that presents the joined lifecycle narrative:
   - notification appeared
@@ -212,7 +242,7 @@ _Last updated: 2026-07-31_
 - [x] Show enabled state, positive match conditions, exceptions, advanced matching, and advanced actions.
 - [x] Add enable/disable control for ordinary rules.
 - [x] Add ordinary-rule creation, editing, deletion, validation, and atomic save-and-activate behavior.
-- [x] Preserve UUID, exceptions, and sidebar position during editing.
+- [x] Preserve UUID, exceptions, sidebar position, and unsupported advanced fields/actions during ordinary GUI editing.
 - [x] Keep unsupported advanced rules read-only and prevent toggling or deletion through the GUI.
 - [ ] Polish the functional Rules-window layout and spacing.
 - [ ] Consider recent match count and most recent action result only after the Activity/details data path exists.
@@ -242,6 +272,8 @@ _Last updated: 2026-07-31_
 - [x] Document the library-first monitoring architecture and host/core boundary.
 - [x] Document the ShutUpMac Activity, logging, and GUI redaction behavior.
 - [x] Document the ordinary Rules GUI, advanced-rule read-only boundary, in-process dismissal, and standalone fallback.
+- [x] Document read-only database access, explicit schema behavior, typed errors, and shared retention.
+- [x] Document the intentional difference between CLI `--no-logging` and GUI logging-disabled history access.
 - [x] Record the AX stack limitation: a matching stacked notification may clear older nonmatching notifications in the same stack.
 - [x] Record that global truncation is intentionally out of scope for now.
 - [ ] State clearly whether console output may be retained by the user's terminal or shell environment.
@@ -255,11 +287,12 @@ _Last updated: 2026-07-31_
 5. [x] Build the first read-only Activity viewer with historical and live records.
 6. [x] Add live GUI control of notification logging.
 7. [x] Add live GUI redaction for title, subtitle, and body.
-8. [ ] Add app-level automated regression tests for logging, redaction, Activity presentation, configuration rollback, and Rules presentation.
+8. [x] Add app-level automated regression tests for logging, redaction, Activity presentation, configuration rollback, and Rules presentation.
 9. [ ] Add Activity details and structured filtering.
 10. [x] Build the read-only Rules viewer, followed by ordinary-rule editing and creation.
 11. [x] Add stable configuration rule IDs; structured action identity in `action_runs` remains open.
 12. [ ] Resolve stale/pending verification behavior across restart.
 13. [ ] Add per-rule retention policies only after the global privacy pipeline remains stable.
+14. [x] Complete read-only/schema/error/retention and parity hardening.
 
 Global truncation is not currently planned; revisit it only if a concrete product requirement justifies the additional policy complexity.

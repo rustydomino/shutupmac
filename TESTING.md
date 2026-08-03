@@ -5,7 +5,9 @@ Use this checklist before and after refactors, especially when changing `ShutUpM
 ## Build sanity
 
 - [ ] App target builds.
-- [ ] CLI target builds.
+- [ ] ShutUpMac CLI target builds.
+- [ ] `swift test --package-path Packages/notilog` passes.
+- [ ] The complete ShutUpMac Xcode test target passes.
 - [ ] `stfu --help` / `shutupmac-cli --help` prints usage.
 - [ ] Unknown flags fail cleanly with usage.
 - [ ] `--debug` is quiet enough to read.
@@ -102,6 +104,47 @@ From the menu-bar app:
 - [ ] Menu items match CLI behavior.
 - [ ] Failures are surfaced without crashing the app.
 - [ ] App remains responsive after repeated clears.
+
+
+## Notification activity, privacy, and database safety
+
+Use disposable Activity data when testing reset or lower retention limits.
+
+- [ ] With logging enabled, a new notification appears in Activity and SQLite.
+- [ ] Disable logging and confirm new notifications are still scanned and matching rules still run.
+- [ ] While logging is disabled, confirm existing Activity history remains visible.
+- [ ] Confirm opening existing history while logging is disabled does not prune records when the configured retention limit is lower.
+- [ ] With no database present, start with logging disabled and confirm no database is created.
+- [ ] Re-enable logging and confirm a new writable monitoring session starts and new records are persisted.
+- [ ] Change redaction fields and confirm only subsequent Activity/database records use `[REDACTED]`.
+- [ ] Confirm old unredacted rows remain unchanged.
+- [ ] In Advanced, verify database statistics update and paths are correct.
+- [ ] Lower retention limits using disposable history and confirm only the oldest excess historical rows are removed.
+- [ ] Confirm action history and active notification state are not removed by notification-event pruning.
+- [ ] Increase retention limits and confirm no existing rows are removed.
+- [ ] Reset the Activity database and confirm rules and app settings remain intact.
+
+CLI retention checks:
+
+```bash
+notilog-cli retention show
+notilog-cli retention set --events 25000 --actions 10000
+notilog-cli retention reset
+```
+
+- [ ] `retention show` reports built-in defaults when `retention.json` is missing without creating the file.
+- [ ] Invalid `retention set` values exit with usage status 2 and preserve the existing file.
+- [ ] A malformed `retention.json` is reported and not overwritten implicitly.
+- [ ] `history` and `action-history` do not create a missing database or mutate an existing one.
+- [ ] `watch --no-logging` does not create, open, migrate, prune, or write SQLite.
+- [ ] `watch --no-logging --run-actions` still evaluates rules and executes enabled actions.
+
+## Rules compatibility
+
+- [ ] Create or retain one advanced hand-authored rule in `config.json`.
+- [ ] Add or edit an ordinary rule through the GUI.
+- [ ] Confirm the advanced rule keeps its UUID, order, criteria, exceptions, and actions byte-for-byte semantically.
+- [ ] Confirm the same ordinary rule and notification produce matching action outcomes through the embedded GUI host and standalone CLI host.
 
 ## Regression guardrails
 

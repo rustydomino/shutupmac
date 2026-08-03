@@ -9,7 +9,7 @@ The project currently provides a Swift package with:
 - `NotilogCore`, a reusable library containing scanning, event tracking, persistence, rule matching, action execution, verification, and redaction logic.
 - `notilog-cli`, a command-line client that configures and runs the core engine.
 
-A future GUI should reuse `NotilogCore` rather than reimplement notification scanning or automation behavior.
+The ShutUpMac app is a production GUI host of `NotilogCore`; it reuses the same monitor, rule, action, persistence, verification, retention, and error behavior as the CLI.
 
 The live Accessibility tree is the runtime source of truth. Apple's internal notification database may be useful for research and validation, but it is not a Notilog runtime dependency.
 
@@ -72,7 +72,8 @@ Sources/
 │   ├── Notification scanner and models
 │   ├── Event and verification processors
 │   ├── Monitoring-cycle and monitor facades
-│   ├── Persistence coordinators and SQLite store
+│   ├── Persistence coordinators and read-only/read-write SQLite store
+│   ├── Schema versioning, typed errors, and retention configuration
 │   ├── Automation config, rules, and matching
 │   ├── Template expansion and action execution
 │   ├── Runtime paths and diagnostic handler
@@ -204,7 +205,27 @@ Current tables:
 
 The store maintains indexes for common timestamp, event type, application, identifier, session, status, and notification-key queries.
 
-Schema evolution uses SQLite `PRAGMA user_version` plus targeted migrations.
+Schema evolution uses SQLite `PRAGMA user_version` plus targeted migrations. The current schema version is 4. Startup behavior is explicit:
+
+- A current schema opens without modification.
+- A new empty database is created only by a read-write store.
+- A recognized legacy schema is migrated only by a read-write store.
+- A read-only caller rejects any schema requiring migration.
+- A newer-than-supported or unrecognized schema fails safely.
+
+`NotificationStore` accepts `NotificationStoreAccessMode.readWrite` or `.readOnly`. Read-only mode uses `SQLITE_OPEN_READONLY`, requires the file to exist, skips retention pruning, and rejects every public mutation method with `NotilogError.readOnlyMutation`. Read-only history inspection therefore cannot create, migrate, prune, or write the database.
+
+### Retention Configuration
+
+The GUI and CLI share `RetentionConfiguration` through:
+
+```text
+~/Library/Application Support/notilog/retention.json
+```
+
+Built-in defaults are 25,000 notification events and 10,000 action runs. Valid ranges are 1,000–100,000 events and 1,000–50,000 action runs. Missing configuration resolves to defaults without creating a file. Saves are atomic, malformed configuration is reported without implicit replacement, and writer startup or the GUI Apply operation enforces the selected limits.
+
+Notification-event and action-run pruning are independent. Historical event pruning preserves active-notification state and removes ended watch sessions only when no retained historical event references them.
 
 ### Active-State Recovery
 
@@ -216,7 +237,7 @@ When database logging is enabled, watch startup:
 4. Emits `disappeared_unobserved` for prior keys that are no longer visible.
 5. Continues normal snapshot comparison.
 
-When `--no-logging` is active, the database is not opened, no session is written, and prior active state is not loaded.
+When CLI `watch --no-logging` is active, the database is not opened, no session is written, and prior active state is not loaded. The ShutUpMac GUI intentionally differs: when logging is disabled and a database already exists, the app may keep a read-only store solely to display existing Activity history. That connection cannot create, migrate, prune, or write. If the database is missing, the GUI does not create it.
 
 Persistence is coordinated by reusable core types rather than the CLI watch loop:
 
@@ -421,6 +442,7 @@ The CLI owns:
 - Command and option parsing.
 - `CLIStartupConfiguration` and legacy-default runtime-path selection.
 - Accessibility permission checks and `NotificationScanner` construction.
+- Retention loading when persistence is enabled.
 - Database, session, automation-engine, and monitor assembly.
 - Choosing scan and action timestamps.
 - The foreground `while true` loop and `Thread.sleep(...)` cadence.
@@ -437,9 +459,11 @@ The CLI owns:
 - Verification-status persistence.
 - The ordering of recovered events, current events, actions, and verification results.
 
-The ShutUpMac app is now a production host of this boundary. It supplies a timer-driven lifecycle, Activity presentation, runtime configuration replacement, live persistence/redaction policy, and the in-process dismissal handler. Other hosts can choose different lifecycle, presentation, and dismissal dependencies without changing `NotilogCore`.
+The ShutUpMac app is a production host of this boundary. It supplies a timer-driven lifecycle, Activity presentation, runtime configuration replacement, live persistence/redaction policy, shared retention updates, read-only history access while logging is disabled, typed error presentation, and the in-process dismissal handler. Other hosts can choose different lifecycle, presentation, and dismissal dependencies without changing `NotilogCore`.
 
 ## Error and Execution Model
+
+`NotilogError` is the shared typed error contract across `NotilogCore`, the GUI, and the CLI. It distinguishes monitor-lock failures, missing databases, schema migration/compatibility failures, retention configuration failures, database operation failures, and attempted read-only mutation. The GUI maps these cases to concise titles and details. The CLI renders localized descriptions to standard error; malformed command usage exits 2, while runtime failures exit 1.
 
 The current CLI is a synchronous foreground process:
 
@@ -466,9 +490,15 @@ Coverage includes:
 - One-cycle result ordering.
 - Automation execution modes and rule/action order.
 - Event and action-result persistence with redaction and `--no-logging` behavior.
+- Mixed unredacted, redacted, and maximum-length persistence in one database.
 - Completed verification-status persistence.
 - Full `NotificationMonitor` callback ordering and typed results.
-- SQLite persistence and migrations.
+- Read-only store behavior, concurrent writer/read-only access, and mutation rejection.
+- Explicit schema versioning, recognized migrations, too-new rejection, and unknown-schema rejection.
+- Shared retention defaults, validation, atomic replacement, and malformed-file preservation.
+- Independent pruning, active-state preservation, and unreferenced ended-session cleanup.
+- Logging-disabled automation without database mutation.
+- GUI/CLI automation parity through separate processors using the same rules and events.
 
 CLI-level output and option interactions are still validated with process-level smoke tests. The CLI now rejects malformed positive-integer options and missing `--config` values instead of silently falling back.
 
@@ -488,15 +518,14 @@ The ShutUpMac app hosts `NotilogCore` directly:
                NotilogCore
 ```
 
-The current GUI provides history browsing, live privacy controls, and a deliberately limited ordinary-rule editor. Advanced rules remain visible but read-only. Future GUI work may add Activity details, structured filters, aggregate analytics, and richer action diagnostics. It should not duplicate event derivation, matching, action execution, persistence coordination, or dismissal verification.
+The current GUI provides a unified management window with history browsing, Activity-to-Rules drafts, live privacy controls, shared retention settings, database maintenance, and a deliberately limited ordinary-rule editor. Advanced rules remain visible but read-only, and GUI saves preserve unsupported advanced rule fields. Future GUI work may add Activity details or structured filters only if the existing search/table workflow proves insufficient. It should not duplicate event derivation, matching, action execution, persistence coordination, retention, schema handling, errors, or dismissal verification.
 
 The current monitor API is synchronous and nonblocking only in the lifecycle sense: it processes one supplied scan and returns. A host remains responsible for scheduling repeated scans and deciding how cancellation should work.
 
 ## Current Boundaries and Likely Next Work
 
-- Add app-level automated regression coverage for logging, redaction, runtime configuration replacement, and Rules presentation.
-- Add Activity details and structured filters for app, rule, status, and time range.
-- Decide how stale `pending` verifications should be handled across process restart.
+- Define restart behavior for stale `pending` verification rows.
+- Add Activity details or structured filters only if the current search/table workflow proves insufficient.
 - Audit whether raw notification keys and AX identifiers require hashing or optional redaction.
 - Investigate individual child dismissal inside expanded notification stacks only if a dependable AX path emerges; do not assume collapsed stacks can be targeted precisely.
 - Add attachment extraction only with an explicit persistence and privacy policy.

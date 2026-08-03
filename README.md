@@ -15,14 +15,17 @@ GitHub page: https://github.com/rustydomino/shutupmac
 - Clear all notifications
 - Send a test notification
 - Configurable global hotkeys
-- Searchable Activity window backed by Notilog history and live monitoring
-- Rules window for viewing, enabling, creating, editing, and deleting ordinary notification-dismissal rules
+- Unified five-tab management window: General, Hot Keys, Activity, Rules, and Advanced
+- Searchable Activity history backed by Notilog history and live monitoring
+- Create an ordinary dismissal rule directly from a selected Activity record
+- Rules tab for viewing, enabling, creating, editing, and deleting ordinary notification-dismissal rules
 - Exact or contains matching for title, subtitle, and body, plus contains-based exceptions
 - Optional notification logging with live enable/disable control
 - Optional title, subtitle, and body redaction for Activity and persisted history
+- Shared, validated retention limits stored in `retention.json`
+- Database statistics, retention controls, and Activity-database reset in the Advanced tab
 - Atomic save-and-activate updates for `config.json` automation rules
 - Optional launch at login
-- Built-in command line helper install command
 - Menu-bar-only operation without a Dock or app-switcher icon
 
 ### Notification clearing actions
@@ -53,20 +56,32 @@ ShutUpMac starts the reusable `NotilogCore` monitoring pipeline inside the app w
 ~/Library/Application Support/notilog/
 ```
 
-The **Activity** window loads up to 1,000 recent notification appearance records from SQLite and then appends newly observed notifications while ShutUpMac is running. The table includes the source app, notification preview, matched rules, and appearance time, with full-text search and sortable columns.
+The **Activity** tab loads up to 1,000 recent notification appearance records from SQLite and then appends newly observed notifications while ShutUpMac is running. The table includes the source app, notification preview, matched rules, and appearance time, with full-text search and sortable columns. A selected record can seed a new ordinary dismissal rule without saving it automatically.
 
-Settings includes **Enable notification logging**:
+The **General** tab includes **Enable notification logging**:
 
 - Enabled: new notifications are written to SQLite and published to Activity.
-- Disabled: scanning, rule matching, actions, and delayed verification continue, but new notification records are not written or added to Activity. Existing history remains available.
+- Disabled: scanning, rule matching, actions, and delayed verification continue, but new notification records are not written or added to Activity. Existing history remains available through a read-only database connection. Opening that history does not migrate the schema, apply retention pruning, or create a missing database.
 
 **Redact notification contents** is a suboption of notification logging. Title, subtitle, and body can be selected independently. Selected nonempty fields are replaced with `[REDACTED]` before they are written to SQLite or shown in Activity. The source application remains visible in the GUI. Policy changes apply to subsequent records immediately; previously stored rows are not rewritten.
 
 The redaction controls retain their saved selections when logging is disabled. At least one content field must remain selected while redaction is enabled.
 
+### Retention and database management
+
+The **Advanced** tab shows Activity-event, action-run, session, date-range, and database-size statistics. It also provides validated retention controls and a confirmed Activity-database reset operation.
+
+Retention settings are shared by the GUI and `notilog-cli` through:
+
+```text
+~/Library/Application Support/notilog/retention.json
+```
+
+Built-in defaults are 25,000 notification events and 10,000 action runs. Supported ranges are 1,000–100,000 events and 1,000–50,000 action runs. Lowering a limit through the GUI saves the configuration and immediately prunes the oldest excess historical rows. Increasing a limit affects future retention. A missing file uses the built-in defaults without creating the file merely to read them.
+
 ## Notification rules
 
-The **Rules** window provides a deliberately small GUI for ordinary notification-dismissal rules. An ordinary GUI rule:
+The **Rules** tab provides a deliberately small GUI for ordinary notification-dismissal rules. An ordinary GUI rule:
 
 - Matches notification appearance events only.
 - Performs one plain `shutupmac_dismiss` action.
@@ -78,7 +93,7 @@ The **Rules** window provides a deliberately small GUI for ordinary notification
 - Combines exception rows with OR; any matching exception prevents dismissal.
 - Applies one rule-level case-sensitivity setting to matches and exceptions.
 
-The Rules window can enable or disable, add, edit, and delete ordinary rules. Editing preserves the rule UUID and list position. Rules using advanced event matching, advanced field combinations, or advanced actions remain visible but read-only so the GUI does not silently discard configuration it does not understand.
+The Rules tab can enable or disable, add, edit, and delete ordinary rules. Editing preserves the rule UUID and list position. Rules using advanced event matching, advanced field combinations, or advanced actions remain visible but read-only so the GUI does not silently discard configuration it does not understand.
 
 Inside the ShutUpMac app, matching dismissal rules call the existing Accessibility dismissal engine directly through a host-injected callback. The app does not launch `shutupmac-cli` for these actions. The standalone `notilog-cli` retains the external-helper fallback when no in-process handler is supplied.
 
@@ -86,7 +101,7 @@ macOS may expose multiple notifications from one application as a single collaps
 
 ## Command line helper
 
-The bundled CLI helper can be installed from the Settings window. By default, the helper is named:
+The repository also builds an imperative dismissal helper named:
 
 ```sh
 shutupmac-cli
@@ -161,6 +176,28 @@ shutupmac-cli --ax-dump --probe-menus
 
 `--ax-dump` and `--probe-menus` are developer diagnostics and are not intended as normal user-facing features.
 
+
+## Notilog command-line host
+
+`notilog-cli` is separate from `shutupmac-cli`. `shutupmac-cli` performs immediate Notification Center dismissal commands; `notilog-cli` watches notifications, records Activity history, evaluates automation rules, and manages Notilog configuration.
+
+Common commands:
+
+```sh
+notilog-cli permissions
+notilog-cli watch
+notilog-cli watch --no-logging --run-actions
+notilog-cli history --limit 20
+notilog-cli action-history --limit 20
+notilog-cli rules
+notilog-cli config-check
+notilog-cli retention show
+notilog-cli retention set --events 25000 --actions 10000
+notilog-cli retention reset
+```
+
+`history` and `action-history` open the database read-only. They do not create a missing database, migrate its schema, or apply retention pruning. CLI `watch --no-logging` is stricter than the GUI logging-disabled mode: it never opens SQLite, while the app may keep an existing database open read-only so prior Activity remains visible. See [`Packages/notilog/README.md`](Packages/notilog/README.md) for configuration, privacy modes, and automation examples.
+
 ## Accessibility permission
 
 ShutUpMac needs macOS Accessibility permission to inspect and press Notification Center controls.
@@ -184,7 +221,7 @@ For persistent test notifications, set ShutUpMac's notification style to **Alert
 
 ## Menu-bar-only behavior
 
-ShutUpMac runs as a menu-bar-only utility. It does not present a Dock icon or remain in the Command-Tab app switcher. Activity, Settings, and About are opened from the menu bar.
+ShutUpMac runs as a menu-bar-only utility. It does not present a Dock icon or remain in the Command-Tab app switcher. The unified management window and About window are opened from the menu bar.
 
 ## Project layout
 
@@ -208,7 +245,7 @@ ShutUpMac/
 
 The `notilog-cli` executable remains available for development, diagnostics, scripting, and direct testing.
 
-The ShutUpMac app hosts the Notilog watcher directly. It owns the polling lifecycle, loads historical notification records, publishes live activity, activates automation rules from `config.json`, can change logging and redaction policy without restarting monitoring, and injects the in-process notification dismissal handler used by runtime automation. The standalone `notilog-cli` remains available for diagnostics, scripting, and direct testing.
+The ShutUpMac app hosts the Notilog watcher directly. It owns the polling lifecycle, loads historical notification records, publishes live activity, activates automation rules from `config.json`, reads shared retention from `retention.json`, can change logging and redaction policy without restarting monitoring, and injects the in-process notification dismissal handler used by runtime automation. The standalone `notilog-cli` remains available for diagnostics, scripting, and direct testing.
 
 ### ShutUpMac dismissal engine
 
@@ -242,9 +279,11 @@ GUI and app support files include:
 ShutUpMacApp.swift
   Menu bar app entry point and menu actions
 
-SettingsView.swift
-  App preferences, hotkeys, notification logging and redaction controls,
-  automation configuration reload, launch-at-login, and CLI install command
+ShutUpMacManagementView.swift / ShutUpMacNavigation.swift
+  Unified five-tab management window, destination routing, and Activity-to-Rules drafts
+
+SettingsView.swift / HotKeySettingsView.swift
+  General preferences, logging/redaction controls, launch-at-login, and hotkeys
 
 ActivityView.swift / ActivityStore.swift
   Searchable, sortable notification history and live Activity presentation
@@ -257,12 +296,16 @@ AutomationConfigurationStore.swift
   Atomic configuration persistence and runtime activation
 
 NotilogMonitoringController.swift / NotilogMonitoringRuntime.swift
-  App-owned Notilog lifecycle, one-cycle processing, history loading,
-  automation activation, persistence control, live privacy-policy updates,
-  and host-injected in-process dismissal
+  App-owned Notilog lifecycle, one-cycle processing, read-only history access,
+  automation activation, persistence control, retention updates, typed error
+  presentation, live privacy-policy updates, and host-injected dismissal
+
+AdvancedView.swift
+  Database statistics, shared retention settings, and Activity database reset
 
 AppPreferences.swift
-  UserDefaults preference keys, defaults, and redaction-policy construction
+  UserDefaults preferences, redaction-policy construction, and one-time migration
+  of legacy retention values into the shared retention file
 
 HotKey.swift
   Hotkey model, encoding, decoding, display, and availability checks
