@@ -227,6 +227,153 @@ final class NotificationEventPersistenceCoordinatorTests: XCTestCase {
         )
     }
 
+    func testMixedUnredactedRedactedAndTruncatedEventsRemainQueryable()
+        throws
+    {
+        let databaseURL = temporaryDatabaseURL()
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        let store = try NotificationStore(
+            path: databaseURL.path
+        )
+
+        let coordinator =
+            NotificationEventPersistenceCoordinator(
+                store: store,
+                session: testSession(),
+                redactionPolicy: .disabled
+            )
+
+        try coordinator.persist(
+            [
+                sampleEvent(
+                    key: "alert-unredacted",
+                    title: "Visible title",
+                    body: "Visible body",
+                    timestamp:
+                        Date(timeIntervalSince1970: 10)
+                )
+            ]
+        )
+
+        coordinator.replaceRedactionPolicy(
+            RedactionPolicy(
+                fields: [
+                    .title,
+                    .body,
+                ]
+            )
+        )
+
+        try coordinator.persist(
+            [
+                sampleEvent(
+                    key: "alert-redacted",
+                    title: "Secret title",
+                    body: "Secret body",
+                    timestamp:
+                        Date(timeIntervalSince1970: 20)
+                )
+            ]
+        )
+
+        coordinator.replaceRedactionPolicy(
+            .disabled
+        )
+
+        let longTitle =
+            String(
+                repeating: "T",
+                count: 5_000
+            )
+
+        let longBody =
+            String(
+                repeating: "B",
+                count: 5_000
+            )
+
+        try coordinator.persist(
+            [
+                sampleEvent(
+                    key: "alert-truncated",
+                    title: longTitle,
+                    body: longBody,
+                    timestamp:
+                        Date(timeIntervalSince1970: 30)
+                )
+            ]
+        )
+
+        let records =
+            try store.recentEvents(limit: 10)
+
+        XCTAssertEqual(
+            records.map {
+                $0.event.notification.key
+            },
+            [
+                "alert-unredacted",
+                "alert-redacted",
+                "alert-truncated",
+            ]
+        )
+
+        let unredacted =
+            records[0].event.notification
+
+        XCTAssertEqual(
+            unredacted.title,
+            "Visible title"
+        )
+
+        XCTAssertEqual(
+            unredacted.body,
+            "Visible body"
+        )
+
+        let redacted =
+            records[1].event.notification
+
+        XCTAssertEqual(
+            redacted.title,
+            "[REDACTED]"
+        )
+
+        XCTAssertEqual(
+            redacted.body,
+            "[REDACTED]"
+        )
+
+        let truncated =
+            records[2].event.notification
+
+        XCTAssertEqual(
+            truncated.title.count,
+            4_096
+        )
+
+        XCTAssertEqual(
+            truncated.body.count,
+            4_096
+        )
+
+        XCTAssertEqual(
+            truncated.title,
+            String(longTitle.prefix(4_096))
+        )
+
+        XCTAssertEqual(
+            truncated.body,
+            String(longBody.prefix(4_096))
+        )
+    }
+
     func testEmptyBatchDoesNotInsertRecords() throws {
         let databaseURL = temporaryDatabaseURL()
 

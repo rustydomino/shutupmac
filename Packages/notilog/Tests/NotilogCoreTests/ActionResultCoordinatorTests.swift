@@ -385,6 +385,220 @@ final class ActionResultCoordinatorTests: XCTestCase {
         )
     }
 
+    func testMixedUnredactedRedactedAndTruncatedActionRunsRemainQueryable()
+        throws
+    {
+        let databaseURL = temporaryDatabaseURL()
+
+        defer {
+            try? FileManager.default.removeItem(
+                at: databaseURL
+            )
+        }
+
+        let store = try NotificationStore(
+            path: databaseURL.path
+        )
+
+        let coordinator = ActionResultCoordinator(
+            store: store,
+            session: testSession(),
+            redactionPolicy: .disabled,
+            cycleProcessor:
+                MonitoringCycleProcessor(),
+            dismissalVerificationDelay: 2
+        )
+
+        try coordinator.process(
+            [
+                sampleResult(
+                    notificationKey:
+                        "alert-unredacted",
+                    title: "Visible title",
+                    body: "Visible body",
+                    message: "Visible message",
+                    stdout: "Visible stdout",
+                    stderr: "Visible stderr"
+                )
+            ],
+            at: Date(timeIntervalSince1970: 10)
+        )
+
+        coordinator.replaceRedactionPolicy(
+            RedactionPolicy(
+                fields: [
+                    .title,
+                    .body,
+                ]
+            )
+        )
+
+        try coordinator.process(
+            [
+                sampleResult(
+                    notificationKey:
+                        "alert-redacted",
+                    title: "Secret title",
+                    body: "Secret body",
+                    message: "Secret message",
+                    stdout: "Secret stdout",
+                    stderr: "Secret stderr"
+                )
+            ],
+            at: Date(timeIntervalSince1970: 20)
+        )
+
+        coordinator.replaceRedactionPolicy(
+            .disabled
+        )
+
+        let longTitle =
+            String(
+                repeating: "T",
+                count: 5_000
+            )
+
+        let longBody =
+            String(
+                repeating: "B",
+                count: 5_000
+            )
+
+        let longMessage =
+            String(
+                repeating: "M",
+                count: 5_000
+            )
+
+        let longStandardOutput =
+            String(
+                repeating: "O",
+                count: 5_000
+            )
+
+        let longStandardError =
+            String(
+                repeating: "E",
+                count: 5_000
+            )
+
+        try coordinator.process(
+            [
+                sampleResult(
+                    notificationKey:
+                        "alert-truncated",
+                    title: longTitle,
+                    body: longBody,
+                    message: longMessage,
+                    stdout: longStandardOutput,
+                    stderr: longStandardError
+                )
+            ],
+            at: Date(timeIntervalSince1970: 30)
+        )
+
+        let records =
+            try store.recentActionRuns(
+                limit: 10
+            )
+
+        XCTAssertEqual(
+            records.map {
+                $0.notification.key
+            },
+            [
+                "alert-unredacted",
+                "alert-redacted",
+                "alert-truncated",
+            ]
+        )
+
+        let unredacted = records[0]
+
+        XCTAssertEqual(
+            unredacted.notification.title,
+            "Visible title"
+        )
+
+        XCTAssertEqual(
+            unredacted.notification.body,
+            "Visible body"
+        )
+
+        XCTAssertEqual(
+            unredacted.message,
+            "Visible message"
+        )
+
+        XCTAssertEqual(
+            unredacted.stdout,
+            "Visible stdout"
+        )
+
+        XCTAssertEqual(
+            unredacted.stderr,
+            "Visible stderr"
+        )
+
+        let redacted = records[1]
+
+        XCTAssertEqual(
+            redacted.notification.title,
+            "[REDACTED]"
+        )
+
+        XCTAssertEqual(
+            redacted.notification.body,
+            "[REDACTED]"
+        )
+
+        XCTAssertEqual(
+            redacted.message,
+            "status: succeeded, exit code: 0"
+        )
+
+        XCTAssertEqual(
+            redacted.stdout,
+            "[SUPPRESSED BY REDACTION]"
+        )
+
+        XCTAssertEqual(
+            redacted.stderr,
+            "[SUPPRESSED BY REDACTION]"
+        )
+
+        let truncated = records[2]
+
+        XCTAssertEqual(
+            truncated.notification.title,
+            String(longTitle.prefix(4_096))
+        )
+
+        XCTAssertEqual(
+            truncated.notification.body,
+            String(longBody.prefix(4_096))
+        )
+
+        XCTAssertEqual(
+            truncated.message,
+            String(longMessage.prefix(4_096))
+        )
+
+        XCTAssertEqual(
+            truncated.stdout,
+            String(
+                longStandardOutput.prefix(4_096)
+            )
+        )
+
+        XCTAssertEqual(
+            truncated.stderr,
+            String(
+                longStandardError.prefix(4_096)
+            )
+        )
+    }
+
     func testResultsPreserveInputOrder() throws {
         let coordinator = ActionResultCoordinator(
             store: nil,
