@@ -1,0 +1,4 @@
+{
+  "actionRunLimit": 10000,
+  "notificationEventLimit": 25000
+}

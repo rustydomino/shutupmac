@@ -8,79 +8,80 @@ final class ShutUpMacApplicationDelegate: NSObject, NSApplicationDelegate {
     private let runtimePaths =
         NotilogRuntimePaths.legacyNotilogDefault()
 
+    private var hasRequestedNotilogMonitoringStart = false
+
     private(set) lazy var automationConfigurationStore =
         AutomationConfigurationStore(
             configURL: runtimePaths.config
         )
 
-private(set) lazy var retentionConfigurationStore =
-    RetentionConfigurationStore(
-        fileURL: runtimePaths.retention
-    )
+    private(set) lazy var retentionConfigurationStore =
+        RetentionConfigurationStore(
+            fileURL: runtimePaths.retention
+        )
 
     private(set) lazy var retentionConfiguration:
-        RetentionConfiguration =
-    {
-        do {
-            return try AppPreferences
-                .migratedNotilogRetentionConfiguration(
-                    using: retentionConfigurationStore
-                )
-        } catch {
-            let errorDetail: String
+        RetentionConfiguration = {
+            do {
+                return try AppPreferences
+                    .migratedNotilogRetentionConfiguration(
+                        using: retentionConfigurationStore
+                    )
+            } catch {
+                let errorDetail: String
 
-            if let notilogError =
-                error as? NotilogError
-            {
-                errorDetail =
-                    notilogError.errorDescription
-                        ?? String(
-                            describing: notilogError
-                        )
-            } else {
-                errorDetail =
-                    error.localizedDescription
-            }
+                if let notilogError =
+                    error as? NotilogError
+                {
+                    errorDetail =
+                        notilogError.errorDescription
+                            ?? String(
+                                describing: notilogError
+                            )
+                } else {
+                    errorDetail =
+                        error.localizedDescription
+                }
 
-            activityStore.reportMonitoringError(
-                MonitoringErrorPresentation(
-                    title:
+                activityStore.reportMonitoringError(
+                    MonitoringErrorPresentation(
+                        title:
                         "Retention configuration error",
-                    detail:
+                        detail:
                         "Could not load retention.json; " +
-                        "using built-in defaults. " +
-                        errorDetail
+                            "using built-in defaults. " +
+                            errorDetail
+                    )
                 )
-            )
 
-            return RetentionConfiguration.defaults
-        }
-    }()
+                return RetentionConfiguration.defaults
+            }
+        }()
 
     private lazy var notilogMonitoringController =
         NotilogMonitoringController(
             runtimePaths: runtimePaths,
             retentionConfigurationStore:
-                retentionConfigurationStore,
+            retentionConfigurationStore,
             initialConfiguration:
-                automationConfigurationStore.configuration,
+            automationConfigurationStore.configuration,
             loggingEnabled:
-                AppPreferences
-                    .notilogDatabaseLoggingEnabled,
+            AppPreferences
+                .notilogDatabaseLoggingEnabled,
             notificationEventLimit:
-                retentionConfiguration
-                    .notificationEventLimit,
+            retentionConfiguration
+                .notificationEventLimit,
             actionRunLimit:
-                retentionConfiguration
-                    .actionRunLimit,
+            retentionConfiguration
+                .actionRunLimit,
             redactionPolicy:
-                AppPreferences
-                    .notilogRedactionPolicy,
+            AppPreferences
+                .notilogRedactionPolicy,
             automationMode:
-                AppPreferences
-                    .notilogRulesAutoDismissEnabled
-                    ? .runActions
-                    : .disabled,
+            AppPreferences
+                .notilogRulesAutoDismissEnabled
+                ? .runActions
+                : .disabled,
             dismissalHandler: { notificationKey in
                 guard let key = NotificationAXKey(
                     rawValue: notificationKey
@@ -88,7 +89,7 @@ private(set) lazy var retentionConfigurationStore =
                     return NotificationDismissalResult(
                         succeeded: false,
                         message:
-                            "Invalid notification AX key: "
+                        "Invalid notification AX key: "
                             + notificationKey,
                         exitCode: 1
                     )
@@ -102,12 +103,12 @@ private(set) lazy var retentionConfigurationStore =
 
                 return NotificationDismissalResult(
                     succeeded:
-                        result.succeeded && result.didClear,
+                    result.succeeded && result.didClear,
                     message: result.message,
                     exitCode: result.exitCode
                 )
             },
-            onHistoricalRecords: { [weak self] records in                
+            onHistoricalRecords: { [weak self] records in
                 self?.activityStore.loadHistoricalRecords(
                     records
                 )
@@ -145,15 +146,15 @@ private(set) lazy var retentionConfigurationStore =
     func setNotilogDatabaseLoggingEnabled(
         _ enabled: Bool,
         completion: @escaping
-            @MainActor @Sendable (
-                DatabaseLoggingUpdateResult
-            ) -> Void
+        @MainActor @Sendable (
+            DatabaseLoggingUpdateResult
+        ) -> Void
     ) {
         notilogMonitoringController.setLoggingEnabled(
             enabled
         ) { result in
             switch result {
-            case .updated(let activeValue):
+            case let .updated(activeValue):
                 AppPreferences
                     .setNotilogDatabaseLoggingEnabled(
                         activeValue
@@ -169,9 +170,9 @@ private(set) lazy var retentionConfigurationStore =
 
     func requestDatabaseStatistics(
         completion: @escaping
-            @MainActor @Sendable (
-                DatabaseStatisticsResult
-            ) -> Void
+        @MainActor @Sendable (
+            DatabaseStatisticsResult
+        ) -> Void
     ) {
         notilogMonitoringController
             .requestDatabaseStatistics(
@@ -181,9 +182,9 @@ private(set) lazy var retentionConfigurationStore =
 
     func resetActivityDatabase(
         completion: @escaping
-            @MainActor @Sendable (
-                ActivityDatabaseResetResult
-            ) -> Void
+        @MainActor @Sendable (
+            ActivityDatabaseResetResult
+        ) -> Void
     ) {
         notilogMonitoringController
             .resetActivityDatabase(
@@ -195,16 +196,16 @@ private(set) lazy var retentionConfigurationStore =
         notificationEventLimit: Int,
         actionRunLimit: Int,
         completion: @escaping
-            @MainActor @Sendable (
-                RetentionLimitsUpdateResult
-            ) -> Void
+        @MainActor @Sendable (
+            RetentionLimitsUpdateResult
+        ) -> Void
     ) {
         notilogMonitoringController
             .updateRetentionLimits(
                 notificationEventLimit:
-                    notificationEventLimit,
+                notificationEventLimit,
                 actionRunLimit:
-                    actionRunLimit,
+                actionRunLimit,
                 completion: completion
             )
     }
@@ -226,20 +227,42 @@ private(set) lazy var retentionConfigurationStore =
     }
 
     func applicationDidFinishLaunching(
-        _ notification: Notification
+        _: Notification
     ) {
+        startNotilogMonitoringIfPossible(
+            promptForAccessibility: true
+        )
+    }
+
+    func applicationDidBecomeActive(
+        _: Notification
+    ) {
+        startNotilogMonitoringIfPossible(
+            promptForAccessibility: false
+        )
+    }
+
+    private func startNotilogMonitoringIfPossible(
+        promptForAccessibility: Bool
+    ) {
+        guard !hasRequestedNotilogMonitoringStart else {
+            return
+        }
+
         let isAccessibilityTrusted =
-            AccessibilityPermission.isTrusted(prompt: true)
+            AccessibilityPermission.isTrusted(
+                prompt: promptForAccessibility
+            )
 
         print(
             "Notilog monitoring Accessibility trusted: "
-            + "\(isAccessibilityTrusted)"
+                + "\(isAccessibilityTrusted)"
         )
 
         guard isAccessibilityTrusted else {
             print(
                 "Notilog monitoring was not started because "
-                + "Accessibility permission is unavailable."
+                    + "Accessibility permission is unavailable."
             )
             return
         }
@@ -247,21 +270,22 @@ private(set) lazy var retentionConfigurationStore =
         guard automationConfigurationStore.load() != nil else {
             print(
                 "Notilog monitoring was not started because "
-                + "config.json could not be loaded: "
-                + (
-                    automationConfigurationStore.errorMessage
-                        ?? "Unknown configuration error"
-                )
+                    + "config.json could not be loaded: "
+                    + (
+                        automationConfigurationStore.errorMessage
+                            ?? "Unknown configuration error"
+                    )
             )
 
             return
         }
 
+        hasRequestedNotilogMonitoringStart = true
         notilogMonitoringController.start()
     }
 
     func applicationWillTerminate(
-        _ notification: Notification
+        _: Notification
     ) {
         notilogMonitoringController.stop()
     }
