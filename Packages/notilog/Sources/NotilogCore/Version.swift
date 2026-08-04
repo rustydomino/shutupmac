@@ -1,1 +1,1 @@
-public let notilogVersion = "0.1.4"
+public let notilogVersion = "0.6.0"

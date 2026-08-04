@@ -223,8 +223,11 @@ private func appVersionString() -> String {
         return "ShutUpMac version unknown"
     }
 
-    let version = info["CFBundleShortVersionString"] as? String
-    let build = info["CFBundleVersion"] as? String
+    let version =
+        info["CFBundleShortVersionString"] as? String
+
+    let build =
+        info["CFBundleVersion"] as? String
 
     switch (version, build) {
     case let (.some(version), .some(build)):
@@ -242,30 +245,115 @@ private func appVersionString() -> String {
 }
 
 private func appInfoDictionary() -> [String: Any]? {
-    containingAppInfoDictionary() ?? Bundle.main.infoDictionary
+    siblingAppInfoDictionary()
+        ?? containingAppInfoDictionary()
+        ?? versionedBundleInfoDictionary()
 }
 
-private func containingAppInfoDictionary() -> [String: Any]? {
+private func siblingAppInfoDictionary()
+    -> [String: Any]?
+{
     guard let executablePath = executablePath() else {
         return nil
     }
 
-    var currentURL = URL(fileURLWithPath: executablePath)
-        .resolvingSymlinksInPath()
-        .deletingLastPathComponent()
+    let infoURL =
+        URL(fileURLWithPath: executablePath)
+            .resolvingSymlinksInPath()
+            .deletingLastPathComponent()
+            .appendingPathComponent(
+                "ShutUpMac.app",
+                isDirectory: true
+            )
+            .appendingPathComponent(
+                "Contents",
+                isDirectory: true
+            )
+            .appendingPathComponent("Info.plist")
+
+    return versionedPropertyListDictionary(
+        at: infoURL
+    )
+}
+
+private func containingAppInfoDictionary()
+    -> [String: Any]?
+{
+    guard let executablePath = executablePath() else {
+        return nil
+    }
+
+    var currentURL =
+        URL(fileURLWithPath: executablePath)
+            .resolvingSymlinksInPath()
+            .deletingLastPathComponent()
 
     for _ in 0..<8 {
-        let infoURL = currentURL.appendingPathComponent("Info.plist")
+        if currentURL.pathExtension
+            .caseInsensitiveCompare("app")
+            == .orderedSame
+        {
+            let infoURL =
+                currentURL
+                    .appendingPathComponent(
+                        "Contents",
+                        isDirectory: true
+                    )
+                    .appendingPathComponent(
+                        "Info.plist"
+                    )
 
-        if FileManager.default.fileExists(atPath: infoURL.path),
-           let dictionary = propertyListDictionary(at: infoURL) {
-            return dictionary
+            if let dictionary =
+                versionedPropertyListDictionary(
+                    at: infoURL
+                )
+            {
+                return dictionary
+            }
         }
 
-        currentURL.deleteLastPathComponent()
+        let parentURL =
+            currentURL.deletingLastPathComponent()
+
+        guard parentURL != currentURL else {
+            break
+        }
+
+        currentURL = parentURL
     }
 
     return nil
+}
+
+private func versionedBundleInfoDictionary()
+    -> [String: Any]?
+{
+    guard let dictionary = Bundle.main.infoDictionary,
+          dictionary["CFBundleShortVersionString"]
+              is String
+            || dictionary["CFBundleVersion"]
+                is String
+    else {
+        return nil
+    }
+
+    return dictionary
+}
+
+private func versionedPropertyListDictionary(
+    at url: URL
+) -> [String: Any]? {
+    guard let dictionary =
+        propertyListDictionary(at: url),
+          dictionary["CFBundleShortVersionString"]
+              is String
+            || dictionary["CFBundleVersion"]
+                is String
+    else {
+        return nil
+    }
+
+    return dictionary
 }
 
 private func propertyListDictionary(at url: URL) -> [String: Any]? {
