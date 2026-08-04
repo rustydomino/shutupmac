@@ -95,6 +95,7 @@ struct ShutUpMacManagementView: View {
                     ShutUpMacTab.general.systemImage
                 )
             }
+            .navigationTitle("ShutUpMac Settings")
             .tag(ShutUpMacTab.general)
 
             HotKeySettingsView()
@@ -103,9 +104,10 @@ struct ShutUpMacManagementView: View {
                         ShutUpMacTab.hotKeys.title,
                         systemImage:
                         ShutUpMacTab.hotKeys.systemImage
-                    )
-                }
-                .tag(ShutUpMacTab.hotKeys)
+                )
+            }
+            .navigationTitle("ShutUpMac Settings")
+            .tag(ShutUpMacTab.hotKeys)
 
             ActivityView(
                 store: activityStore,
@@ -122,6 +124,7 @@ struct ShutUpMacManagementView: View {
                     ShutUpMacTab.activity.systemImage
                 )
             }
+            .navigationTitle("ShutUpMac Settings")
             .tag(ShutUpMacTab.activity)
 
             RulesView(
@@ -139,6 +142,7 @@ struct ShutUpMacManagementView: View {
                     ShutUpMacTab.rules.systemImage
                 )
             }
+            .navigationTitle("ShutUpMac Settings")
             .tag(ShutUpMacTab.rules)
 
             AdvancedView(
@@ -158,11 +162,12 @@ struct ShutUpMacManagementView: View {
                     ShutUpMacTab.advanced.systemImage
                 )
             }
+            .navigationTitle("ShutUpMac Settings")
             .tag(ShutUpMacTab.advanced)
         }
         .frame(
-            minWidth: 960,
-            minHeight: 640
+            minWidth: 860,
+            minHeight: 520
         )
     }
 }

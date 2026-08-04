@@ -406,7 +406,7 @@ struct ActivityView: View {
         }
 
         .frame(
-            minWidth: 960,
+            minWidth: 860,
             minHeight: 420
         )
         .onChange(

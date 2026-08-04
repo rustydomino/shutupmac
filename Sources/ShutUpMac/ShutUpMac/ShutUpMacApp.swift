@@ -32,7 +32,7 @@ struct ShutUpMacApp: App {
 
        .defaultSize(width: 760, height: 500)
 
-        Window("ShutUpMac", id: "management") {
+        Settings {
             ShutUpMacManagementView(
                 navigation: navigation,
                 activityStore:
@@ -106,8 +106,8 @@ struct ShutUpMacApp: App {
             )
         }
         .defaultSize(
-            width: 960,
-            height: 700
+            width: 860,
+            height: 600
         )
 
         Window("About ShutUpMac", id: "about") {
@@ -120,6 +120,9 @@ struct ShutUpMacApp: App {
 struct ShutUpMacMenu: View {
     @ObservedObject
     var navigation: ShutUpMacNavigation
+
+    @Environment(\.openSettings)
+    private var openSettings
 
     @Environment(\.openWindow)
     private var openWindow
@@ -211,16 +214,6 @@ struct ShutUpMacMenu: View {
 
         Divider()
 
-        Button("Activity…") {
-            showActivityWindow()
-        }
-        .keyboardShortcut("1", modifiers: [.command])
-
-        Button("Rules…") {
-            showRulesWindow()
-        }
-        .keyboardShortcut("2", modifiers: [.command])
-
         Button("Settings…") {
             showSettingsWindow()
         }
@@ -238,14 +231,6 @@ struct ShutUpMacMenu: View {
         .keyboardShortcut("q", modifiers: [.command])
     }
 
-    private func showActivityWindow() {
-        showManagementWindow(tab: .activity)
-    }
-
-    private func showRulesWindow() {
-        showManagementWindow(tab: .rules)
-    }
-
     private func showSettingsWindow() {
         showManagementWindow(tab: .general)
     }
@@ -254,23 +239,12 @@ struct ShutUpMacMenu: View {
         tab: ShutUpMacTab
     ) {
         navigation.selectedTab = tab
-        openWindow(id: "management")
+        openSettings()
 
         DispatchQueue.main.async {
             NSApplication.shared.activate(
                 ignoringOtherApps: true
             )
-
-            if let managementWindow =
-                NSApplication.shared.windows.first(
-                    where: { window in
-                        window.title == "ShutUpMac"
-                    }
-                )
-            {
-                managementWindow.makeKeyAndOrderFront(nil)
-                managementWindow.orderFrontRegardless()
-            }
         }
     }
 

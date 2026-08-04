@@ -8,9 +8,8 @@ private enum PendingRuleNavigation {
 }
 
 struct RulesView: View {
-    
     @ObservedObject
-    var navigation: ShutUpMacNavigation    
+    var navigation: ShutUpMacNavigation
 
     @ObservedObject
     var store: AutomationConfigurationStore
@@ -48,8 +47,32 @@ struct RulesView: View {
 
     @State private var rulePendingDeletion:
         AutomationRuleConfig?
+
+    @State
+    private var isRuleNameSortAscending = true
+
     private var rules: [AutomationRuleConfig] {
         store.configuration?.rules ?? []
+    }
+
+    private var displayedRules: [AutomationRuleConfig] {
+        rules.sorted { leftRule, rightRule in
+            let comparison =
+                leftRule.name.localizedStandardCompare(
+                    rightRule.name
+                )
+
+            if comparison == .orderedSame {
+                return leftRule.id.uuidString
+                    < rightRule.id.uuidString
+            }
+
+            if isRuleNameSortAscending {
+                return comparison == .orderedAscending
+            }
+
+            return comparison == .orderedDescending
+        }
     }
 
     private var selectedRule: AutomationRuleConfig? {
@@ -64,24 +87,10 @@ struct RulesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-
-            VStack(
-                alignment: .leading,
-                spacing: 6
-            ) {
-                Toggle(
-                    "Enable rules-based auto-dismiss",
-                    isOn:
-                        $notilogRulesAutoDismissEnabled
-                )
-
-                Text(
-                    "When disabled, rules remain configured "
-                        + "but do not dismiss notifications."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
+            Toggle(
+                "Enable rules-based auto-dismiss",
+                isOn: $notilogRulesAutoDismissEnabled
+            )
             .frame(
                 maxWidth: .infinity,
                 alignment: .leading
@@ -118,25 +127,32 @@ struct RulesView: View {
                     )
                 )
             } else if rules.isEmpty && !isCreatingRule {
-                ContentUnavailableView(
-                    "No Rules",
-                    systemImage: "list.bullet.rectangle",
-                    description: Text(
+                ContentUnavailableView {
+                    Label(
+                        "No Rules",
+                        systemImage: "list.bullet.rectangle"
+                    )
+                } description: {
+                    Text(
                         "No notification rules are currently configured."
                     )
-                )
+                } actions: {
+                    Button {
+                        requestNavigation(to: .createNew)
+                    } label: {
+                        Label(
+                            "Add Rule",
+                            systemImage: "plus"
+                        )
+                    }
+                }
             } else {
                 HSplitView {
-                    ruleList
+                    ruleSidebar
 
                     ruleDetail
                 }
             }
-
-        Divider()
-
-        rulesActionBar
-
         }
         .frame(
             minWidth: 700,
@@ -154,7 +170,7 @@ struct RulesView: View {
         .onChange(of: rules.map(\.id)) { _, _ in
             repairSelection()
         }
-       .onChange(
+        .onChange(
             of: navigation.pendingRuleSeed?.id
         ) { _, _ in
             consumePendingRuleSeed()
@@ -206,7 +222,7 @@ struct RulesView: View {
         .alert(
             "Discard Unsaved Changes?",
             isPresented:
-                $isPresentingDiscardAlert
+            $isPresentingDiscardAlert
         ) {
             Button("Cancel", role: .cancel) {
                 pendingNavigation = nil
@@ -339,7 +355,7 @@ struct RulesView: View {
 
         if case let .createFromSeed(pendingSeed) =
             pendingNavigation,
-           pendingSeed.id == seed.id
+            pendingSeed.id == seed.id
         {
             return
         }
@@ -354,8 +370,8 @@ struct RulesView: View {
     ) {
         guard case let .createFromSeed(seed) =
             destination,
-              navigation.pendingRuleSeed?.id ==
-              seed.id
+            navigation.pendingRuleSeed?.id ==
+            seed.id
         else {
             return
         }
@@ -409,7 +425,7 @@ struct RulesView: View {
             },
             set: { newSelection in
                 guard isCreatingRule
-                        || newSelection != selectedRuleID
+                    || newSelection != selectedRuleID
                 else {
                     return
                 }
@@ -421,16 +437,72 @@ struct RulesView: View {
         )
     }
 
+    private var ruleListHeader: some View {
+        Button {
+            isRuleNameSortAscending.toggle()
+        } label: {
+            HStack(spacing: 6) {
+                Text("Rule Name")
+                    .fontWeight(.medium)
+
+                Spacer()
+
+                Image(
+                    systemName:
+                        isRuleNameSortAscending
+                            ? "chevron.up"
+                            : "chevron.down"
+                )
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+        }
+        .buttonStyle(.plain)
+        .help(
+            isRuleNameSortAscending
+                ? "Sort rule names descending"
+                : "Sort rule names ascending"
+        )
+        .accessibilityLabel("Sort by Rule Name")
+        .accessibilityValue(
+            isRuleNameSortAscending
+                ? "Ascending"
+                : "Descending"
+        )
+    }
+
+    private var ruleSidebar: some View {
+        VStack(spacing: 0) {
+            ruleListHeader
+
+            Divider()
+
+            ruleList
+
+            Divider()
+
+            rulesActionBar
+        }
+        .frame(
+            minWidth: 220,
+            idealWidth: 260,
+            maxWidth: 340
+        )
+    }
+
     private var ruleList: some View {
         List(selection: ruleSelection) {
-            ForEach(rules, id: \.id) { rule in
-                 HStack(spacing: 8) {
+            ForEach(displayedRules, id: \.id) { rule in
+                HStack(spacing: 8) {
                     if rule.usesAdvancedConfiguration {
                         Image(
                             systemName:
-                                rule.isEnabled
-                                    ? "checkmark.circle.fill"
-                                    : "circle"
+                            rule.isEnabled
+                                ? "checkmark.circle.fill"
+                                : "circle"
                         )
                         .foregroundStyle(
                             rule.isEnabled
@@ -448,9 +520,9 @@ struct RulesView: View {
                         } label: {
                             Image(
                                 systemName:
-                                    rule.isEnabled
-                                        ? "checkmark.circle.fill"
-                                        : "circle"
+                                rule.isEnabled
+                                    ? "checkmark.circle.fill"
+                                    : "circle"
                             )
                             .foregroundStyle(
                                 rule.isEnabled
@@ -492,15 +564,11 @@ struct RulesView: View {
                             )
                     }
                 }
-                .padding(.vertical, 2)               
+                .padding(.vertical, 2)
                 .tag(rule.id)
             }
         }
-        .frame(
-            minWidth: 220,
-            idealWidth: 260,
-            maxWidth: 340
-        )
+        .alternatingRowBackgrounds()
     }
 
     @ViewBuilder
@@ -571,7 +639,7 @@ struct RulesView: View {
                             configuration.replacingRule(rule)
 
                         saveAutomationConfiguration(candidate)
-                        
+
                         hasUnsavedEditorChanges = false
                         selectedRuleID = rule.id
                     }
@@ -594,7 +662,7 @@ struct RulesView: View {
                 maxHeight: .infinity
             )
         }
-    }   
+    }
 }
 
 private enum TextMatchOperator:
@@ -690,57 +758,56 @@ private struct RuleEditorSnapshot:
 
         return RuleEditorSnapshot(
             name:
-                normalizedText(rule.name) ?? "",
+            normalizedText(rule.name) ?? "",
             isEnabled:
-                rule.enabled ?? true,
+            rule.enabled ?? true,
             appEquals:
-                normalizedText(
-                    rule.match.appEquals
-                ),
+            normalizedText(
+                rule.match.appEquals
+            ),
             titleEquals:
-                normalizedText(
-                    rule.match.titleEquals
-                ),
+            normalizedText(
+                rule.match.titleEquals
+            ),
             titleContains:
-                normalizedText(
-                    rule.match.titleContains
-                ),
+            normalizedText(
+                rule.match.titleContains
+            ),
             subtitleEquals:
-                normalizedText(
-                    rule.match.subtitleEquals
-                ),
+            normalizedText(
+                rule.match.subtitleEquals
+            ),
             subtitleContains:
-                normalizedText(
-                    rule.match.subtitleContains
-                ),
+            normalizedText(
+                rule.match.subtitleContains
+            ),
             bodyEquals:
-                normalizedText(
-                    rule.match.bodyEquals
-                ),
+            normalizedText(
+                rule.match.bodyEquals
+            ),
             bodyContains:
-                normalizedText(
-                    rule.match.bodyContains
-                ),
+            normalizedText(
+                rule.match.bodyContains
+            ),
             isCaseSensitive:
-                rule.match.caseSensitive ?? false,
+            rule.match.caseSensitive ?? false,
             exceptions:
-                (rule.exceptions ?? []).compactMap {
-                    exception in
-
-                    guard let text =
-                        normalizedText(
-                            exception.contains
-                        )
-                    else {
-                        return nil
-                    }
-
-                    return RuleEditorExceptionSnapshot(
-                        field:
-                            exception.field.rawValue,
-                        text: text
+            (rule.exceptions ?? []).compactMap {
+                exception in
+                guard let text =
+                    normalizedText(
+                        exception.contains
                     )
+                else {
+                    return nil
                 }
+
+                return RuleEditorExceptionSnapshot(
+                    field:
+                    exception.field.rawValue,
+                    text: text
+                )
+            }
         )
     }
 
@@ -803,7 +870,7 @@ private struct RuleEditorView: View {
         rule: AutomationRuleConfig? = nil,
         seed: RuleEditorSeed? = nil,
         onDirtyChange:
-            @escaping (Bool) -> Void,
+        @escaping (Bool) -> Void,
         onCancel: @escaping () -> Void,
         onSave: @escaping (
             AutomationRuleConfig
@@ -820,23 +887,23 @@ private struct RuleEditorView: View {
 
         _initialSnapshot = State(
             initialValue:
-                RuleEditorSnapshot.make(
-                    from: rule
-                )
+            RuleEditorSnapshot.make(
+                from: rule
+            )
         )
 
         let titleMatch = Self.editorMatch(
             equals: rule?.match.titleEquals,
             contains:
-                rule?.match.titleContains
-                    ?? seed?.titleContains
+            rule?.match.titleContains
+                ?? seed?.titleContains
         )
 
         let subtitleMatch = Self.editorMatch(
             equals: rule?.match.subtitleEquals,
             contains:
-                rule?.match.subtitleContains
-                    ?? seed?.subtitleContains
+            rule?.match.subtitleContains
+                ?? seed?.subtitleContains
         )
 
         let bodyMatch = Self.editorMatch(
@@ -846,9 +913,9 @@ private struct RuleEditorView: View {
 
         _name = State(
             initialValue:
-                rule?.name
-                    ?? seed?.name
-                    ?? ""
+            rule?.name
+                ?? seed?.name
+                ?? ""
         )
 
         _isEnabled = State(
@@ -857,9 +924,9 @@ private struct RuleEditorView: View {
 
         _app = State(
             initialValue:
-                rule?.match.appEquals
-                    ?? seed?.app
-                    ?? ""
+            rule?.match.appEquals
+                ?? seed?.app
+                ?? ""
         )
 
         _titleOperator = State(
@@ -997,20 +1064,19 @@ private struct RuleEditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             Form {
-                Section("Rule") {
+                Section {
                     TextField(
-                        "Name",
+                        "Rule Name",
                         text: $name,
                         prompt: Text("Rule name")
                     )
+                    .textFieldStyle(.roundedBorder)
 
                     Toggle(
                         "Enabled",
                         isOn: $isEnabled
                     )
-                }
 
-                Section("Matches") {
                     LabeledContent("App") {
                         TextField(
                             "App",
@@ -1019,64 +1085,93 @@ private struct RuleEditorView: View {
                                 "Exact app name"
                             )
                         )
+                        .labelsHidden()
                     }
 
-                    LabeledContent("Title") {
-                        HStack {
+                    Grid(
+                        alignment: .leading,
+                        horizontalSpacing: 12,
+                        verticalSpacing: 8
+                    ) {
+                        GridRow {
+                            Text("Title")
+                                .frame(
+                                    width: 90,
+                                    alignment: .leading
+                                )
+
                             operatorPicker(
-                                selection:
-                                $titleOperator,
+                                selection: $titleOperator,
                                 accessibilityLabel:
-                                "Title match operator"
+                                    "Title match operator"
                             )
 
                             TextField(
                                 "Title",
                                 text: $title,
-                                prompt: Text(
-                                    "Title text"
-                                )
+                                prompt: Text("Title text")
                             )
+                            .labelsHidden()
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: .infinity)
+                            .help(title)
                         }
-                    }
 
-                    LabeledContent("Subtitle") {
-                        HStack {
+                        Divider()
+                            .gridCellColumns(3)
+
+                        GridRow {
+                            Text("Subtitle")
+                                .frame(
+                                    width: 90,
+                                    alignment: .leading
+                                )
+
                             operatorPicker(
-                                selection:
-                                $subtitleOperator,
+                                selection: $subtitleOperator,
                                 accessibilityLabel:
-                                "Subtitle match operator"
+                                    "Subtitle match operator"
                             )
 
                             TextField(
                                 "Subtitle",
                                 text: $subtitle,
-                                prompt: Text(
-                                    "Subtitle text"
-                                )
+                                prompt: Text("Subtitle text")
                             )
+                            .labelsHidden()
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: .infinity)
+                            .help(subtitle)
                         }
-                    }
 
-                    LabeledContent("Body") {
-                        HStack {
+                        Divider()
+                            .gridCellColumns(3)
+
+                        GridRow {
+                            Text("Body")
+                                .frame(
+                                    width: 90,
+                                    alignment: .leading
+                                )
+
                             operatorPicker(
-                                selection:
-                                $bodyOperator,
+                                selection: $bodyOperator,
                                 accessibilityLabel:
-                                "Body match operator"
+                                    "Body match operator"
                             )
 
                             TextField(
                                 "Body",
                                 text: $bodyText,
-                                prompt: Text(
-                                    "Body text"
-                                )
+                                prompt: Text("Body text")
                             )
+                            .labelsHidden()
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: .infinity)
+                            .help(bodyText)
                         }
                     }
+                    .frame(maxWidth: .infinity)
 
                     Toggle(
                         "Case-sensitive matching",
@@ -1091,48 +1186,73 @@ private struct RuleEditorView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    ForEach($exceptionDrafts) { $draft in
-                        HStack {
-                            Picker(
-                                "Field",
-                                selection:
-                                    exceptionFieldBinding(
-                                        for: $draft
+                    if !exceptionDrafts.isEmpty {
+                        Grid(
+                            alignment: .leading,
+                            horizontalSpacing: 12,
+                            verticalSpacing: 8
+                        ) {
+                            ForEach($exceptionDrafts) { $draft in
+                                GridRow {
+                                    HStack(spacing: 8) {
+                                        Button {
+                                            removeException(
+                                                id: draft.id
+                                            )
+                                        } label: {
+                                            Image(
+                                                systemName: "minus.circle"
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help("Remove exception")
+                                        .accessibilityLabel(
+                                            "Remove exception"
+                                        )
+
+                                        Picker(
+                                            "Field",
+                                            selection:
+                                                exceptionFieldBinding(
+                                                    for: $draft
+                                                )
+                                        ) {
+                                            Text("Title")
+                                                .tag("title")
+
+                                            Text("Subtitle")
+                                                .tag("subtitle")
+
+                                            Text("Body")
+                                                .tag("body")
+                                        }
+                                        .labelsHidden()
+                                        .frame(width: 74)
+                                    }
+                                    .frame(
+                                        width: 90,
+                                        alignment: .leading
                                     )
-                            ) {
-                                Text("Title")
-                                    .tag("title")
 
-                                Text("Subtitle")
-                                    .tag("subtitle")
+                                    Text("contains")
+                                        .frame(
+                                            width: 110,
+                                            alignment: .leading
+                                        )
 
-                                Text("Body")
-                                    .tag("body")
+                                    TextField(
+                                        "Exception text",
+                                        text: $draft.text,
+                                        prompt: Text("Text to ignore")
+                                    )
+                                    .labelsHidden()
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(maxWidth: .infinity)
+                                    .help(draft.text)
+                                }
                             }
-                            .labelsHidden()
-                            .frame(width: 100)
-
-                            TextField(
-                                "Exception text",
-                                text: $draft.text,
-                                prompt: Text("Text to ignore")
-                            )
-
-                            Button {
-                                removeException(
-                                    id: draft.id
-                                )
-                            } label: {
-                                Image(
-                                    systemName: "minus.circle"
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .help("Remove exception")
-                            .accessibilityLabel(
-                                "Remove exception"
-                            )
                         }
+                        .frame(maxWidth: .infinity)
                     }
 
                     Button {
@@ -1148,24 +1268,6 @@ private struct RuleEditorView: View {
                             systemImage: "plus"
                         )
                     }
-
-                    Text(
-                        "Any matching exception prevents this "
-                        + "rule from dismissing the notification. "
-                        + "Exceptions use contains matching and "
-                        + "the rule’s case-sensitivity setting."
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-
-                Section {
-                    Text(
-                        "App names are matched exactly. "
-                            + "Empty match fields are ignored."
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 }
             }
             .formStyle(.grouped)
@@ -1246,9 +1348,10 @@ private struct RuleEditorView: View {
             },
             set: { rawValue in
                 guard let field =
-                        NotificationExceptionField(
-                            rawValue: rawValue
-                        ) else {
+                    NotificationExceptionField(
+                        rawValue: rawValue
+                    )
+                else {
                     return
                 }
 

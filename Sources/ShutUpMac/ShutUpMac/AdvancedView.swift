@@ -177,6 +177,82 @@ struct AdvancedView: View {
         )
     }
 
+    private func adjustNotificationEventLimit(
+        by amount: Int
+    ) {
+        let range =
+            AppPreferences.notificationEventRetentionRange
+
+        let currentValue =
+            parsedNotificationEventLimit
+            ?? appliedRetentionConfiguration
+                .notificationEventLimit
+
+        let newValue = min(
+            max(
+                currentValue + amount,
+                range.lowerBound
+            ),
+            range.upperBound
+        )
+
+        notificationEventLimitText =
+            newValue.formatted()
+    }
+
+    private func adjustActionRunLimit(
+        by amount: Int
+    ) {
+        let range =
+            AppPreferences.actionRunRetentionRange
+
+        let currentValue =
+            parsedActionRunLimit
+            ?? appliedRetentionConfiguration
+                .actionRunLimit
+
+        let newValue = min(
+            max(
+                currentValue + amount,
+                range.lowerBound
+            ),
+            range.upperBound
+        )
+
+        actionRunLimitText =
+            newValue.formatted()
+    }
+
+    private func resetRetentionLimitsToDefaults() {
+        let defaults = RetentionConfiguration.defaults
+
+        notificationEventLimitText =
+            defaults.notificationEventLimit.formatted()
+
+        actionRunLimitText =
+            defaults.actionRunLimit.formatted()
+
+        retentionErrorMessage = nil
+    }
+
+    private var retentionLimitsAreDefaults: Bool {
+        guard
+            let notificationEventLimit =
+                parsedNotificationEventLimit,
+            let actionRunLimit =
+                parsedActionRunLimit
+        else {
+            return false
+        }
+
+        let defaults = RetentionConfiguration.defaults
+
+        return notificationEventLimit
+                == defaults.notificationEventLimit
+            && actionRunLimit
+                == defaults.actionRunLimit
+    }
+
     private var canApplyRetentionLimits: Bool {
         guard !isApplyingRetentionLimits,
               let notificationEventLimit =
@@ -219,10 +295,10 @@ struct AdvancedView: View {
 
     var body: some View {
         Form {
-            Section("Database") {
+            Section {
                 if let statistics {
                     LabeledContent(
-                        "Activity events"
+                        "Activity events stored in database"
                     ) {
                         Text(
                             "\(statistics.notificationEventCount.formatted()) "
@@ -232,7 +308,7 @@ struct AdvancedView: View {
                     }
 
                     LabeledContent(
-                        "Action runs"
+                        "Action runs stored in database"
                     ) {
                         Text(
                             "\(statistics.actionRunCount.formatted()) "
@@ -242,7 +318,7 @@ struct AdvancedView: View {
                     }
 
                     LabeledContent(
-                        "History range",
+                        "Database history range",
                         value:
                             historyRangeText(
                                 for: statistics
@@ -301,35 +377,89 @@ struct AdvancedView: View {
                     Text("Loading database statistics…")
                         .foregroundStyle(.secondary)
                 }
+
+                HStack {
+                    Spacer()
+
+                    Button(
+                        "Reset Activity Database…",
+                        role: .destructive
+                    ) {
+                        isShowingResetConfirmation = true
+                    }
+                    .disabled(isResettingDatabase)
+                }
+
+                if let resetErrorMessage {
+                    Label(
+                        "Database reset failed",
+                        systemImage:
+                            "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(.red)
+                    .help(resetErrorMessage)
+                }
             }
 
-            Section("Retention") {
+            Section {
                 LabeledContent(
                     "Retain Activity events"
                 ) {
-                    TextField(
-                        "25,000",
-                        text:
-                            $notificationEventLimitText
-                    )
-                    .multilineTextAlignment(.trailing)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 110)
+                    HStack(spacing: 6) {
+                        TextField(
+                            "Activity event retention limit",
+                            text:
+                                $notificationEventLimitText
+                        )
+                        .labelsHidden()
+                        .multilineTextAlignment(.trailing)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 110)
+                        Stepper(
+                            "Activity event retention limit",
+                            onIncrement: {
+                                adjustNotificationEventLimit(
+                                    by: 1_000
+                                )
+                            },
+                            onDecrement: {
+                                adjustNotificationEventLimit(
+                                    by: -1_000
+                                )
+                            }
+                        )
+                        .labelsHidden()
+                    }
                 }
-
                 LabeledContent(
-                    "Retain action runs"
+                    "Retain Action runs"
                 ) {
-                    TextField(
-                        "10,000",
-                        text:
-                            $actionRunLimitText
-                    )
-                    .multilineTextAlignment(.trailing)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 110)
+                    HStack(spacing: 6) {
+                        TextField(
+                            "Action-run retention limit",
+                            text:
+                                $actionRunLimitText
+                        )
+                        .labelsHidden()
+                        .multilineTextAlignment(.trailing)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 110)
+                        Stepper(
+                            "Action-run retention limit",
+                            onIncrement: {
+                                adjustActionRunLimit(
+                                    by: 1_000
+                                )
+                            },
+                            onDecrement: {
+                                adjustActionRunLimit(
+                                    by: -1_000
+                                )
+                            }
+                        )
+                        .labelsHidden()
+                    }
                 }
-
                 Text(
                     "Lowering a limit immediately deletes the "
                         + "oldest excess history. Increasing a "
@@ -341,25 +471,18 @@ struct AdvancedView: View {
                     vertical: true
                 )
 
-                Text(
-                    "Activity events: "
-                        + "\(AppPreferences.notificationEventRetentionRange.lowerBound.formatted())"
-                        + "–"
-                        + "\(AppPreferences.notificationEventRetentionRange.upperBound.formatted()). "
-                        + "Action runs: "
-                        + "\(AppPreferences.actionRunRetentionRange.lowerBound.formatted())"
-                        + "–"
-                        + "\(AppPreferences.actionRunRetentionRange.upperBound.formatted())."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(
-                    horizontal: false,
-                    vertical: true
-                )
-
                 HStack {
                     Spacer()
+
+                    Button(
+                        "Reset to Default"
+                    ) {
+                        resetRetentionLimitsToDefaults()
+                    }
+                    .disabled(
+                        isApplyingRetentionLimits
+                            || retentionLimitsAreDefaults
+                    )
 
                     Button(
                         "Apply Retention Limits"
@@ -370,7 +493,6 @@ struct AdvancedView: View {
                         !canApplyRetentionLimits
                     )
                 }
-
                 if let retentionErrorMessage {
                     Label(
                         "Could not update retention limits",
@@ -379,40 +501,6 @@ struct AdvancedView: View {
                     )
                     .foregroundStyle(.red)
                     .help(retentionErrorMessage)
-                }
-            }
-
-            Section("Maintenance") {
-                Text(
-                    "Resetting can help recover from Activity "
-                        + "database problems. It permanently deletes "
-                        + "notification and action history and creates "
-                        + "a new database. Rules and settings are not "
-                        + "affected. Back up the database first if you "
-                        + "may need the existing history."
-                )
-                .foregroundStyle(.secondary)
-                .fixedSize(
-                    horizontal: false,
-                    vertical: true
-                )
-
-                Button(
-                    "Reset Activity Database…",
-                    role: .destructive
-                ) {
-                    isShowingResetConfirmation = true
-                }
-                .disabled(isResettingDatabase)
-
-                if let resetErrorMessage {
-                    Label(
-                        "Database reset failed",
-                        systemImage:
-                            "exclamationmark.triangle.fill"
-                    )
-                    .foregroundStyle(.red)
-                    .help(resetErrorMessage)
                 }
             }
 
