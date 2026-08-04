@@ -49,6 +49,72 @@ GitHub page: https://github.com/rustydomino/shutupmac
 
 Hotkeys can be changed in Settings.
 
+
+## Installation
+
+1. Download `ShutUpMac-0.6.0-macOS.zip` from the GitHub release.
+2. Extract the ZIP.
+3. Move `ShutUpMac.app` to `/Applications`.
+4. Install the supplied default configuration files:
+
+   ```sh
+   mkdir -p "$HOME/Library/Application Support/notilog"
+
+   cp Defaults/config.json \
+     "$HOME/Library/Application Support/notilog/config.json"
+
+   cp Defaults/retention.json \
+     "$HOME/Library/Application Support/notilog/retention.json"
+   ```
+
+   Do not overwrite existing files unless you intend to replace your
+   current rules and retention settings.
+
+5. Open ShutUpMac.
+
+### Opening the unsigned release
+
+ShutUpMac 0.6.0 is ad hoc signed but is not notarized with Apple. macOS
+may initially prevent it from opening.
+
+After attempting to open the app:
+
+1. Open **System Settings → Privacy & Security**.
+2. Scroll to the Security section.
+3. Click **Open Anyway** for ShutUpMac.
+4. Confirm by clicking **Open**.
+
+Only bypass this warning for a copy downloaded from the official
+ShutUpMac GitHub release. The release includes a SHA-256 checksum that
+can be used to verify the downloaded ZIP.
+
+### First-launch permission
+
+ShutUpMac requires Accessibility permission to inspect and dismiss
+notifications.
+
+When prompted, enable ShutUpMac under:
+
+**System Settings → Privacy & Security → Accessibility**
+
+After permission is granted, return to ShutUpMac. Monitoring should
+begin without requiring the app to restart.
+
+---
+
+## Replacement Accessibility paragraph
+
+Replace the existing paragraph:
+
+> If permission is missing, ShutUpMac will prompt macOS to show the Accessibility permission flow.
+
+with:
+
+If permission is missing, ShutUpMac prompts macOS to show the
+Accessibility permission flow. After permission is granted, return to
+ShutUpMac; the app rechecks permission and starts monitoring without
+requiring a restart.
+
 ## Notification activity and privacy
 
 ShutUpMac starts the reusable `NotilogCore` monitoring pipeline inside the app when Accessibility permission and the Notilog configuration are available. The app uses the legacy Notilog runtime directory:

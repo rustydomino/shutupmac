@@ -1,0 +1,54 @@
+ShutUpMac 0.6.0 — Installation
+
+1. Move ShutUpMac.app to /Applications.
+
+2. Optional default configuration files
+
+   The Defaults folder contains:
+
+   - config.json
+   - retention.json
+
+   To install them:
+
+   mkdir -p "$HOME/Library/Application Support/notilog"
+
+   cp Defaults/config.json      "$HOME/Library/Application Support/notilog/config.json"
+
+   cp Defaults/retention.json      "$HOME/Library/Application Support/notilog/retention.json"
+
+   Do not overwrite existing files unless you intend to replace your
+   current rules and retention settings.
+
+3. Opening the app
+
+   ShutUpMac 0.6.0 is ad hoc signed but is not notarized with Apple.
+   macOS may initially prevent it from opening.
+
+   After attempting to open the app:
+
+   - Open System Settings > Privacy & Security.
+   - Scroll to the Security section.
+   - Click Open Anyway for ShutUpMac.
+   - Confirm by clicking Open.
+
+   Only bypass this warning for a copy downloaded from the official
+   ShutUpMac GitHub release.
+
+4. Accessibility permission
+
+   ShutUpMac requires Accessibility permission to inspect and dismiss
+   notifications.
+
+   When prompted, enable ShutUpMac under:
+
+   System Settings > Privacy & Security > Accessibility
+
+   After permission is granted, return to ShutUpMac. Monitoring should
+   begin without requiring the app to restart.
+
+5. Checksum verification
+
+   The GitHub release includes a SHA-256 checksum file. From Terminal:
+
+   shasum -a 256 -c ShutUpMac-0.6.0-macOS.zip.sha256
