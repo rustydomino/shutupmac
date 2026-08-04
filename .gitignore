@@ -10,3 +10,4 @@ DerivedData/
 *.xcarchive/
 Products/
 *.app/
+/build/
