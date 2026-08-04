@@ -4,10 +4,13 @@ Use this checklist before and after refactors, especially when changing `ShutUpM
 
 ## Build sanity
 
-- [ ] App target builds.
-- [ ] ShutUpMac CLI target builds.
+- [ ] App target builds in Debug and Release configurations.
+- [ ] ShutUpMac CLI target builds in Debug and Release configurations.
 - [ ] `swift test --package-path Packages/notilog` passes.
 - [ ] The complete ShutUpMac Xcode test target passes.
+- [ ] App bundle metadata reports version `0.6.0` and build `1`.
+- [ ] Standalone and embedded `shutupmac-cli --version` report `ShutUpMac 0.6.0 (1)`.
+- [ ] `notilog-cli --version` reports `0.6.0`.
 - [ ] `stfu --help` / `shutupmac-cli --help` prints usage.
 - [ ] Unknown flags fail cleanly with usage.
 - [ ] `--debug` is quiet enough to read.
@@ -25,7 +28,7 @@ Use this checklist before and after refactors, especially when changing `ShutUpM
 Run with no visible notifications and no meaningful Notification Center items.
 
 - [ ] `--list-visible` reports no visible notification candidates.
-- [ ] `--clear-visible` exits successfully or cleanly reports nothing to clear.
+- [ ] `--clear-desktop` exits successfully or cleanly reports nothing to clear.
 - [ ] `--clear-single` reports no visible single notification.
 - [ ] `--clear-stack` reports no visible stack.
 - [ ] `--clear-all` does not crash or hang.
@@ -36,7 +39,7 @@ Generate one visible notification.
 
 - [ ] `--list-visible` shows one `single` candidate.
 - [ ] `--clear-single` closes it.
-- [ ] `--clear-visible` closes it.
+- [ ] `--clear-desktop` closes it.
 - [ ] `--clear-all` clears it through Notification Center.
 
 ## Multiple visible notifications
@@ -44,8 +47,8 @@ Generate one visible notification.
 Generate several visible notifications from the same test source.
 
 - [ ] `--list-visible` shows the expected visible `single` candidates.
-- [ ] `--clear-visible` clears all visible notifications.
-- [ ] `--clear-visible --debug` shows concise progress logs.
+- [ ] `--clear-desktop` clears all visible notifications.
+- [ ] `--clear-desktop --debug` shows concise progress logs.
 - [ ] It does not spam full AX tree dumps during polling.
 - [ ] Final result reports AX actions and observed progress events.
 
@@ -55,7 +58,7 @@ Generate enough notifications to create a visible stack.
 
 - [ ] `--list-visible` shows a `stack` candidate.
 - [ ] `--clear-stack` clears the top visible stack.
-- [ ] `--clear-visible` can clear the visible stack path.
+- [ ] `--clear-desktop` can clear the visible stack path.
 - [ ] `--clear-all` clears the stack through Notification Center.
 
 ## Notification Center closed
@@ -99,12 +102,20 @@ With Notification Center open:
 
 From the menu-bar app:
 
-- [ ] Clear Visible hotkey invokes the visible sweep.
+- [ ] Clear Desktop Notifications hotkey invokes the visible sweep.
 - [ ] Clear All hotkey invokes the robust Notification Center clear-all path.
 - [ ] Menu items match CLI behavior.
 - [ ] Failures are surfaced without crashing the app.
 - [ ] App remains responsive after repeated clears.
 
+
+## Settings UI
+
+- [ ] Settings opens as a native macOS Settings window with General, Hot Keys, Activity, Rules, and Advanced toolbar tabs.
+- [ ] The window title remains **ShutUpMac Settings** while switching tabs.
+- [ ] The window can shrink to its 860-point minimum width without wrapping Rules match rows.
+- [ ] Activity and Advanced remain usable through scrolling at the minimum window size.
+- [ ] The menu-bar menu contains Settings but no redundant Activity or Rules commands.
 
 ## Notification activity, privacy, and database safety
 
@@ -122,6 +133,9 @@ Use disposable Activity data when testing reset or lower retention limits.
 - [ ] Lower retention limits using disposable history and confirm only the oldest excess historical rows are removed.
 - [ ] Confirm action history and active notification state are not removed by notification-event pruning.
 - [ ] Increase retention limits and confirm no existing rows are removed.
+- [ ] Confirm Apply Retention Limits is disabled when the displayed values match the applied values.
+- [ ] Confirm Reset to Default is disabled at 25,000 / 10,000, enables after either value changes, and only changes the fields until Apply is pressed.
+- [ ] Confirm the retention fields accept direct typing and the steppers adjust in 1,000-record increments within the supported ranges.
 - [ ] Reset the Activity database and confirm rules and app settings remain intact.
 
 CLI retention checks:
@@ -141,6 +155,9 @@ notilog-cli retention reset
 
 ## Rules compatibility
 
+- [ ] Rule Name toggles ascending and descending Finder-style display sorting without rewriting `config.json` order.
+- [ ] Alternating row backgrounds remain visible and selection/edit/delete actions target the correct UUID after sorting.
+- [ ] Title, Subtitle, Body, and exception rows stay single-line at the minimum window width; long field contents scroll horizontally while editing.
 - [ ] Create or retain one advanced hand-authored rule in `config.json`.
 - [ ] Add or edit an ordinary rule through the GUI.
 - [ ] Confirm the advanced rule keeps its UUID, order, criteria, exceptions, and actions byte-for-byte semantically.
@@ -151,7 +168,7 @@ notilog-cli retention reset
 After any refactor:
 
 - [ ] Re-run at least: no notifications, one notification, multiple visible notifications, one stack, filled Notification Center.
-- [ ] Confirm `--clear-all`, `--clear-visible`, `--list-visible`, and `--ax-dump` still work.
+- [ ] Confirm `--clear-all`, `--clear-desktop`, `--list-visible`, and `--ax-dump` still work.
 - [ ] Confirm debug output remains concise.
 - [ ] Commit only after the manual checklist passes for the changed area.
 
@@ -163,7 +180,7 @@ After any refactor:
 
 # Concise operational debug
 ./shutupmac-cli --clear-all --debug
-./shutupmac-cli --clear-visible --debug
+./shutupmac-cli --clear-desktop --debug
 
 # Visible candidates
 ./shutupmac-cli --list-visible
@@ -174,7 +191,7 @@ After any refactor:
 
 # Capture logs
 ./shutupmac-cli --clear-all --debug > clear-all-debug.txt 2>&1
-./shutupmac-cli --clear-visible --debug > clear-visible-debug.txt 2>&1
+./shutupmac-cli --clear-desktop --debug > clear-desktop-debug.txt 2>&1
 ./shutupmac-cli --ax-dump --probe-menus > ax-dump.txt 2>&1
 ```
 
@@ -183,6 +200,6 @@ After any refactor:
 Current intended behavior:
 
 - `--clear-all` is the robust path. It should prefer the direct `AXButton desc == "Clear All Notifications"` path and fall back to the older xmark/menu route.
-- `--clear-visible` is a non-invasive sweep of currently visible notifications. It is useful but not guaranteed to feel instant for many items.
+- `--clear-desktop` is a non-invasive sweep of currently visible notifications. It is useful but not guaranteed to feel instant for many items.
 - `--clear-single` and `--clear-stack` are precise/power-user actions.
 - `--ax-dump` and `--probe-menus` are diagnostic tools, not normal product behavior.

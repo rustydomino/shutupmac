@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.6.0] - 2026-08-04
+
+### Added
+
+- Embedded the reusable Notilog monitoring and automation engine directly in the ShutUpMac app.
+- Added searchable, sortable Activity history with recent SQLite records, live updates, matched-rule display, and rule creation from a selected notification.
+- Added an ordinary Rules editor with enable/disable, add, edit, delete, exact/contains matching, case sensitivity, and contains-based exceptions.
+- Added notification logging and per-field redaction controls for title, subtitle, and body.
+- Added database statistics, bounded retention, shared `retention.json` controls, and confirmed Activity-database reset.
+- Added `notilog-cli retention show`, `set`, and `reset` commands.
+- Added targeted dismissal by runtime Accessibility key and in-process ShutUpMac dismissal for embedded automation.
+- Added a single-monitor process lock, explicit SQLite schema versioning, read-only database access, typed core errors, and regression coverage for GUI/CLI parity and persistence safety.
+
+### Changed
+
+- Replaced the standalone preferences presentation with a native macOS Settings window containing General, Hot Keys, Activity, Rules, and Advanced toolbar tabs.
+- Compacted the Settings layouts and reduced the default/minimum window width while preserving scrollable Activity and Advanced content.
+- Added Finder-style ascending/descending rule-name sorting, alternating rule rows, clearer editable fields, and aligned match/exception controls.
+- Made retention values directly typeable and adjustable with native steppers, with a non-destructive Reset to Default action.
+- Enforced menu-bar-only operation and removed redundant Activity and Rules commands from the menu-bar menu.
+- Aligned ShutUpMac, `shutupmac-cli`, NotilogCore, and `notilog-cli` on version `0.6.0` with app build number `1`.
+
+### Fixed
+
+- Prevented duplicate dismissal attempts when multiple matching rules request the same ShutUpMac action.
+- Preserved advanced hand-authored rule fields, actions, exceptions, UUIDs, and stored order during ordinary GUI edits.
+- Ensured logging-disabled GUI history access cannot create, migrate, prune, or mutate SQLite, while CLI `watch --no-logging` does not open SQLite at all.
+- Rejected malformed numeric CLI options and missing option values instead of silently falling back to defaults.
+- Fixed `shutupmac-cli --version` so development and embedded helpers find the correct containing or sibling app metadata.
+
 ## [0.5.0] - 2026-07-15
 
 ### Added

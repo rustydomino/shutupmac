@@ -1,6 +1,6 @@
 # Notilog TODO
 
-_Last updated: 2026-08-03_
+_Last updated: 2026-08-04_
 
 ## Completed foundations
 
@@ -44,7 +44,7 @@ _Last updated: 2026-08-03_
 ## Immediate next steps
 
 - [ ] Run clean full-suite and installed-app release validation.
-- [ ] Update the project changelog and version for the next release.
+- [x] Align the integrated app, CLIs, and core on version `0.6.0` and add the release changelog.
 - [ ] Define stale/pending verification restart behavior only if it becomes a practical source of misleading history.
 - [ ] Add Activity details or structured filters only if the current search/table workflow proves insufficient.
 
@@ -244,7 +244,7 @@ _Last updated: 2026-08-03_
 - [x] Add ordinary-rule creation, editing, deletion, validation, and atomic save-and-activate behavior.
 - [x] Preserve UUID, exceptions, sidebar position, and unsupported advanced fields/actions during ordinary GUI editing.
 - [x] Keep unsupported advanced rules read-only and prevent toggling or deletion through the GUI.
-- [ ] Polish the functional Rules-window layout and spacing.
+- [x] Polish the Rules layout with native Settings presentation, compact aligned fields, alternating rows, and Finder-style name sorting.
 - [ ] Consider recent match count and most recent action result only after the Activity/details data path exists.
 - [ ] Keep raw JSON or CLI configuration as the escape hatch for advanced users rather than broadening the GUI prematurely.
 
@@ -252,7 +252,7 @@ _Last updated: 2026-08-03_
 
 - [x] Provide a minimal generic form for ordinary dismissal rules.
 - [x] Support exact app matching; exact/contains title, subtitle, and body matching; case sensitivity; and contains-based exceptions.
-- [ ] Add “Create rule from this notification” as the preferred contextual workflow.
+- [x] Add “Create rule from this notification” as the preferred contextual workflow.
 - [ ] Show a historical match preview and allow inspection before enabling the rule.
 - [ ] Include storage policy only if per-rule retention is added.
 - [ ] Eventually suggest automation for repeatedly dismissed notifications.

@@ -1,5 +1,9 @@
 # ShutUpMac
 
+> This document records the investigation and architecture of the original
+> standalone notification-dismissal engine. For the current integrated
+> ShutUpMac + Notilog application, see `README.md` and `CHANGELOG.md`.
+
 ## Overview
 
 This project implements a native Swift command-line utility that
@@ -192,9 +196,11 @@ Historical tools used during reverse engineering:
 -   No dependence on user-configured shortcuts
 -   Pure Accessibility-based interaction
 
-The remaining opportunities are primarily around polish (removing timing
-sleeps by polling for state changes, improving resilience across macOS
-releases, and packaging for distribution).
+The original dismissal engine is now one subsystem of the integrated ShutUpMac
+application. The current app adds embedded Notilog monitoring, Activity history,
+rules-based automation, privacy controls, retention management, and a native
+macOS Settings interface. Remaining release work is primarily distribution
+validation, packaging, and documentation rather than core feature development.
 
 ------------------------------------------------------------------------
 

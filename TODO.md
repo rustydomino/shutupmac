@@ -1,17 +1,19 @@
 # ShutUpMac TODO
 
-_Last updated: 2026-08-03_
+_Last updated: 2026-08-04_
 
 ## Project status
 
 ShutUpMac is functionally feature complete for its current intended scope. The
-unified management window, embedded Notilog runtime, ordinary Rules editor,
+native Settings window, embedded Notilog runtime, ordinary Rules editor,
 Activity-to-Rules workflow, privacy controls, retention controls, and database
 maintenance tools are implemented.
 
-The August data-safety and regression-hardening milestone is also complete.
-Future work should remain driven by concrete bugs or recurring user needs rather
-than feature expansion.
+The August data-safety, regression-hardening, and GUI-polish milestones are
+complete. Version `0.6.0` is aligned across the app, both CLIs, and
+NotilogCore. Current work is release packaging and validation. Future product
+work should remain driven by concrete bugs or recurring user needs rather than
+feature expansion.
 
 ## Guiding principles
 
@@ -24,13 +26,13 @@ than feature expansion.
 
 ## Completed product milestones
 
-- [x] Provide one stable five-tab management window:
+- [x] Provide one native macOS Settings window with five toolbar tabs:
   - General
   - Hot Keys
   - Activity
   - Rules
   - Advanced
-- [x] Route menu commands into the appropriate management tab.
+- [x] Keep the menu-bar menu focused on Settings and core dismissal actions.
 - [x] Keep About in a separate small window.
 - [x] Provide configurable global hotkeys and launch-at-login control.
 - [x] Embed the Notilog watcher directly in the app.
@@ -48,6 +50,12 @@ than feature expansion.
       database reset in the Advanced tab.
 - [x] Keep the GUI dismissal path in-process instead of invoking
       `shutupmac-cli`.
+- [x] Compact the Settings window to an 860-point minimum width while keeping
+      Activity and Advanced scrollable.
+- [x] Add Finder-style rule-name sorting, alternating rows, clearer editable
+      fields, and aligned match/exception controls.
+- [x] Add directly editable retention fields, native steppers, and Reset to
+      Default behavior.
 
 ## Completed data-safety foundations
 
@@ -83,17 +91,26 @@ than feature expansion.
 
 ## Release-hardening checklist
 
+- [x] Align ShutUpMac, `shutupmac-cli`, NotilogCore, and `notilog-cli` on
+      version `0.6.0`; set app build number `1`.
+- [x] Add the `0.6.0` changelog and refresh current project documentation.
+- [ ] Create distribution-ready default `config.json` and `retention.json`
+      files.
 - [ ] Run the full Notilog package test suite from a clean checkout.
 - [ ] Run the complete ShutUpMac Xcode test target.
-- [ ] Build both the ShutUpMac and ShutUpMacCLI schemes.
+- [ ] Build both the ShutUpMac and ShutUpMacCLI schemes in Release
+      configuration.
+- [ ] Produce, sign, and notarize the distributable app as applicable.
 - [ ] Smoke-test the installed app with Accessibility and notification
       permissions granted.
+- [ ] Smoke-test a clean first launch with the distribution defaults and no
+      existing Application Support data.
 - [ ] Smoke-test logging enable/disable transitions against an existing database.
 - [ ] Smoke-test retention Apply, CLI retention commands, and Activity database
       reset using disposable data.
 - [ ] Confirm ordinary Rules edits still preserve an advanced hand-authored rule.
-- [ ] Update `CHANGELOG.md` and the release version when the next release is
-      prepared.
+- [ ] Create tag `v0.6.0`, publish the GitHub release, and download-test the
+      uploaded artifact.
 
 ## Deferred work requiring a concrete need
 
@@ -147,6 +164,6 @@ For each implementation step:
 
 ## Next action
 
-Complete the release-hardening checklist, then update `CHANGELOG.md` for the next
-version. New features should remain deferred until a concrete recurring problem
-justifies them.
+Create the distribution default files, complete the Release build and
+installed-app validation, then publish GitHub release `v0.6.0`. New features
+should remain deferred until a concrete recurring problem justifies them.

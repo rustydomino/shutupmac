@@ -15,15 +15,16 @@ GitHub page: https://github.com/rustydomino/shutupmac
 - Clear all notifications
 - Send a test notification
 - Configurable global hotkeys
-- Unified five-tab management window: General, Hot Keys, Activity, Rules, and Advanced
+- Native macOS Settings window with five toolbar tabs: General, Hot Keys, Activity, Rules, and Advanced
 - Searchable Activity history backed by Notilog history and live monitoring
 - Create an ordinary dismissal rule directly from a selected Activity record
 - Rules tab for viewing, enabling, creating, editing, and deleting ordinary notification-dismissal rules
+- Finder-style ascending/descending rule-name sorting with alternating row backgrounds
 - Exact or contains matching for title, subtitle, and body, plus contains-based exceptions
 - Optional notification logging with live enable/disable control
 - Optional title, subtitle, and body redaction for Activity and persisted history
 - Shared, validated retention limits stored in `retention.json`
-- Database statistics, retention controls, and Activity-database reset in the Advanced tab
+- Database statistics, directly editable retention controls with native steppers and default reset, and Activity-database reset in the Advanced tab
 - Atomic save-and-activate updates for `config.json` automation rules
 - Optional launch at login
 - Menu-bar-only operation without a Dock or app-switcher icon
@@ -77,7 +78,7 @@ Retention settings are shared by the GUI and `notilog-cli` through:
 ~/Library/Application Support/notilog/retention.json
 ```
 
-Built-in defaults are 25,000 notification events and 10,000 action runs. Supported ranges are 1,000–100,000 events and 1,000–50,000 action runs. Lowering a limit through the GUI saves the configuration and immediately prunes the oldest excess historical rows. Increasing a limit affects future retention. A missing file uses the built-in defaults without creating the file merely to read them.
+Built-in defaults are 25,000 notification events and 10,000 action runs. Supported ranges are 1,000–100,000 events and 1,000–50,000 action runs. GUI values can be typed directly or adjusted in 1,000-record steps. **Reset to Default** prepares the built-in values, but no change is saved or pruned until **Apply Retention Limits** is pressed. Lowering a limit immediately prunes the oldest excess historical rows; increasing a limit affects future retention. A missing file uses the built-in defaults without creating the file merely to read them.
 
 ## Notification rules
 
@@ -93,7 +94,7 @@ The **Rules** tab provides a deliberately small GUI for ordinary notification-di
 - Combines exception rows with OR; any matching exception prevents dismissal.
 - Applies one rule-level case-sensitivity setting to matches and exceptions.
 
-The Rules tab can enable or disable, add, edit, and delete ordinary rules. Editing preserves the rule UUID and list position. Rules using advanced event matching, advanced field combinations, or advanced actions remain visible but read-only so the GUI does not silently discard configuration it does not understand.
+The Rules tab can enable or disable, add, edit, and delete ordinary rules. Its Rule Name header toggles Finder-style ascending and descending display order without rewriting the stored configuration order. Editing preserves the rule UUID and stored position. Rules using advanced event matching, advanced field combinations, or advanced actions remain visible but read-only so the GUI does not silently discard configuration it does not understand.
 
 Inside the ShutUpMac app, matching dismissal rules call the existing Accessibility dismissal engine directly through a host-injected callback. The app does not launch `shutupmac-cli` for these actions. The standalone `notilog-cli` retains the external-helper fallback when no in-process handler is supplied.
 
@@ -221,7 +222,7 @@ For persistent test notifications, set ShutUpMac's notification style to **Alert
 
 ## Menu-bar-only behavior
 
-ShutUpMac runs as a menu-bar-only utility. It does not present a Dock icon or remain in the Command-Tab app switcher. The unified management window and About window are opened from the menu bar.
+ShutUpMac runs as a menu-bar-only utility. It does not present a Dock icon or remain in the Command-Tab app switcher. **Settings…** opens the native five-tab Settings window, while About remains a separate small window.
 
 ## Project layout
 
